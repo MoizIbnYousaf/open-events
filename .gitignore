@@ -1,32 +1,64 @@
-# Dependencies
-node_modules/
+# Local tooling/config noise — not project work
+.config/
+.codex/
+.claude/
+.local/
+.pi/
+.mastracode/
+.cache/
+.tanstack/
+tmp/
+.bash_history
+.bash_logout
+.bashrc
+.gitconfig
+.profile
+.hushlogin
 
-# Framework and build output
-.next/
-out/
-dist/
-.turbo/
-*.tsbuildinfo
+# Cloudflare local state
+.wrangler/
 
-# Tests and coverage
-coverage/
-test-results/
-playwright-report/
-
-# Local environment
-.env
-.env.*
+# Secrets and env files
+.dev.vars*
+!.dev.vars.example
+*.env
+*.env.*
 !.env.example
+env
 
-# Logs
+# Agent notes
+notes/
+agent-notes.md
+
+# Logs, reports, screenshots
 *.log
-pnpm-debug.log*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+*.sock
+reports/
+screenshots/
+playwright-report/
+test-results/
 
-# Editors and operating systems
+# Local briefs and plans
+BRIEF.md
+M1_PLAN.md
+M1_APPROVAL.md
+
+# Private research, orchestration, and agent operating material
+/project-goal/
+/research-understanding-plan/
+/.firecrawl/
+/AGENTS.md
+/CLAUDE.md
+/agents.md
+
+# Credentials
+*.pem
+*.key
+.netrc
+
+# Common build/editor noise
+node_modules/
+dist/
+__pycache__/
+*.pyc
 .DS_Store
-.idea/
-.vscode/
-

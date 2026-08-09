@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "speakerops",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-08-08",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "vars": {
+    "ORGANIZER_SESSION_TTL_MS": "7200000",
+    "SUBMITTER_SESSION_TTL_MS": "1800000",
+    "SUBMITTER_TOKEN_TTL_MS": "86400000",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "speakerops-m1-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "./migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "speakerops-m1-local-files",
+    },
+  ],
+}

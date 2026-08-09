@@ -1,0 +1,8 @@
+# Local-only development values. Never commit real secrets.
+LOCAL_ADMIN_TOKEN=
+LOCAL_DEV_MODE=true
+ALLOWED_ORIGINS=
+# Optional TTL overrides (ms, within frozen maxima); committed defaults apply when empty:
+# ORGANIZER_SESSION_TTL_MS=7200000
+# SUBMITTER_SESSION_TTL_MS=1800000
+# SUBMITTER_TOKEN_TTL_MS=86400000

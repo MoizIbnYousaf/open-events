@@ -1,0 +1,13 @@
+dist/
+node_modules/
+.wrangler/
+playwright-report/
+test-results/
+.firecrawl/
+**/routeTree.gen.ts
+worker-configuration.d.ts
+pnpm-lock.yaml
+AGENTS.md
+BRIEF.md
+M1_PLAN.md
+M1_APPROVAL.md

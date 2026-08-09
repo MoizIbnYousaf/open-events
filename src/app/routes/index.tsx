@@ -75,9 +75,9 @@ function IndexPage() {
     return (
       <Card>
         <CardHeader>
-          <h2 className="font-heading text-xl leading-snug font-medium">
+          <h1 className="font-heading text-xl leading-snug font-medium">
             Could not load DemoConf 2026
-          </h2>
+          </h1>
           <CardDescription role="alert">{state.message}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -93,7 +93,7 @@ function IndexPage() {
     return (
       <Card>
         <CardHeader>
-          <h2 className="font-heading text-xl leading-snug font-medium">Event not found</h2>
+          <h1 className="font-heading text-xl leading-snug font-medium">Event not found</h1>
           <CardDescription role="status">
             No event named DemoConf 2026 is configured yet.
           </CardDescription>

@@ -184,6 +184,44 @@ async function mountAt(path: string) {
   return { queryClient, router }
 }
 
+type HomeState = 'loading' | 'error' | 'empty' | 'ready'
+
+// Exercise the real home route against each event-loading state. The empty
+// state is represented by the API's 404 response.
+async function mountHome(state: HomeState) {
+  if (state === 'loading') {
+    fetchHandler = () => new Promise<Response>(() => undefined)
+  } else if (state === 'error') {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/events/${EVENT_SLUG}`) {
+        return jsonResponse(
+          { error: { code: 'internal', message: 'server exploded raw copy' } },
+          500,
+        )
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+  } else if (state === 'empty') {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/events/${EVENT_SLUG}`) {
+        return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+  } else {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/events/${EVENT_SLUG}`) {
+        return jsonResponse(EVENT_DTO)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+  }
+  await mountAt('/')
+}
+
 beforeEach(() => {
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
@@ -264,6 +302,56 @@ describe('admin shell', () => {
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent(title)
     expect(headings[0]).not.toHaveTextContent('SpeakerOps')
+  })
+
+  it('renders exactly one page-owned h1 in the home error state (Could not load DemoConf 2026)', async () => {
+    await mountHome('error')
+
+    await screen.findByRole('alert')
+    const h1s = screen.queryAllByRole('heading', { level: 1 })
+    expect(h1s).toHaveLength(1)
+    expect(screen.getAllByRole('heading')[0]?.tagName).toBe('H1')
+    expect(h1s[0]).toHaveTextContent('Could not load DemoConf 2026')
+    expect(h1s[0]).not.toHaveTextContent('SpeakerOps')
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/failed to load event/i)
+    expect(alert).not.toHaveTextContent('server exploded raw copy')
+    expect(document.body.textContent ?? '').not.toContain('server exploded raw copy')
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+
+  it('renders exactly one page-owned h1 in the home empty state (Event not found)', async () => {
+    await mountHome('empty')
+
+    await screen.findByText('Event not found')
+    const h1s = screen.queryAllByRole('heading', { level: 1 })
+    expect(h1s).toHaveLength(1)
+    expect(screen.getAllByRole('heading')[0]?.tagName).toBe('H1')
+    expect(h1s[0]).toHaveTextContent('Event not found')
+    expect(h1s[0]).not.toHaveTextContent('SpeakerOps')
+    expect(screen.getByRole('status')).toHaveTextContent(/no event named democonf 2026/i)
+  })
+
+  it('renders exactly one page-owned h1 in the home ready state (event name)', async () => {
+    await mountHome('ready')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'DemoConf 2026' }),
+    ).toBeInTheDocument()
+    const h1s = screen.getAllByRole('heading', { level: 1 })
+    expect(h1s).toHaveLength(1)
+    expect(screen.getAllByRole('heading')[0]?.tagName).toBe('H1')
+    expect(h1s[0]).toHaveTextContent('DemoConf 2026')
+    expect(h1s[0]).not.toHaveTextContent('SpeakerOps')
+  })
+
+  it('keeps the home loading state heading-free (zero h1s, aria-busy skeleton)', async () => {
+    await mountHome('loading')
+
+    const busySkeleton = await screen.findByLabelText('Loading event status')
+    expect(busySkeleton).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0)
+    expect(screen.queryAllByRole('heading')).toHaveLength(0)
   })
 
   it.each([

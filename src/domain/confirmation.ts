@@ -20,4 +20,9 @@ export interface CapturedMessage {
   readonly subject: string
   readonly body: string
   readonly createdAt: UtcInstant
+  /**
+   * Submission this message belongs to (acceptance communications). Absent or
+   * null for start-link deliveries, which are not scoped to a submission.
+   */
+  readonly submissionId?: SubmissionId | null
 }

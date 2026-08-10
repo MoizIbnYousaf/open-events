@@ -142,6 +142,7 @@ export function toCapturedMessage(row: CapturedMessageRow): CapturedMessage {
     subject: row.subject,
     body: row.body,
     createdAt: row.createdAt,
+    submissionId: row.submissionId,
   }
 }
 

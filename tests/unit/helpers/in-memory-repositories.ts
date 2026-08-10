@@ -352,12 +352,28 @@ export class InMemoryConfirmationRepository implements ConfirmationRepository {
 export class InMemoryCapturedMessageRepository implements CapturedMessageRepository {
   readonly #messages: CapturedMessage[] = []
 
+  /** Mirrors the D1 unique submission index: one acceptance per submission. */
   async save(message: CapturedMessage): Promise<void> {
+    const submissionId = message.submissionId ?? null
+    if (
+      submissionId !== null &&
+      this.#messages.some((stored) => (stored.submissionId ?? null) === submissionId)
+    ) {
+      throw new Error(`captured message for submission '${submissionId}' already exists`)
+    }
     this.#messages.push(message)
   }
 
   async listByEmail(email: string): Promise<readonly CapturedMessage[]> {
     return this.#messages.filter((message) => message.toEmail === email)
+  }
+
+  async findBySubmissionId(submissionId: string): Promise<CapturedMessage | null> {
+    return this.#messages.find((message) => message.submissionId === submissionId) ?? null
+  }
+
+  async listBySubmissionId(submissionId: string): Promise<readonly CapturedMessage[]> {
+    return this.#messages.filter((message) => message.submissionId === submissionId)
   }
 
   list(): readonly CapturedMessage[] {

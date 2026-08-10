@@ -382,9 +382,12 @@ export const capturedMessages = sqliteTable(
     subject: text('subject').notNull(),
     body: text('body').notNull(),
     createdAt: text('created_at').notNull(),
+    /** 0007: acceptance messages carry their submission; start links keep NULL. */
+    submissionId: text('submission_id'),
   },
   (table) => [
     index('idx_captured_messages_email').on(table.toEmail),
+    uniqueIndex('idx_captured_messages_submission').on(table.submissionId),
     foreignKey({
       columns: [table.eventId],
       foreignColumns: [events.id],

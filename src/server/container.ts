@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 
 import {
   CapturedMessageService,
+  CommunicationsService,
   DraftService,
   EventConfigService,
   FormBuilderService,
@@ -65,6 +66,8 @@ export interface ServerDeps {
   readonly capturedMessages: CapturedMessageService
   /** Null when the Worker has no R2 uploads binding. */
   readonly headshots: HeadshotService | null
+
+  readonly communications: CommunicationsService
 }
 
 /** Builds every frozen service/adapters for the raw D1 and R2 bindings. */
@@ -132,6 +135,14 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
             createR2ObjectStorage(files),
             clock,
           ),
+
+    communications: new CommunicationsService(
+      createSubmissionRepository(db),
+      events,
+      contacts,
+      createCapturedMessageRepository(db),
+      clock,
+    ),
   }
 }
 

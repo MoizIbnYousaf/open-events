@@ -353,6 +353,39 @@ export async function handleGetReadiness(context: ServerContext): Promise<Respon
   return context.json(readiness)
 }
 
+/** GET /api/admin/submissions/:id/acceptance-preview. */
+export async function handleAcceptancePreview(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  return context.json(await deps.communications.previewAcceptance(actor, submissionId))
+}
+
+/** POST /api/admin/submissions/:id/acceptance-send: idempotent, append-only. */
+export async function handleAcceptanceSend(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  return context.json(await deps.communications.queueAcceptance(actor, submissionId))
+}
+
+/** GET /api/admin/submissions/:id/messages: immutable send history. */
+export async function handleSubmissionMessages(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  return context.json(await deps.communications.listHistory(actor, submissionId))
+}
+
 /** Registers the admin surface; CSRF runs before session validation on mutations. */
 export function registerAdminRoutes(app: Hono<ServerEnv>): void {
   app.post('/api/admin/session', handleAdminSession)
@@ -408,6 +441,25 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleAcceptSubmission,
+  )
+  app.get(
+    '/api/admin/submissions/:id/acceptance-preview',
+    requireSession(),
+    requireActor('organizer'),
+    handleAcceptancePreview,
+  )
+  app.post(
+    '/api/admin/submissions/:id/acceptance-send',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleAcceptanceSend,
+  )
+  app.get(
+    '/api/admin/submissions/:id/messages',
+    requireSession(),
+    requireActor('organizer'),
+    handleSubmissionMessages,
   )
   app.get(
     '/api/admin/forms/:id/draft',

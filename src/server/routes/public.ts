@@ -336,6 +336,31 @@ export async function handleGetOwnHeadshot(context: ServerContext): Promise<Resp
   })
 }
 
+/**
+ * GET /api/public/invite/:file — `<submissionId>.ics` for the OWNING submitter
+ * only. Non-owned, cross-event and unknown ids are indistinguishable 404s.
+ */
+export async function handleGetInvite(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const file = context.req.param('file')
+  if (file === undefined || !file.endsWith('.ics')) return notFoundResponse(context)
+  const submissionId = file.slice(0, -'.ics'.length)
+  if (submissionId.length === 0) return notFoundResponse(context)
+  const invite = await deps.communications.buildInvite(actor, submissionId)
+  if (invite === null) return notFoundResponse(context)
+  return new Response(invite, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/calendar; charset=utf-8',
+      'Content-Disposition': `attachment; filename="submission-${submissionId}.ics"`,
+      'Cache-Control': 'no-store',
+    },
+  })
+}
+
 /** Registers the public surface; CSRF runs before session validation on mutations. */
 export function registerPublicRoutes(app: Hono<ServerEnv>): void {
   app.get('/api/health', handleHealth)
@@ -390,6 +415,8 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     requireActor('submitter'),
     handleGetOwnHeadshot,
   )
+
+  app.get('/api/public/invite/:file', requireSession(), requireActor('submitter'), handleGetInvite)
   app.get(
     '/api/public/submission/:id',
     requireSession(),

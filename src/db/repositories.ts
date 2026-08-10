@@ -206,6 +206,35 @@ export function createCapturedMessageRepository(db: D1Database): CapturedMessage
         .orderBy(asc(capturedMessages.createdAt))
       return rows.map(toCapturedMessage)
     },
+    /** Append-only insert; the unique submission index rejects a second send. */
+    async save(message) {
+      await database.insert(capturedMessages).values({
+        id: message.id,
+        eventId: message.eventId,
+        toEmail: message.toEmail,
+        subject: message.subject,
+        body: message.body,
+        createdAt: message.createdAt,
+        submissionId: message.submissionId ?? null,
+      })
+    },
+    async findBySubmissionId(submissionId: string) {
+      const rows = await database
+        .select()
+        .from(capturedMessages)
+        .where(eq(capturedMessages.submissionId, submissionId))
+        .limit(1)
+      const row = rows[0]
+      return row === undefined ? null : toCapturedMessage(row)
+    },
+    async listBySubmissionId(submissionId: string) {
+      const rows = await database
+        .select()
+        .from(capturedMessages)
+        .where(eq(capturedMessages.submissionId, submissionId))
+        .orderBy(asc(capturedMessages.createdAt))
+      return rows.map(toCapturedMessage)
+    },
   }
 }
 

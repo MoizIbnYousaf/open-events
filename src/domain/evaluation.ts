@@ -1,0 +1,659 @@
+import type { ContactId } from './contact.ts'
+import type { EventId, UtcInstant } from './event.ts'
+import type { SubmissionId } from './submission.ts'
+
+/**
+ * Committee evaluation vocabulary: an organizer defines weighted criteria and
+ * numbered review rounds, assigns evaluators to submissions, and reads the
+ * weighted totals of the ratings those evaluators record.
+ *
+ * Every function here is pure: no clock, no identifiers minted, no I/O. All
+ * arithmetic stays in integers, and the single rounding rule
+ * (`roundHalfUpDivision`) is the only place a quotient is ever rounded.
+ */
+
+export type EvaluationCriterionId = string
+export type EvaluationRoundId = string
+export type EvaluationAssignmentId = string
+export type EvaluationScoreId = string
+
+/** A round is opened once and can only ever move on to closed. */
+export const EVALUATION_ROUND_STATUSES = ['open', 'closed'] as const
+
+export type EvaluationRoundStatus = (typeof EVALUATION_ROUND_STATUSES)[number]
+
+/** Inclusive rating scale shared by the evaluator UI and the storage CHECK. */
+export const EVALUATION_RATING_MIN = 1
+export const EVALUATION_RATING_MAX = 5
+
+/** A criterion must carry at least unit weight, otherwise it cannot count. */
+export const EVALUATION_WEIGHT_MIN = 1
+
+/** One weighted scoring dimension of an event, ordered by `position`. */
+export interface EvaluationCriterion {
+  readonly id: EvaluationCriterionId
+  readonly eventId: EventId
+  readonly name: string
+  readonly weight: number
+  readonly position: number
+}
+
+/** The weight one criterion carried at a single moment in time. */
+export interface EvaluationRoundWeight {
+  readonly criterionId: EvaluationCriterionId
+  readonly weight: number
+}
+
+/**
+ * One numbered review round of an event.
+ *
+ * `recordedWeights` is the rubric the round concluded under, taken when the
+ * round closed. A closed round reports what it decided, so retuning the
+ * criteria for the next round cannot rewrite a result the committee has
+ * already published. It is null while the round is open, because an open
+ * round is still being decided and follows the live weights.
+ */
+export interface EvaluationRound {
+  readonly id: EvaluationRoundId
+  readonly eventId: EventId
+  readonly number: number
+  readonly name: string
+  readonly status: EvaluationRoundStatus
+  readonly recordedWeights: readonly EvaluationRoundWeight[] | null
+  /** When reading opens and closes. Null on a round nobody has dated. */
+  readonly opensAt: UtcInstant | null
+  readonly closesAt: UtcInstant | null
+  /** Whether reviewers are hidden from one another in this round. */
+  readonly anonymize: boolean
+}
+
+/**
+ * The three shapes a scorecard question can take.
+ *
+ * 'rating' is a number on a scale and the only one that can be averaged.
+ * 'select' is one of a fixed list. 'text' is prose. A committee asking "which
+ * track is this?" or "what should we tell the speaker?" was previously asking
+ * it in a comment box or not at all.
+ */
+export const ROUND_CRITERION_KINDS = ['rating', 'select', 'text'] as const
+
+export type RoundCriterionKind = (typeof ROUND_CRITERION_KINDS)[number]
+
+export function isRoundCriterionKind(value: unknown): value is RoundCriterionKind {
+  return typeof value === 'string' && (ROUND_CRITERION_KINDS as readonly string[]).includes(value)
+}
+
+/**
+ * One question on one round's scorecard.
+ *
+ * `weight` is present exactly when `kind` is 'rating'. A chosen option and a
+ * paragraph cannot be multiplied, so they carry no weight rather than a weight
+ * every calculation would have to remember to skip. `scale` belongs to a
+ * rating and `options` to a select; each is null on the kinds it means nothing
+ * for, because a field that is meaningless for two kinds out of three
+ * describes the shape worse than an absent one does.
+ */
+export interface RoundCriterion {
+  readonly id: string
+  readonly eventId: EventId
+  readonly roundId: EvaluationRoundId
+  readonly position: number
+  readonly label: string
+  readonly kind: RoundCriterionKind
+  readonly weight: number | null
+  readonly scale: { readonly min: number; readonly max: number } | null
+  readonly options: readonly string[] | null
+}
+
+/** One reviewer's answer to one scorecard question. */
+export interface RoundScore {
+  readonly id: string
+  readonly eventId: EventId
+  readonly assignmentId: EvaluationAssignmentId
+  readonly criterionId: string
+  /** Exactly one of these is set: a rating is a number, everything else words. */
+  readonly valueNumber: number | null
+  readonly valueText: string | null
+  readonly createdAt: UtcInstant
+  readonly updatedAt: UtcInstant
+}
+
+/**
+ * Whether an answer fits the question it answers.
+ *
+ * The reviewer's form offers only what the criterion allows, so a value that
+ * does not fit arrived from somewhere other than that form — a stale tab whose
+ * scorecard has since been rewritten, or a hand-made request. Either way the
+ * honest response is to refuse it rather than store a rating off its own scale
+ * or an option nobody may pick.
+ */
+export function isAnswerValidFor(criterion: RoundCriterion, value: unknown): boolean {
+  if (criterion.kind === 'rating') {
+    if (typeof value !== 'number' || !Number.isInteger(value)) return false
+    const scale = criterion.scale ?? { min: 1, max: 5 }
+    return value >= scale.min && value <= scale.max
+  }
+  if (criterion.kind === 'select') {
+    return typeof value === 'string' && (criterion.options ?? []).includes(value)
+  }
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+/**
+ * The weighted average of a round's typed scorecard, in hundredths.
+ *
+ * Only ratings take part, because only they carry weight. A scorecard of pure
+ * prose has no average at all and says so with null rather than a zero, which
+ * would read as "the committee scored it nothing".
+ */
+export function weightedRoundAverageCentis(
+  criteria: readonly RoundCriterion[],
+  answers: ReadonlyMap<string, number>,
+): number | null {
+  let weightSum = 0
+  let weightedTotal = 0
+  for (const criterion of criteria) {
+    if (criterion.kind !== 'rating' || criterion.weight === null) continue
+    const value = answers.get(criterion.id)
+    if (value === undefined) continue
+    weightSum += criterion.weight
+    weightedTotal += criterion.weight * value
+  }
+  if (weightSum === 0) return null
+  return Math.round((weightedTotal / weightSum) * 100)
+}
+
+/**
+ * The authority on what an evaluator may score: one committee member, one
+ * submission, one round. Scores hang off the assignment, so the assignment is
+ * both the scoping rule and the round membership of every score under it.
+ */
+export interface EvaluationAssignment {
+  readonly id: EvaluationAssignmentId
+  readonly eventId: EventId
+  readonly roundId: EvaluationRoundId
+  readonly submissionId: SubmissionId
+  readonly evaluatorContactId: ContactId
+  readonly createdAt: UtcInstant
+  /**
+   * When this reviewer declared a conflict, or null while they are still
+   * reading it. A time rather than a flag: "when did they step back" is a
+   * question a chair asks, and the assignment is kept so that sharing the
+   * round out again does not hand them the same proposal to refuse twice.
+   */
+  readonly recusedAt: UtcInstant | null
+}
+
+/**
+ * A seat on an event's review committee.
+ *
+ * Assignments say what a member has been given to read; this says they are a
+ * member at all. The distinction is what lets an evaluator with an empty queue
+ * be told their queue is empty, while someone who was never on the committee
+ * never sees the surface.
+ */
+export interface EvaluationCommitteeMember {
+  readonly eventId: EventId
+  readonly contactId: ContactId
+  readonly addedAt: UtcInstant
+}
+
+/** One rating on one criterion of one assignment; re-scoring updates in place. */
+export interface EvaluationScore {
+  readonly id: EvaluationScoreId
+  readonly eventId: EventId
+  readonly assignmentId: EvaluationAssignmentId
+  readonly criterionId: EvaluationCriterionId
+  readonly rating: number
+  readonly comment: string | null
+  readonly createdAt: UtcInstant
+  readonly updatedAt: UtcInstant
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value)
+}
+
+/** True only for an integer inside the inclusive 1-5 rating scale. */
+export function isValidEvaluationRating(value: unknown): value is number {
+  return isInteger(value) && value >= EVALUATION_RATING_MIN && value <= EVALUATION_RATING_MAX
+}
+
+/** True only for an integer weight at or above the minimum of one. */
+export function isValidCriterionWeight(value: unknown): value is number {
+  return isInteger(value) && value >= EVALUATION_WEIGHT_MIN
+}
+
+/** True only for a non-negative integer ordering position. */
+export function isValidCriterionPosition(value: unknown): value is number {
+  return isInteger(value) && value >= 0
+}
+
+/** Legal round transitions: open -> closed, plus same-status no-ops. */
+export function canTransitionRoundStatus(
+  from: EvaluationRoundStatus,
+  to: EvaluationRoundStatus,
+): boolean {
+  if (from === to) return true
+  return from === 'open' && to === 'closed'
+}
+
+/**
+ * Closes a round, recording the rubric it concluded under. Closing an already
+ * closed round is the identity, so a repeated close can never re-stamp a
+ * result with weights that arrived after the fact.
+ */
+export function closeEvaluationRound(
+  round: EvaluationRound,
+  recordedWeights: readonly EvaluationRoundWeight[],
+): EvaluationRound {
+  if (round.status === 'closed') return round
+  return { ...round, status: 'closed', recordedWeights }
+}
+
+/** The criteria weights as they stand now, in the order the criteria list. */
+export function snapshotCriterionWeights(
+  criteria: readonly EvaluationCriterion[],
+): readonly EvaluationRoundWeight[] {
+  return criteria.map((criterion) => ({ criterionId: criterion.id, weight: criterion.weight }))
+}
+
+/**
+ * The weights one round's totals stand on: what it recorded when it closed,
+ * or the live criteria while it is still open. A closed round that recorded
+ * nothing falls back to the live weights rather than losing its ratings.
+ */
+export function evaluationRoundWeights(
+  round: EvaluationRound,
+  criteria: readonly EvaluationCriterion[],
+): ReadonlyMap<EvaluationCriterionId, number> {
+  const recorded = round.status === 'closed' ? round.recordedWeights : null
+  if (recorded !== null && recorded.length > 0) {
+    return new Map(recorded.map((entry) => [entry.criterionId, entry.weight]))
+  }
+  return new Map(criteria.map((criterion) => [criterion.id, criterion.weight]))
+}
+
+/**
+ * The event's default criterion — the one a single-rating evaluator surface
+ * scores. Lowest `position` wins, with the name as the deterministic
+ * tie-break so two criteria sharing a position still resolve identically.
+ */
+export function selectDefaultCriterion(
+  criteria: readonly EvaluationCriterion[],
+): EvaluationCriterion | null {
+  let best: EvaluationCriterion | null = null
+  for (const candidate of criteria) {
+    if (best === null) {
+      best = candidate
+      continue
+    }
+    if (candidate.position < best.position) {
+      best = candidate
+    } else if (candidate.position === best.position && candidate.name < best.name) {
+      best = candidate
+    }
+  }
+  return best
+}
+
+/**
+ * The live round of an event: the open round with the HIGHEST number, null
+ * when every round is closed.
+ *
+ * Rounds run forwards. Opening round 2 is the organizer saying 'this is where
+ * review happens now', so an assignment made without naming a round belongs
+ * to round 2 — under the opposite rule the organizer could not staff the round
+ * they had just created, and every rating filed into it was unreachable.
+ */
+export function selectOpenRound(rounds: readonly EvaluationRound[]): EvaluationRound | null {
+  let best: EvaluationRound | null = null
+  for (const candidate of rounds) {
+    if (candidate.status !== 'open') continue
+    if (best === null || candidate.number > best.number) best = candidate
+  }
+  return best
+}
+
+/**
+ * The round a submission's headline result belongs to: the live round when one
+ * is open, otherwise the last round that ran. Null only for an event whose
+ * organizer has opened no round at all.
+ */
+export function selectCurrentRound(rounds: readonly EvaluationRound[]): EvaluationRound | null {
+  const open = selectOpenRound(rounds)
+  if (open !== null) return open
+  let latest: EvaluationRound | null = null
+  for (const candidate of rounds) {
+    if (latest === null || candidate.number > latest.number) latest = candidate
+  }
+  return latest
+}
+
+/**
+ * How live one assignment is, the single rule behind every selection below.
+ * `group` 0 is an open round, 1 a closed one and 2 a round that is not in the
+ * event at all; the lower `group` always wins. Within a group the highest
+ * round number wins, so the newest round is the live one whatever its status —
+ * the tie-break never flips direction when a round closes.
+ */
+function assignmentRank(
+  assignment: EvaluationAssignment,
+  rounds: ReadonlyMap<EvaluationRoundId, EvaluationRound>,
+): readonly [number, number] {
+  const round = rounds.get(assignment.roundId)
+  if (round === undefined) return [2, 0]
+  return [round.status === 'open' ? 0 : 1, -round.number]
+}
+
+/**
+ * The single live assignment of every key, ranked by `assignmentRank`. The
+ * first assignment of a key holds the slot until one that ranks lower takes
+ * it, so insertion order is preserved and every key yields exactly one entry.
+ */
+function selectLiveAssignments<K>(
+  assignments: readonly EvaluationAssignment[],
+  rounds: readonly EvaluationRound[],
+  keyOf: (assignment: EvaluationAssignment) => K,
+): Map<K, EvaluationAssignment> {
+  const byId = new Map(rounds.map((round) => [round.id, round]))
+  const live = new Map<K, EvaluationAssignment>()
+  for (const assignment of assignments) {
+    const key = keyOf(assignment)
+    const held = live.get(key)
+    if (held === undefined) {
+      live.set(key, assignment)
+      continue
+    }
+    const [group, order] = assignmentRank(assignment, byId)
+    const [heldGroup, heldOrder] = assignmentRank(held, byId)
+    if (group < heldGroup || (group === heldGroup && order < heldOrder)) {
+      live.set(key, assignment)
+    }
+  }
+  return live
+}
+
+/**
+ * One assignment per submission for the evaluator's single-rating surface.
+ *
+ * An evaluator can legitimately hold the same submission in several rounds, so
+ * a raw assignment list would show one session twice with nothing to tell the
+ * copies apart. The chosen assignment is the highest-numbered OPEN round they
+ * hold on that submission — exactly the round a score is written to — so the
+ * list and the write can never mean different rounds. When every round they
+ * hold on it is closed, the highest-numbered one stands, so a finished round
+ * still shows the rating it recorded. Insertion order of `assignments` is
+ * preserved, one entry per submission.
+ */
+export function selectSurfaceAssignments(
+  assignments: readonly EvaluationAssignment[],
+  rounds: readonly EvaluationRound[],
+): ReadonlyMap<SubmissionId, EvaluationAssignment> {
+  return selectLiveAssignments(assignments, rounds, (assignment) => assignment.submissionId)
+}
+
+/**
+ * The reading an evaluator can still do: every OPEN round they hold on each
+ * submission, and — only when they hold none — the last round that ran, so a
+ * finished piece of work stays readable instead of vanishing.
+ *
+ * `selectSurfaceAssignments` keeps one row per submission, and that was right
+ * while a review was a single rating on a single event-level criterion: a
+ * second row would then have shown one proposal twice with contradictory
+ * ratings and nothing to tell the copies apart. A round carrying its OWN
+ * scorecard ends that premise. Round one and round two ask different
+ * questions, so answering both is not a contradiction, and every row has named
+ * its round all along. Collapsing meant a reviewer seated in round one was
+ * handed round two's form instead and round one's questions reached nobody.
+ *
+ * Closed rounds do NOT each get a row while something is open: the row for an
+ * open round already carries what this evaluator said in the rounds before it,
+ * so listing those again would put the same history on the screen twice, once
+ * as context and once as a form nobody can submit.
+ *
+ * Ordered by round number within a submission, and by the submission's first
+ * appearance between them, so a queue reads in the order the work arrived. An
+ * assignment whose round is not in the event is dropped rather than rendered as
+ * a nameless "Round 0" — storage makes that unreachable, and a row nobody can
+ * name is a row nobody can answer.
+ */
+export function selectQueueAssignments(
+  assignments: readonly EvaluationAssignment[],
+  rounds: readonly EvaluationRound[],
+): readonly EvaluationAssignment[] {
+  const byId = new Map(rounds.map((round) => [round.id, round]))
+  const known = assignments.filter((assignment) => byId.has(assignment.roundId))
+  const order: SubmissionId[] = []
+  const bySubmission = new Map<SubmissionId, EvaluationAssignment[]>()
+  for (const assignment of known) {
+    const held = bySubmission.get(assignment.submissionId)
+    if (held === undefined) {
+      order.push(assignment.submissionId)
+      bySubmission.set(assignment.submissionId, [assignment])
+      continue
+    }
+    held.push(assignment)
+  }
+
+  const numberOf = (assignment: EvaluationAssignment): number =>
+    byId.get(assignment.roundId)?.number ?? 0
+
+  return order.flatMap((submissionId) => {
+    const held = bySubmission.get(submissionId) ?? []
+    const open = held.filter((assignment) => byId.get(assignment.roundId)?.status === 'open')
+    // Nothing open means the work is done; the latest round stands as its
+    // record, which is what a single-round queue has always shown.
+    const shown =
+      open.length > 0
+        ? open.toSorted((left, right) => numberOf(left) - numberOf(right))
+        : held.reduce<EvaluationAssignment[]>(
+            (latest, assignment) =>
+              latest.length === 0 || numberOf(assignment) > numberOf(latest[0]!)
+                ? [assignment]
+                : latest,
+            [],
+          )
+    return shown
+  })
+}
+
+/**
+ * What a round's window means right now, named rather than left as two dates
+ * for every reader to judge for itself.
+ *
+ * The organizer sets "reviewing closes 14 June" and until now nothing read it:
+ * the round stayed open, and reviewers kept scoring on the 20th. A date nobody
+ * enforces is not a deadline, it is a decoration — and worse than none, because
+ * the committee believed it.
+ *
+ * Status and window both have to agree. Status is the organizer's own decision
+ * and a closed round is closed whatever the dates say; the window is the
+ * schedule they published. A round with no dates is governed by its status
+ * alone, which is every round that existed before windows did.
+ *
+ * Deliberately the same shape and the same boundary rule as the call for
+ * papers' own `submissionStateOf`: closing at an instant means that instant is
+ * already too late, and two windows in one product that disagreed about the
+ * meaning of their end date would be a bug nobody could see.
+ */
+export type RoundState = 'not-yet-open' | 'open' | 'closed'
+
+export function roundStateOf(round: EvaluationRound, now: UtcInstant): RoundState {
+  if (round.status === 'closed') return 'closed'
+  const nowMs = Date.parse(now)
+  if (round.opensAt !== null && nowMs < Date.parse(round.opensAt)) return 'not-yet-open'
+  if (round.closesAt !== null && nowMs >= Date.parse(round.closesAt)) return 'closed'
+  return 'open'
+}
+
+/**
+ * The proposals this reviewer must not be shown the authors of.
+ *
+ * Blinding belongs to the pair (reader, proposal), not to a round of it. A
+ * reviewer holding one proposal in a blind round AND in an open one gets a card
+ * for each, and the open card would name the author the blind card is hiding —
+ * so the blind round is defeated on the reviewer's own screen, by the product,
+ * without anyone doing anything wrong. Once someone must not know, they must
+ * not know anywhere.
+ *
+ * The reverse is deliberately not true: blinding one round does not blind the
+ * proposal for reviewers who are not in that round, because they were never
+ * asked to judge it unaware.
+ */
+export function blindedSubmissionsFor(
+  assignments: readonly EvaluationAssignment[],
+  rounds: readonly EvaluationRound[],
+): ReadonlySet<SubmissionId> {
+  const byId = new Map(rounds.map((round) => [round.id, round]))
+  const blinded = new Set<SubmissionId>()
+  for (const assignment of assignments) {
+    if (byId.get(assignment.roundId)?.anonymize === true) blinded.add(assignment.submissionId)
+  }
+  return blinded
+}
+
+/** One reviewer a round can be shared out among, with what they already hold. */
+export interface DistributionCandidate {
+  readonly contactId: ContactId
+  /** Assignments they already hold in THIS round; the cap counts these too. */
+  readonly held: number
+}
+
+/** One proposal to share out, and who may not read it. */
+export interface DistributionSubject {
+  readonly submissionId: SubmissionId
+  /** Reviewers already on it, or barred from it — never handed it again. */
+  readonly excluded: ReadonlySet<ContactId>
+}
+
+/** One proposal handed to one reviewer. */
+export interface DistributionPairing {
+  readonly submissionId: SubmissionId
+  readonly contactId: ContactId
+}
+
+/**
+ * Shares a round's reading out among its reviewers, evenly and within the cap.
+ *
+ * Works towards a TARGET number of readers per proposal rather than adding one
+ * more each time it runs. That is what makes the action safe to press twice: a
+ * proposal already read by enough people is skipped, so an organizer who is
+ * unsure whether the first click registered does not silently double their
+ * committee's workload. It also states the real intent — "every proposal wants
+ * two readers" — instead of leaving coverage to depend on how many times a
+ * button was pressed.
+ *
+ * Least-loaded-first, counting what each reviewer ALREADY holds in the round,
+ * so hand assignments made earlier are levelled around rather than ignored.
+ * Ties go to the earlier reviewer, so the result is deterministic.
+ *
+ * Nobody is given a proposal they are already on or barred from, and a proposal
+ * that runs out of eligible reviewers is simply left short — reported to the
+ * caller rather than forced onto someone with a conflict or over their cap.
+ * Handing out reading nobody can do is worse than handing out none.
+ */
+export function distributeAssignments(
+  candidates: readonly DistributionCandidate[],
+  subjects: readonly DistributionSubject[],
+  perReviewerCap: number | null,
+  readersPerSubject = 1,
+): readonly DistributionPairing[] {
+  const load = new Map<ContactId, number>(
+    candidates.map((candidate) => [candidate.contactId, candidate.held]),
+  )
+  const rank = new Map<ContactId, number>(
+    candidates.map((candidate, index) => [candidate.contactId, index]),
+  )
+  const pairings: DistributionPairing[] = []
+
+  for (const subject of subjects) {
+    const taken = new Set(subject.excluded)
+    while (taken.size < readersPerSubject) {
+      let chosen: ContactId | null = null
+      for (const candidate of candidates) {
+        if (taken.has(candidate.contactId)) continue
+        const held = load.get(candidate.contactId) ?? 0
+        if (perReviewerCap !== null && held >= perReviewerCap) continue
+        if (chosen === null) {
+          chosen = candidate.contactId
+          continue
+        }
+        const bestLoad = load.get(chosen) ?? 0
+        const isLighter = held < bestLoad
+        const isEarlierTie =
+          held === bestLoad && (rank.get(candidate.contactId) ?? 0) < (rank.get(chosen) ?? 0)
+        if (isLighter || isEarlierTie) chosen = candidate.contactId
+      }
+      // Nobody left who may read this one: leave it short rather than breaking
+      // a cap or a conflict to make a number look complete.
+      if (chosen === null) break
+      taken.add(chosen)
+      load.set(chosen, (load.get(chosen) ?? 0) + 1)
+      pairings.push({ submissionId: subject.submissionId, contactId: chosen })
+    }
+  }
+
+  return pairings
+}
+
+/**
+ * The assignments one round holds, in insertion order.
+ *
+ * A committee total belongs to exactly one round, and storage already allows a
+ * member only one assignment per round, so this filter is the whole membership
+ * rule behind a round's numbers. Nothing is ever gathered across rounds: a
+ * total built from a live round-2 slot beside a leftover round-1 rating
+ * describes neither round, and a number nobody can name is a number nobody
+ * can read.
+ */
+export function selectRoundAssignments(
+  assignments: readonly EvaluationAssignment[],
+  roundId: EvaluationRoundId,
+): readonly EvaluationAssignment[] {
+  return assignments.filter((assignment) => assignment.roundId === roundId)
+}
+
+/** One rating paired with the weight of the criterion it was given on. */
+export interface WeightedScore {
+  readonly weight: number
+  readonly rating: number
+}
+
+export interface WeightedTotals {
+  readonly scoreCount: number
+  readonly weightSum: number
+  /** Sum of rating x weight over every score; exact, never rounded. */
+  readonly weightedTotal: number
+  /**
+   * Weighted average rating in hundredths of a rating point (a 4.75 average
+   * is 475). Zero when there are no scores.
+   */
+  readonly weightedAverageCentis: number
+}
+
+/**
+ * The single rounding rule of the evaluation slice: integer division rounding
+ * halves up, on non-negative operands only. A zero denominator yields zero so
+ * an empty score set never divides.
+ */
+export function roundHalfUpDivision(numerator: number, denominator: number): number {
+  if (denominator <= 0) return 0
+  return Math.floor((2 * numerator + denominator) / (2 * denominator))
+}
+
+/** Weighted totals over a score set; order independent and integer-only. */
+export function computeWeightedTotals(scores: readonly WeightedScore[]): WeightedTotals {
+  let weightSum = 0
+  let weightedTotal = 0
+  for (const score of scores) {
+    weightSum += score.weight
+    weightedTotal += score.weight * score.rating
+  }
+  return {
+    scoreCount: scores.length,
+    weightSum,
+    weightedTotal,
+    weightedAverageCentis: roundHalfUpDivision(weightedTotal * 100, weightSum),
+  }
+}

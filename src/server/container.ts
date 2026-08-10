@@ -14,8 +14,11 @@ import {
   type Clock,
   type EventRepository,
   type FormRepository,
+  type SubmissionRepository,
+  type TaxonomyRepository,
 } from '../application'
 import {
+  createAgendaRepository,
   createCapturedMessageRepository,
   createContactRepository,
   createDraftRepository,
@@ -32,6 +35,7 @@ import {
   createTaxonomyRepository,
   createTokenRepository,
 } from '../db'
+import type { AgendaRepository } from '../db'
 
 import type { ServerContext } from './env'
 import { getDatabaseBinding } from './env'
@@ -42,6 +46,9 @@ export interface ServerDeps {
   readonly events: EventRepository
   readonly forms: FormRepository
   readonly getEvent: GetEvent
+  readonly agenda: AgendaRepository
+  readonly submissions: SubmissionRepository
+  readonly taxonomies: TaxonomyRepository
   readonly session: SessionService
   readonly eventConfig: EventConfigService
   readonly taxonomy: TaxonomyService
@@ -65,6 +72,9 @@ export function buildServerDeps(db: D1Database): ServerDeps {
     events,
     forms,
     getEvent: new GetEvent(events),
+    agenda: createAgendaRepository(db),
+    submissions: createSubmissionRepository(db),
+    taxonomies: createTaxonomyRepository(db),
     session: new SessionService(
       createTokenRepository(db),
       createSessionRepository(db),

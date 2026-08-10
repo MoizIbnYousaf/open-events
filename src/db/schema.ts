@@ -411,7 +411,7 @@ export const confirmationRecords = sqliteTable(
 )
 
 /**
- * R4 agenda (0006) mirror. Enum values inline from the agenda domain types
+ * Agenda (0006) mirror. Enum values inline from the agenda domain types
  * (`src/domain/agenda.ts`): AgendaSessionStatus ('draft' | 'published') and
  * AgendaSessionAssignment ('unassigned' | 'scheduled'); the migration's
  * CHECKs (day format, UTC-instant lengths, end > start, assignment/position

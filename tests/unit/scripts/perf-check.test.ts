@@ -3,10 +3,9 @@ import { describe, expect, it } from 'vitest'
 // @ts-expect-error — scripts/perf-check.mjs is plain ESM (narrow documented boundary).
 import { checkBudgets, checkPurity, resolveRouteChunks } from '../../../scripts/perf-check.mjs'
 
-// Manifest-driven performance contract: the CLI stays thin
-// and the mapping/compare/purity logic lives in pure exported functions so
-// fixtures can exercise every fail-closed seam without a real build. Each
-// spec pins the public export surface and then asserts the real behavior.
+// Manifest-driven perf-gate contract: keep the CLI thin and exercise the
+// mapping, budget, and purity logic through pure exported functions so
+// fixtures cover each fail-closed seam without requiring a real build.
 
 const MANIFEST = {
   'index.html': {
@@ -16,6 +15,7 @@ const MANIFEST = {
       'assets/cfp._eventSlug._formSlug-abc123.js',
       'assets/admin_.events._slug_.submissions-abc123.js',
       'assets/admin_.events._slug_.agenda-abc123.js',
+      'assets/schedule._eventSlug-abc123.js',
       'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
     ],
   },
@@ -29,6 +29,9 @@ const MANIFEST = {
   'assets/admin_.events._slug_.agenda-abc123.js': {
     file: 'assets/admin_.events._slug_.agenda-abc123.js',
   },
+  'assets/schedule._eventSlug-abc123.js': {
+    file: 'assets/schedule._eventSlug-abc123.js',
+  },
   'assets/admin_.events._slug_.submissions_._submissionId-abc123.js': {
     file: 'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
   },
@@ -41,6 +44,7 @@ const EXPECTED_ROUTE_CHUNKS = {
   '/admin/events/$slug/submissions/$submissionId':
     'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
   '/admin/events/$slug/agenda': 'assets/admin_.events._slug_.agenda-abc123.js',
+  '/schedule/:eventSlug': 'assets/schedule._eventSlug-abc123.js',
 } as const
 
 describe('manifest-driven perf gate', () => {
@@ -108,6 +112,7 @@ describe('manifest-driven perf gate', () => {
       '/admin/events/$slug/submissions': 2 * 1024,
       '/admin/events/$slug/submissions/$submissionId': 2 * 1024,
       '/admin/events/$slug/agenda': 2 * 1024,
+      '/schedule/:eventSlug': 2 * 1024,
     })
     expect(violations).toEqual([])
   })

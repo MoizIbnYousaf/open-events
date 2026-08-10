@@ -16,6 +16,7 @@ import { databaseUnavailableResponse, getTtlConfig } from '../env'
 import { forbiddenResponse, notFoundResponse, validationFailedResponse } from '../error'
 import { handleHealth } from '../health'
 import { handleGetEvent } from './events'
+import { handleGetPublicSchedule } from './schedule'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -199,6 +200,7 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
   app.post('/api/public/start', handleStart)
   app.get('/api/public/session', handleSessionExchange)
   app.get('/api/public/cfp/:eventSlug/:formSlug', handleGetPublishedCfp)
+  app.get('/api/public/events/:slug/schedule', handleGetPublicSchedule)
 
   app.get('/api/public/draft', requireSession(), requireActor('submitter'), handleGetActiveDraft)
   app.get('/api/public/draft/:id', requireSession(), requireActor('submitter'), handleGetDraft)

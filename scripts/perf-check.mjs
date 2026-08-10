@@ -12,6 +12,7 @@ const BUDGETS = {
   '/admin/events/$slug/submissions': 30 * 1024,
   '/admin/events/$slug/submissions/$submissionId': 40 * 1024,
   '/admin/events/$slug/agenda': 40_000,
+  '/schedule/:eventSlug': 80_000,
 }
 
 const PURITY_MARKERS = ['dnd-kit', 'react-hook-form', 'zod', 'lucide']
@@ -63,6 +64,10 @@ const ROUTE_CHUNK_PATTERNS = [
   {
     route: '/admin/events/$slug/agenda',
     pattern: /^admin_\.events\._slug_\.agenda(-[A-Za-z0-9_-]+)?(\.js)?$/,
+  },
+  {
+    route: '/schedule/:eventSlug',
+    pattern: /^schedule\._eventSlug(-[A-Za-z0-9_-]+)?(\.js)?$/,
   },
 ]
 

@@ -180,7 +180,12 @@ describe('submitter submit', () => {
     expect(await countRows(env.DB, 'submission_contributors')).toBe(1)
   })
 
-  it('maps the seeded per-identity limit to 409 identity_limit_reached', async () => {
+  it('maps the per-identity limit to 409 identity_limit_reached', async () => {
+    await env.DB.prepare(
+      'UPDATE cfp_forms SET per_identity_limit = 1 WHERE event_id = ? AND id = ?',
+    )
+      .bind('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', DEMO_CONF_2026_FORM_ID)
+      .run()
     const cookie = await submitterCookie(env.DB)
     const firstDraft = await savePublicDraft(cookie)
     expect((await submit(cookie, { ...submitBody, originDraftId: firstDraft })).status).toBe(200)

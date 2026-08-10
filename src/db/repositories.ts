@@ -323,6 +323,19 @@ export function createSubmissionRepository(db: D1Database): SubmissionRepository
         .orderBy(desc(proposalSubmissions.submittedAt))
       return rows.map(toProposalSubmission)
     },
+    async listByOwner(eventId: string, ownerContactId: string) {
+      const rows = await database
+        .select()
+        .from(proposalSubmissions)
+        .where(
+          and(
+            eq(proposalSubmissions.eventId, eventId),
+            eq(proposalSubmissions.ownerContactId, ownerContactId),
+          ),
+        )
+        .orderBy(desc(proposalSubmissions.submittedAt), asc(proposalSubmissions.id))
+      return rows.map(toProposalSubmission)
+    },
     async listContributorsBySubmission(eventId: string, submissionId: string) {
       const rows = await database
         .select()

@@ -61,7 +61,7 @@ describe('D1 adapter row decoding round-trips', () => {
         opensAt: '2026-01-01T00:00:00.000Z',
         closesAt: '2026-12-31T23:59:59.000Z',
         totalCap: 100,
-        perIdentityLimit: 1,
+        perIdentityLimit: 3,
       },
     })
 

@@ -107,11 +107,27 @@ describe('version-bound submit gate against real D1', () => {
   })
 
   it('enforces the per-identity limit from real rows', async () => {
+    await insertPublishedForm('form-identity', 'version-identity', {
+      totalCap: null,
+      perIdentityLimit: 1,
+    })
     const unitOfWork = createSubmitUnitOfWork(env.DB)
-    await unitOfWork.execute(buildSubmitBatch({ originDraftId: 'draft-1', submissionId: 'sub-1' }))
+    await unitOfWork.execute(
+      buildSubmitBatch({
+        formId: 'form-identity',
+        formVersionId: 'version-identity',
+        originDraftId: 'draft-1',
+        submissionId: 'sub-1',
+      }),
+    )
 
     const result = await unitOfWork.execute(
-      buildSubmitBatch({ originDraftId: 'draft-2', submissionId: 'sub-2' }),
+      buildSubmitBatch({
+        formId: 'form-identity',
+        formVersionId: 'version-identity',
+        originDraftId: 'draft-2',
+        submissionId: 'sub-2',
+      }),
     )
 
     expect(result.outcome).toBe('identity-limited')

@@ -192,6 +192,16 @@ export async function handleGetOwnSubmission(context: ServerContext): Promise<Re
   return submission === null ? notFoundResponse(context) : context.json(submission)
 }
 
+/** GET /api/public/submissions: the session speaker's own submissions. */
+export async function handleListOwnSubmissions(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissions = await deps.submit.listOwn(actor)
+  return context.json({ submissions })
+}
+
 /** Registers the public surface; CSRF runs before session validation on mutations. */
 export function registerPublicRoutes(app: Hono<ServerEnv>): void {
   app.get('/api/health', handleHealth)
@@ -217,6 +227,12 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('submitter'),
     handleSubmit,
+  )
+  app.get(
+    '/api/public/submissions',
+    requireSession(),
+    requireActor('submitter'),
+    handleListOwnSubmissions,
   )
   app.get(
     '/api/public/submission/:id',

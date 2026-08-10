@@ -203,6 +203,16 @@ export class SubmitService {
     return items
   }
 
+  /** Submitter-owned list: the actor's own submissions, newest first, no answers. */
+  async listOwn(actor: SubmitterActor): Promise<readonly SubmissionListItemDto[]> {
+    const submissions = await this.#submissions.listByOwner(actor.eventId, actor.contactId)
+    const items: SubmissionListItemDto[] = []
+    for (const submission of submissions) {
+      items.push(await this.#listItem(submission))
+    }
+    return items
+  }
+
   /** Organizer/event-scoped retrieval: mismatched event returns null (safe 404). */
   async getDetailForEvent(
     _actor: OrganizerActor,

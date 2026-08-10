@@ -14,6 +14,7 @@ const BUDGETS = {
   '/admin/events/$slug/agenda': 40_000,
   '/schedule/:eventSlug': 80_000,
   '/evaluations': 80_000,
+  '/portal': 20 * 1024,
 }
 
 const PURITY_MARKERS = ['dnd-kit', 'react-hook-form', 'zod', 'lucide']
@@ -74,6 +75,7 @@ const ROUTE_CHUNK_PATTERNS = [
     route: '/evaluations',
     pattern: /^evaluations(-[A-Za-z0-9_-]+)?(\.js)?$/,
   },
+  { route: '/portal', pattern: /^portal(-[A-Za-z0-9_-]+)?(\.js)?$/ },
 ]
 
 /** Route path -> chunk file map from index.html's dynamicImports (fail closed). */

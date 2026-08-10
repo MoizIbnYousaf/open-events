@@ -232,6 +232,22 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
     return [...this.#submissions.values()].filter((submission) => submission.eventId === eventId)
   }
 
+  async listByOwner(
+    eventId: string,
+    ownerContactId: string,
+  ): Promise<readonly ProposalSubmission[]> {
+    return [...this.#submissions.values()]
+      .filter(
+        (submission) =>
+          submission.eventId === eventId && submission.ownerContactId === ownerContactId,
+      )
+      .sort((left, right) =>
+        left.submittedAt === right.submittedAt
+          ? left.id.localeCompare(right.id)
+          : right.submittedAt.localeCompare(left.submittedAt),
+      )
+  }
+
   async countByForm(eventId: string, formId: FormId): Promise<number> {
     let count = 0
     for (const submission of this.#submissions.values()) {

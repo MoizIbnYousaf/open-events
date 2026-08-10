@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { SubmitService, type SubmitInput } from '../../../src/application'
-import { MAX_CO_SPEAKERS, type FormLimits } from '../../../src/domain'
+import { MAX_CO_SPEAKERS, type FormLimits, type ProposalSubmission } from '../../../src/domain'
 import {
   DRAFT_ID,
   EVENT_ID,
@@ -447,5 +447,77 @@ describe('SubmitService co-speakers and atomic contacts', () => {
       ),
     ).rejects.toMatchObject({ code: 'validation_failed' })
     expect(invalidAnswers.contacts.list()).toHaveLength(1)
+  })
+})
+
+describe('SubmitService listOwn', () => {
+  async function seedOwned(
+    submissions: InMemorySubmissionRepository,
+    rows: readonly {
+      readonly id: string
+      readonly submittedAt: string
+      readonly overrides?: Partial<ProposalSubmission>
+    }[],
+  ): Promise<void> {
+    for (const row of rows) {
+      const submission = createSubmission({
+        id: row.id,
+        originDraftId: `draft-${row.id}`,
+        submittedAt: row.submittedAt,
+        ...row.overrides,
+      })
+      await submissions.save(submission)
+      await submissions.saveContributors(submission.eventId, submission.id, [
+        {
+          submissionId: submission.id,
+          eventId: submission.eventId,
+          contactId: submission.ownerContactId,
+          role: 'primary',
+          position: 0,
+        },
+      ])
+    }
+  }
+
+  it('orders the owner submissions newest first with an ascending id tie-break', async () => {
+    const { service, submissions } = buildHarness()
+    await seedOwned(submissions, [
+      { id: 'submission-b-tie', submittedAt: '2026-03-01T00:00:00.000Z' },
+      { id: 'submission-oldest', submittedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'submission-a-tie', submittedAt: '2026-03-01T00:00:00.000Z' },
+      { id: 'submission-middle', submittedAt: '2026-02-01T00:00:00.000Z' },
+    ])
+
+    const items = await service.listOwn(ownerActor)
+
+    expect(items.map((item) => item.id)).toEqual([
+      'submission-a-tie',
+      'submission-b-tie',
+      'submission-middle',
+      'submission-oldest',
+    ])
+  })
+
+  it('excludes other owners and other events, and keeps answers out of list items', async () => {
+    const { service, submissions } = buildHarness()
+    await seedOwned(submissions, [
+      { id: 'submission-own', submittedAt: '2026-02-01T00:00:00.000Z' },
+      {
+        id: 'submission-foreign-owner',
+        submittedAt: '2026-04-01T00:00:00.000Z',
+        overrides: { ownerContactId: foreignActor.contactId },
+      },
+      {
+        id: 'submission-other-event',
+        submittedAt: '2026-05-01T00:00:00.000Z',
+        overrides: { eventId: crossEventActor.eventId },
+      },
+    ])
+
+    const items = await service.listOwn(ownerActor)
+
+    expect(items.map((item) => item.id)).toEqual(['submission-own'])
+    expect(items[0]).not.toHaveProperty('answers')
+    expect(items[0]?.primarySpeaker.contactId).toBe(ownerContact.id)
   })
 })

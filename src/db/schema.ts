@@ -7,6 +7,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
+import { UPLOADED_FILE_KINDS } from '../application/ports/uploaded-file-repository'
 import {
   CONDITION_EFFECTS,
   CONDITION_OPERATORS,
@@ -565,3 +566,40 @@ export type AgendaSessionRow = typeof agendaSessions.$inferSelect
 export type AgendaSessionSpeakerRow = typeof agendaSessionSpeakers.$inferSelect
 export type SubmissionAcceptanceRow = typeof submissionAcceptances.$inferSelect
 export type SpeakerTaskRow = typeof speakerTasks.$inferSelect
+
+/** Drizzle mirror of migrations/0008_create_uploaded_files_table.sql. */
+export const uploadedFiles = sqliteTable(
+  'uploaded_files',
+  {
+    id: text('id').notNull(),
+    eventId: text('event_id').notNull(),
+    ownerContactId: text('owner_contact_id').notNull(),
+    kind: text('kind', { enum: [...UPLOADED_FILE_KINDS] }).notNull(),
+    storageKey: text('storage_key').notNull(),
+    contentType: text('content_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('idx_uploaded_files_id').on(table.id),
+    uniqueIndex('uploaded_files_storage_key').on(table.storageKey),
+    uniqueIndex('uploaded_files_event_owner_kind').on(
+      table.eventId,
+      table.ownerContactId,
+      table.kind,
+    ),
+    index('idx_uploaded_files_event_owner').on(table.eventId, table.ownerContactId),
+    foreignKey({
+      columns: [table.eventId],
+      foreignColumns: [events.id],
+    }),
+    foreignKey({
+      columns: [table.ownerContactId],
+      foreignColumns: [contacts.id],
+    }),
+  ],
+)
+
+export type UploadedFileRow = typeof uploadedFiles.$inferSelect

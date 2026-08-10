@@ -16,6 +16,7 @@ const BUDGETS = {
   '/evaluations': 80_000,
   '/portal': 20 * 1024,
   '/admin/events/$slug/readiness': 40_000,
+  '/headshot': 20 * 1024,
 }
 
 const PURITY_MARKERS = ['dnd-kit', 'react-hook-form', 'zod', 'lucide']
@@ -81,6 +82,7 @@ const ROUTE_CHUNK_PATTERNS = [
     route: '/admin/events/$slug/readiness',
     pattern: /^admin_\.events\._slug_\.readiness(-[A-Za-z0-9_-]+)?(\.js)?$/,
   },
+  { route: '/headshot', pattern: /^headshot(-[A-Za-z0-9_-]+)?(\.js)?$/ },
 ]
 
 /** Route path -> chunk file map from index.html's dynamicImports (fail closed). */

@@ -14,6 +14,7 @@ export {
   createTokenRepository,
 } from './repositories'
 export { createAgendaRepository } from './agenda-repository'
+export { createUploadedFileRepository } from './uploaded-file-repository'
 export type { AgendaRepository, AgendaSessionRecord } from './agenda-repository'
 export { createSpeakerTaskRepository } from './speaker-task-repository'
 export { createAcceptUnitOfWork } from './accept-unit-of-work'

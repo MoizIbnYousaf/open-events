@@ -7,6 +7,7 @@ import {
   FormBuilderService,
   GetEvent,
   OnboardingService,
+  HeadshotService,
   SessionService,
   SubmitService,
   TaxonomyService,
@@ -37,11 +38,13 @@ import {
   createSubmitUnitOfWork,
   createTaxonomyRepository,
   createTokenRepository,
+  createUploadedFileRepository,
 } from '../db'
 import type { AgendaRepository } from '../db'
 
 import type { ServerContext } from './env'
-import { getDatabaseBinding } from './env'
+import { getDatabaseBinding, getFilesBinding } from './env'
+import { createR2ObjectStorage } from './storage'
 
 /** Fully wired application services for one D1 binding. */
 export interface ServerDeps {
@@ -60,10 +63,12 @@ export interface ServerDeps {
   readonly submit: SubmitService
   readonly onboarding: OnboardingService
   readonly capturedMessages: CapturedMessageService
+  /** Null when the Worker has no R2 uploads binding. */
+  readonly headshots: HeadshotService | null
 }
 
-/** Builds every frozen service/adapters for a raw D1 binding. */
-export function buildServerDeps(db: D1Database): ServerDeps {
+/** Builds every frozen service/adapters for the raw D1 and R2 bindings. */
+export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): ServerDeps {
   const clock: Clock = { now: () => new Date().toISOString() }
   const events = createEventRepository(db)
   const forms = createFormRepository(db)
@@ -119,11 +124,19 @@ export function buildServerDeps(db: D1Database): ServerDeps {
       clock,
     ),
     capturedMessages: new CapturedMessageService(createCapturedMessageRepository(db)),
+    headshots:
+      files === null
+        ? null
+        : new HeadshotService(
+            createUploadedFileRepository(db),
+            createR2ObjectStorage(files),
+            clock,
+          ),
   }
 }
 
 /** Resolves the deps for a request, or null when the D1 binding is missing. */
 export function depsFromContext(context: ServerContext): ServerDeps | null {
   const db = getDatabaseBinding(context)
-  return db === null ? null : buildServerDeps(db)
+  return db === null ? null : buildServerDeps(db, getFilesBinding(context))
 }

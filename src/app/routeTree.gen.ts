@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as PublicEvaluationsRouteImport } from './routes/_public/evaluations'
+import { Route as PublicHeadshotRouteImport } from './routes/_public/headshot'
 import { Route as PublicPortalRouteImport } from './routes/_public/portal'
 import { Route as PublicStartRouteImport } from './routes/_public/start'
 import { Route as PublicScheduleEventSlugRouteImport } from './routes/_public/schedule.$eventSlug'
@@ -43,6 +44,11 @@ const AdminRoute = AdminRouteImport.update({
 const PublicEvaluationsRoute = PublicEvaluationsRouteImport.update({
   id: '/evaluations',
   path: '/evaluations',
+  getParentRoute: () => PublicRoute,
+} as any)
+const PublicHeadshotRoute = PublicHeadshotRouteImport.update({
+  id: '/headshot',
+  path: '/headshot',
   getParentRoute: () => PublicRoute,
 } as any)
 const PublicPortalRoute = PublicPortalRouteImport.update({
@@ -116,6 +122,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/evaluations': typeof PublicEvaluationsRoute
+  '/headshot': typeof PublicHeadshotRoute
   '/portal': typeof PublicPortalRoute
   '/start': typeof PublicStartRoute
   '/schedule/$eventSlug': typeof PublicScheduleEventSlugRoute
@@ -133,6 +140,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/evaluations': typeof PublicEvaluationsRoute
+  '/headshot': typeof PublicHeadshotRoute
   '/portal': typeof PublicPortalRoute
   '/start': typeof PublicStartRoute
   '/schedule/$eventSlug': typeof PublicScheduleEventSlugRoute
@@ -152,6 +160,7 @@ export interface FileRoutesById {
   '/_public': typeof PublicRouteWithChildren
   '/admin': typeof AdminRoute
   '/_public/evaluations': typeof PublicEvaluationsRoute
+  '/_public/headshot': typeof PublicHeadshotRoute
   '/_public/portal': typeof PublicPortalRoute
   '/_public/start': typeof PublicStartRoute
   '/_public/schedule/$eventSlug': typeof PublicScheduleEventSlugRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/evaluations'
+    | '/headshot'
     | '/portal'
     | '/start'
     | '/schedule/$eventSlug'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/evaluations'
+    | '/headshot'
     | '/portal'
     | '/start'
     | '/schedule/$eventSlug'
@@ -206,6 +217,7 @@ export interface FileRouteTypes {
     | '/_public'
     | '/admin'
     | '/_public/evaluations'
+    | '/_public/headshot'
     | '/_public/portal'
     | '/_public/start'
     | '/_public/schedule/$eventSlug'
@@ -262,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/evaluations'
       fullPath: '/evaluations'
       preLoaderRoute: typeof PublicEvaluationsRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    '/_public/headshot': {
+      id: '/_public/headshot'
+      path: '/headshot'
+      fullPath: '/headshot'
+      preLoaderRoute: typeof PublicHeadshotRouteImport
       parentRoute: typeof PublicRoute
     }
     '/_public/portal': {
@@ -353,6 +372,7 @@ declare module '@tanstack/react-router' {
 
 interface PublicRouteChildren {
   PublicEvaluationsRoute: typeof PublicEvaluationsRoute
+  PublicHeadshotRoute: typeof PublicHeadshotRoute
   PublicPortalRoute: typeof PublicPortalRoute
   PublicStartRoute: typeof PublicStartRoute
   PublicScheduleEventSlugRoute: typeof PublicScheduleEventSlugRoute
@@ -361,6 +381,7 @@ interface PublicRouteChildren {
 
 const PublicRouteChildren: PublicRouteChildren = {
   PublicEvaluationsRoute: PublicEvaluationsRoute,
+  PublicHeadshotRoute: PublicHeadshotRoute,
   PublicPortalRoute: PublicPortalRoute,
   PublicStartRoute: PublicStartRoute,
   PublicScheduleEventSlugRoute: PublicScheduleEventSlugRoute,

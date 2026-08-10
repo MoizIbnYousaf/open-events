@@ -50,6 +50,7 @@ export async function loginOrganizer(
 export async function submitterCookie(
   db: D1Database,
   overrides: Record<string, unknown> = {},
+  email = 'speaker-a@example.test',
 ): Promise<string> {
   const start = await app.request(
     '/api/public/start',
@@ -57,7 +58,7 @@ export async function submitterCookie(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        email: 'speaker-a@example.test',
+        email,
         eventSlug: 'demo-conf-2026',
         formSlug: 'cfp',
       }),
@@ -69,7 +70,7 @@ export async function submitterCookie(
     .prepare(
       'SELECT body FROM captured_messages WHERE to_email = ? ORDER BY created_at DESC LIMIT 1',
     )
-    .bind('speaker-a@example.test')
+    .bind(email)
     .first<{ body: string }>()
   if (message === null) throw new Error('no captured message found')
   const raw = decodeURIComponent(message.body.split('token=')[1] ?? '')

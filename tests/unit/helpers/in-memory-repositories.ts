@@ -27,8 +27,13 @@ import type {
   FormVersionRepository,
   SessionRepository,
   SubmissionRepository,
+  ObjectStoragePort,
+  StoredObject,
   TaxonomyRepository,
   TokenRepository,
+  UploadedFileKind,
+  UploadedFileRecord,
+  UploadedFileRepository,
 } from '../../../src/application'
 
 export class InMemoryEventRepository implements EventConfigRepository {
@@ -402,6 +407,66 @@ export class InMemorySessionRepository implements SessionRepository {
   list(): readonly Session[] {
     return [...this.#sessions.values()]
   }
+}
+
+/** In-memory mirror of the D1 `uploaded_files` adapter (one row per owner+kind). */
+export class InMemoryUploadedFileRepository implements UploadedFileRepository {
+  readonly #rows = new Map<string, UploadedFileRecord>()
+  #failNextUpsert = false
+
+  /** Arms a single upsert failure so the compensation path can be pinned. */
+  failNextUpsert(): void {
+    this.#failNextUpsert = true
+  }
+
+  async findOwn(
+    eventId: string,
+    ownerContactId: string,
+    kind: UploadedFileKind,
+  ): Promise<UploadedFileRecord | null> {
+    return this.#rows.get(ownerKey(eventId, ownerContactId, kind)) ?? null
+  }
+
+  async upsert(record: UploadedFileRecord): Promise<UploadedFileRecord | null> {
+    if (this.#failNextUpsert) {
+      this.#failNextUpsert = false
+      throw new Error('uploaded_files write failed')
+    }
+    const slot = ownerKey(record.eventId, record.ownerContactId, record.kind)
+    const previous = this.#rows.get(slot) ?? null
+    this.#rows.set(slot, record)
+    return previous
+  }
+
+  list(): readonly UploadedFileRecord[] {
+    return [...this.#rows.values()]
+  }
+}
+
+/** In-memory mirror of the R2 object-storage adapter. */
+export class InMemoryObjectStorage implements ObjectStoragePort {
+  readonly objects = new Map<string, { readonly body: ArrayBuffer; readonly contentType: string }>()
+  puts = 0
+  readonly deletes: string[] = []
+
+  async put(storageKey: string, body: ArrayBuffer, contentType: string): Promise<void> {
+    this.puts += 1
+    this.objects.set(storageKey, { body, contentType })
+  }
+
+  async get(storageKey: string): Promise<StoredObject | null> {
+    const object = this.objects.get(storageKey)
+    return object === undefined ? null : { body: object.body, contentType: object.contentType }
+  }
+
+  async delete(storageKey: string): Promise<void> {
+    this.deletes.push(storageKey)
+    this.objects.delete(storageKey)
+  }
+}
+
+function ownerKey(eventId: string, ownerContactId: string, kind: UploadedFileKind): string {
+  return `${eventId}:${ownerContactId}:${kind}`
 }
 
 function key(eventId: string, versionId: VersionId): string {

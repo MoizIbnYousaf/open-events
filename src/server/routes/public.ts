@@ -1,6 +1,12 @@
 import { Hono } from 'hono'
 
 import type { CoSpeakerInput, SaveDraftInput, StartInput, SubmitInput } from '../../application'
+import {
+  HEADSHOT_MAX_BYTES,
+  HeadshotEmptyError,
+  HeadshotTooLargeError,
+  HeadshotUnsupportedTypeError,
+} from '../../application'
 import type { AnswerMap } from '../../domain'
 import {
   requireActor,
@@ -12,8 +18,13 @@ import {
 import { depsFromContext } from '../container'
 import { csrfGate } from '../csrf'
 import type { ServerContext, ServerEnv } from '../env'
-import { databaseUnavailableResponse, getTtlConfig } from '../env'
-import { forbiddenResponse, notFoundResponse, validationFailedResponse } from '../error'
+import { databaseUnavailableResponse, getTtlConfig, storageUnavailableResponse } from '../env'
+import {
+  forbiddenResponse,
+  notFoundResponse,
+  toErrorResponse,
+  validationFailedResponse,
+} from '../error'
 import { handleHealth } from '../health'
 import { handleGetEvent } from './events'
 import { handleGetPublicSchedule } from './schedule'
@@ -224,6 +235,107 @@ export async function handleCompleteSpeakerTask(context: ServerContext): Promise
   return context.json(task)
 }
 
+/** True when the client declares a body that already exceeds the budget. */
+function declaresOversizeBody(contentLength: string | undefined): boolean {
+  if (contentLength === undefined) return false
+  const declared = Number(contentLength)
+  return Number.isFinite(declared) && declared > HEADSHOT_MAX_BYTES
+}
+
+/**
+ * Reads at most `maxBytes` from the request body and returns null the moment
+ * the stream goes over budget, cancelling the rest. An undeclared (or lying)
+ * oversize body is therefore denied without ever being materialised in full,
+ * so the isolate never buffers more than the frozen upload budget.
+ */
+async function readCappedBody(request: Request, maxBytes: number): Promise<ArrayBuffer | null> {
+  const body = request.body
+  if (body === null) return new ArrayBuffer(0)
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return merged.buffer
+}
+
+/**
+ * PUT /api/public/profile/headshot: owner-scoped binary upload. The declared
+ * content type must be one of the frozen image types (415) and the body must
+ * fit the frozen size budget (413) and be non-empty (400); all three are
+ * rejected before any object or metadata write happens. Oversize denial is
+ * cheap: a declared over-budget `content-length` short-circuits and the body
+ * read itself is capped, so the isolate never buffers an oversize upload. The
+ * storage key is derived from the session actor, never from the request.
+ */
+export async function handlePutOwnHeadshot(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.headshots === null) return storageUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const contentType = (context.req.header('content-type') ?? '').split(';')[0]?.trim() ?? ''
+  if (declaresOversizeBody(context.req.header('content-length'))) {
+    return toErrorResponse(context, 'validation_failed', 413)
+  }
+  const bytes = await readCappedBody(context.req.raw, HEADSHOT_MAX_BYTES)
+  if (bytes === null) return toErrorResponse(context, 'validation_failed', 413)
+  try {
+    const stored = await deps.headshots.storeHeadshot(actor, { contentType, bytes })
+    return context.json(stored)
+  } catch (error) {
+    if (error instanceof HeadshotUnsupportedTypeError) {
+      return toErrorResponse(context, 'validation_failed', 415)
+    }
+    if (error instanceof HeadshotTooLargeError) {
+      return toErrorResponse(context, 'validation_failed', 413)
+    }
+    if (error instanceof HeadshotEmptyError) {
+      return validationFailedResponse(context)
+    }
+    throw error
+  }
+}
+
+/** GET /api/public/profile/headshot: own bytes only; anything else is a 404. */
+export async function handleGetOwnHeadshot(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.headshots === null) return storageUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const headshot = await deps.headshots.getOwnHeadshot(actor)
+  if (headshot === null) return notFoundResponse(context)
+  return new Response(headshot.body, {
+    status: 200,
+    headers: {
+      'Content-Type': headshot.contentType,
+      'Content-Length': String(headshot.sizeBytes),
+      'Cache-Control': 'private, no-store',
+      'Referrer-Policy': 'no-referrer',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
+}
+
 /** Registers the public surface; CSRF runs before session validation on mutations. */
 export function registerPublicRoutes(app: Hono<ServerEnv>): void {
   app.get('/api/health', handleHealth)
@@ -263,6 +375,20 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('submitter'),
     handleListOwnSubmissions,
+  )
+
+  app.put(
+    '/api/public/profile/headshot',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handlePutOwnHeadshot,
+  )
+  app.get(
+    '/api/public/profile/headshot',
+    requireSession(),
+    requireActor('submitter'),
+    handleGetOwnHeadshot,
   )
   app.get(
     '/api/public/submission/:id',

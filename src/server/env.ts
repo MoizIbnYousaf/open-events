@@ -22,7 +22,11 @@ export const DEFAULT_SUBMITTER_TOKEN_TTL_MS = 24 * 60 * 60 * 1000
  */
 export type ServerBindings = Pick<
   Env,
-  'DB' | 'ORGANIZER_SESSION_TTL_MS' | 'SUBMITTER_SESSION_TTL_MS' | 'SUBMITTER_TOKEN_TTL_MS'
+  | 'DB'
+  | 'FILES'
+  | 'ORGANIZER_SESSION_TTL_MS'
+  | 'SUBMITTER_SESSION_TTL_MS'
+  | 'SUBMITTER_TOKEN_TTL_MS'
 > & {
   readonly LOCAL_ADMIN_TOKEN?: string
   readonly LOCAL_DEV_MODE?: string
@@ -135,4 +139,17 @@ export function getDatabaseBinding(context: ServerContext): D1Database | null {
 /** Safe 503 response used when the required D1 binding is missing. */
 export function databaseUnavailableResponse(context: ServerContext): Response {
   return context.json({ error: { code: 'internal', message: 'database_unavailable' } }, 503)
+}
+
+/**
+ * Resolves the R2 uploads binding. As with D1, a Worker deployed without the
+ * binding has `undefined` at runtime, so callers treat it as optional.
+ */
+export function getFilesBinding(context: ServerContext): R2Bucket | null {
+  return context.env.FILES ?? null
+}
+
+/** Safe 503 response used when the required R2 binding is missing. */
+export function storageUnavailableResponse(context: ServerContext): Response {
+  return context.json({ error: { code: 'internal', message: 'storage_unavailable' } }, 503)
 }

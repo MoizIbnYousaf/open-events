@@ -38,20 +38,11 @@ screenshots/
 playwright-report/
 test-results/
 
-# Local working notes (not part of the distributed project)
+# Local working notes and scratch material (not part of the distributed project)
 /notes/
 /local/
 /docs-local/
-/project-goal/
-/research-understanding-plan/
-/.firecrawl/
-/AGENTS.md
-/CLAUDE.md
-/agents.md
 /reports/
-BRIEF.md
-M1_PLAN.md
-M1_APPROVAL.md
 
 # Credentials
 *.pem

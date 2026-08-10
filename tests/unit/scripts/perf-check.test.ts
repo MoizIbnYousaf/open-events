@@ -15,6 +15,7 @@ const MANIFEST = {
       'assets/start-abc123.js',
       'assets/cfp._eventSlug._formSlug-abc123.js',
       'assets/admin_.events._slug_.submissions-abc123.js',
+      'assets/admin_.events._slug_.agenda-abc123.js',
       'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
     ],
   },
@@ -24,6 +25,9 @@ const MANIFEST = {
   },
   'assets/admin_.events._slug_.submissions-abc123.js': {
     file: 'assets/admin_.events._slug_.submissions-abc123.js',
+  },
+  'assets/admin_.events._slug_.agenda-abc123.js': {
+    file: 'assets/admin_.events._slug_.agenda-abc123.js',
   },
   'assets/admin_.events._slug_.submissions_._submissionId-abc123.js': {
     file: 'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
@@ -36,6 +40,7 @@ const EXPECTED_ROUTE_CHUNKS = {
   '/admin/events/$slug/submissions': 'assets/admin_.events._slug_.submissions-abc123.js',
   '/admin/events/$slug/submissions/$submissionId':
     'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
+  '/admin/events/$slug/agenda': 'assets/admin_.events._slug_.agenda-abc123.js',
 } as const
 
 describe('manifest-driven perf gate', () => {
@@ -102,6 +107,7 @@ describe('manifest-driven perf gate', () => {
       '/cfp/:eventSlug/:formSlug': 5 * 1024,
       '/admin/events/$slug/submissions': 2 * 1024,
       '/admin/events/$slug/submissions/$submissionId': 2 * 1024,
+      '/admin/events/$slug/agenda': 2 * 1024,
     })
     expect(violations).toEqual([])
   })

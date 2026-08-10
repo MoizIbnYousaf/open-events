@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as PublicEvaluationsRouteImport } from './routes/_public/evaluations'
 import { Route as PublicStartRouteImport } from './routes/_public/start'
 import { Route as PublicScheduleEventSlugRouteImport } from './routes/_public/schedule.$eventSlug'
 import { Route as AdminEventsSlugRouteImport } from './routes/admin_.events.$slug'
@@ -36,6 +37,11 @@ const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
   getParentRoute: () => rootRouteImport,
+} as any)
+const PublicEvaluationsRoute = PublicEvaluationsRouteImport.update({
+  id: '/evaluations',
+  path: '/evaluations',
+  getParentRoute: () => PublicRoute,
 } as any)
 const PublicStartRoute = PublicStartRouteImport.update({
   id: '/start',
@@ -96,6 +102,7 @@ const AdminFormsFormIdVersionsVersionIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/evaluations': typeof PublicEvaluationsRoute
   '/start': typeof PublicStartRoute
   '/schedule/$eventSlug': typeof PublicScheduleEventSlugRoute
   '/admin/events/$slug': typeof AdminEventsSlugRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/evaluations': typeof PublicEvaluationsRoute
   '/start': typeof PublicStartRoute
   '/schedule/$eventSlug': typeof PublicScheduleEventSlugRoute
   '/admin/events/$slug': typeof AdminEventsSlugRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_public': typeof PublicRouteWithChildren
   '/admin': typeof AdminRoute
+  '/_public/evaluations': typeof PublicEvaluationsRoute
   '/_public/start': typeof PublicStartRoute
   '/_public/schedule/$eventSlug': typeof PublicScheduleEventSlugRoute
   '/admin_/events/$slug': typeof AdminEventsSlugRoute
@@ -142,6 +151,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/evaluations'
     | '/start'
     | '/schedule/$eventSlug'
     | '/admin/events/$slug'
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/evaluations'
     | '/start'
     | '/schedule/$eventSlug'
     | '/admin/events/$slug'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_public'
     | '/admin'
+    | '/_public/evaluations'
     | '/_public/start'
     | '/_public/schedule/$eventSlug'
     | '/admin_/events/$slug'
@@ -218,6 +230,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_public/evaluations': {
+      id: '/_public/evaluations'
+      path: '/evaluations'
+      fullPath: '/evaluations'
+      preLoaderRoute: typeof PublicEvaluationsRouteImport
+      parentRoute: typeof PublicRoute
     }
     '/_public/start': {
       id: '/_public/start'
@@ -293,12 +312,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface PublicRouteChildren {
+  PublicEvaluationsRoute: typeof PublicEvaluationsRoute
   PublicStartRoute: typeof PublicStartRoute
   PublicScheduleEventSlugRoute: typeof PublicScheduleEventSlugRoute
   PublicCfpEventSlugFormSlugRoute: typeof PublicCfpEventSlugFormSlugRoute
 }
 
 const PublicRouteChildren: PublicRouteChildren = {
+  PublicEvaluationsRoute: PublicEvaluationsRoute,
   PublicStartRoute: PublicStartRoute,
   PublicScheduleEventSlugRoute: PublicScheduleEventSlugRoute,
   PublicCfpEventSlugFormSlugRoute: PublicCfpEventSlugFormSlugRoute,

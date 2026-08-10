@@ -6,6 +6,8 @@ import { Card, CardContent } from '../../../components/ui/card'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import { useOwnSubmissions, type PortalSubmission } from '../../queries/portal'
+import HeadshotUploader from './HeadshotUploader'
+import TasksPanel from './TasksPanel'
 
 interface PortalPageProps {
   /** Called once when the API reports no session; the route sends them to /start. */
@@ -113,6 +115,8 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
           </li>
         ))}
       </ul>
+      <TasksPanel />
+      <HeadshotUploader />
     </div>
   )
 }

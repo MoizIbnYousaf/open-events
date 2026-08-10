@@ -19,6 +19,7 @@ const MANIFEST = {
       'assets/evaluations-abc123.js',
       'assets/portal-abc123.js',
       'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
+      'assets/admin_.events._slug_.readiness-abc123.js',
     ],
   },
   'assets/start-abc123.js': { file: 'assets/start-abc123.js' },
@@ -41,6 +42,9 @@ const MANIFEST = {
   'assets/admin_.events._slug_.submissions_._submissionId-abc123.js': {
     file: 'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
   },
+  'assets/admin_.events._slug_.readiness-abc123.js': {
+    file: 'assets/admin_.events._slug_.readiness-abc123.js',
+  },
 } as const
 
 const EXPECTED_ROUTE_CHUNKS = {
@@ -53,6 +57,7 @@ const EXPECTED_ROUTE_CHUNKS = {
   '/schedule/:eventSlug': 'assets/schedule._eventSlug-abc123.js',
   '/evaluations': 'assets/evaluations-abc123.js',
   '/portal': 'assets/portal-abc123.js',
+  '/admin/events/$slug/readiness': 'assets/admin_.events._slug_.readiness-abc123.js',
 } as const
 
 describe('manifest-driven perf gate', () => {
@@ -74,6 +79,16 @@ describe('manifest-driven perf gate', () => {
     expect(violations.some((violation) => violation.includes('/cfp/:eventSlug/:formSlug'))).toBe(
       true,
     )
+  })
+
+  it('reports an over-budget readiness route chunk naming the route path', () => {
+    expect(checkBudgets).toBeTypeOf('function')
+    const violations: readonly string[] = checkBudgets({
+      '/admin/events/$slug/readiness': 90 * 1024,
+    })
+    expect(
+      violations.some((violation) => violation.includes('/admin/events/$slug/readiness')),
+    ).toBe(true)
   })
 
   it('reports an over-budget main chunk', () => {
@@ -123,6 +138,7 @@ describe('manifest-driven perf gate', () => {
       '/schedule/:eventSlug': 2 * 1024,
       '/evaluations': 2 * 1024,
       '/portal': 2 * 1024,
+      '/admin/events/$slug/readiness': 2 * 1024,
     })
     expect(violations).toEqual([])
   })

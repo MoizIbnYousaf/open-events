@@ -38,18 +38,9 @@ screenshots/
 playwright-report/
 test-results/
 
-# Local briefs and plans
-BRIEF.md
-M1_PLAN.md
-M1_APPROVAL.md
-
-# Private research, orchestration, and agent operating material
-/project-goal/
-/research-understanding-plan/
-/.firecrawl/
-/AGENTS.md
-/CLAUDE.md
-/agents.md
+# Local working notes (not part of the distributed project)
+/notes/
+/local/
 
 # Credentials
 *.pem

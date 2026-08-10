@@ -327,6 +327,32 @@ export async function handleGetSubmissionDetail(context: ServerContext): Promise
   return detail === null ? notFoundResponse(context) : context.json(detail)
 }
 
+/** POST /api/admin/submissions/:id/accept: idempotent acceptance + checklist. */
+export async function handleAcceptSubmission(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  const accepted = await deps.onboarding.accept(actor, submissionId)
+  return context.json(accepted)
+}
+
+/** GET /api/admin/readiness?eventSlug=: onboarding readiness for one event. */
+export async function handleGetReadiness(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.query('eventSlug')
+  if (slug === undefined || slug.length === 0) return validationFailedResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const readiness = await deps.onboarding.readiness(actor, eventId)
+  return context.json(readiness)
+}
+
 /** Registers the admin surface; CSRF runs before session validation on mutations. */
 export function registerAdminRoutes(app: Hono<ServerEnv>): void {
   app.post('/api/admin/session', handleAdminSession)
@@ -374,6 +400,14 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleGetSubmissionDetail,
+  )
+  app.get('/api/admin/readiness', requireSession(), requireActor('organizer'), handleGetReadiness)
+  app.post(
+    '/api/admin/submissions/:id/accept',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleAcceptSubmission,
   )
   app.get(
     '/api/admin/forms/:id/draft',

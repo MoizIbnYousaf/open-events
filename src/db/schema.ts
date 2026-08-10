@@ -18,6 +18,8 @@ import {
   QUESTION_TYPES,
   ROUTING_ACTIONS,
   SESSION_KINDS,
+  SPEAKER_TASK_KINDS,
+  SPEAKER_TASK_STATUSES,
   SUBMISSION_STATUSES,
   TAXONOMY_KINDS,
   VERSION_STATUSES,
@@ -485,6 +487,64 @@ export const agendaSessionSpeakers = sqliteTable(
   ],
 )
 
+/**
+ * Onboarding (0007) mirror. Acceptance is a row, not a submission-status
+ * mutation, and every speaker task hangs off it via a composite FK. Enum
+ * values come from the speaker-task domain (`src/domain/speaker-task.ts`);
+ * the migration's CHECKs (instant lengths, status/completed_at coupling,
+ * completed_at >= created_at) are SQL-side only, matching the repo convention.
+ */
+export const submissionAcceptances = sqliteTable(
+  'submission_acceptances',
+  {
+    eventId: text('event_id').notNull(),
+    submissionId: text('submission_id').notNull(),
+    acceptedAt: text('accepted_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.submissionId] }),
+    uniqueIndex('submission_acceptances_submission_id').on(table.submissionId),
+    foreignKey({
+      columns: [table.eventId, table.submissionId],
+      foreignColumns: [proposalSubmissions.eventId, proposalSubmissions.id],
+    }),
+  ],
+)
+
+export const speakerTasks = sqliteTable(
+  'speaker_tasks',
+  {
+    eventId: text('event_id').notNull(),
+    id: text('id').notNull(),
+    submissionId: text('submission_id').notNull(),
+    contactId: text('contact_id').notNull(),
+    kind: text('kind', { enum: [...SPEAKER_TASK_KINDS] }).notNull(),
+    status: text('status', { enum: [...SPEAKER_TASK_STATUSES] }).notNull(),
+    position: integer('position').notNull(),
+    createdAt: text('created_at').notNull(),
+    completedAt: text('completed_at'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('idx_speaker_tasks_id').on(table.id),
+    uniqueIndex('speaker_tasks_submission_contact_kind').on(
+      table.submissionId,
+      table.contactId,
+      table.kind,
+    ),
+    index('idx_speaker_tasks_event_contact').on(table.eventId, table.contactId),
+    index('idx_speaker_tasks_event_submission').on(table.eventId, table.submissionId),
+    foreignKey({
+      columns: [table.eventId, table.submissionId],
+      foreignColumns: [submissionAcceptances.eventId, submissionAcceptances.submissionId],
+    }),
+    foreignKey({
+      columns: [table.contactId],
+      foreignColumns: [contacts.id],
+    }),
+  ],
+)
+
 export type EventRow = typeof events.$inferSelect
 export type ContactRow = typeof contacts.$inferSelect
 export type SubmitterTokenRow = typeof submitterTokens.$inferSelect
@@ -503,3 +563,5 @@ export type CapturedMessageRow = typeof capturedMessages.$inferSelect
 export type ConfirmationRecordRow = typeof confirmationRecords.$inferSelect
 export type AgendaSessionRow = typeof agendaSessions.$inferSelect
 export type AgendaSessionSpeakerRow = typeof agendaSessionSpeakers.$inferSelect
+export type SubmissionAcceptanceRow = typeof submissionAcceptances.$inferSelect
+export type SpeakerTaskRow = typeof speakerTasks.$inferSelect

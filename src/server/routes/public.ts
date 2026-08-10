@@ -202,6 +202,28 @@ export async function handleListOwnSubmissions(context: ServerContext): Promise<
   return context.json({ submissions })
 }
 
+/** GET /api/public/tasks: the calling speaker own onboarding checklist. */
+export async function handleListSpeakerTasks(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const tasks = await deps.onboarding.listTasks(actor)
+  return context.json(tasks)
+}
+
+/** POST /api/public/tasks/:id/complete: idempotent own-task completion. */
+export async function handleCompleteSpeakerTask(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const taskId = context.req.param('id')
+  if (taskId === undefined) return notFoundResponse(context)
+  const task = await deps.onboarding.completeTask(actor, taskId)
+  return context.json(task)
+}
+
 /** Registers the public surface; CSRF runs before session validation on mutations. */
 export function registerPublicRoutes(app: Hono<ServerEnv>): void {
   app.get('/api/health', handleHealth)
@@ -227,6 +249,14 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('submitter'),
     handleSubmit,
+  )
+  app.get('/api/public/tasks', requireSession(), requireActor('submitter'), handleListSpeakerTasks)
+  app.post(
+    '/api/public/tasks/:id/complete',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handleCompleteSpeakerTask,
   )
   app.get(
     '/api/public/submissions',

@@ -6,6 +6,7 @@ import {
   EventConfigService,
   FormBuilderService,
   GetEvent,
+  OnboardingService,
   SessionService,
   SubmitService,
   TaxonomyService,
@@ -18,6 +19,7 @@ import {
   type TaxonomyRepository,
 } from '../application'
 import {
+  createAcceptUnitOfWork,
   createAgendaRepository,
   createCapturedMessageRepository,
   createContactRepository,
@@ -30,6 +32,7 @@ import {
   createFormVersionRepository,
   createSessionRepository,
   createSessionUnitOfWork,
+  createSpeakerTaskRepository,
   createSubmissionRepository,
   createSubmitUnitOfWork,
   createTaxonomyRepository,
@@ -55,6 +58,7 @@ export interface ServerDeps {
   readonly formBuilder: FormBuilderService
   readonly drafts: DraftService
   readonly submit: SubmitService
+  readonly onboarding: OnboardingService
   readonly capturedMessages: CapturedMessageService
 }
 
@@ -106,6 +110,12 @@ export function buildServerDeps(db: D1Database): ServerDeps {
       versions,
       content,
       createSubmitUnitOfWork(db),
+      clock,
+    ),
+    onboarding: new OnboardingService(
+      createSubmissionRepository(db),
+      createSpeakerTaskRepository(db),
+      createAcceptUnitOfWork(db),
       clock,
     ),
     capturedMessages: new CapturedMessageService(createCapturedMessageRepository(db)),

@@ -15,6 +15,8 @@ export {
 } from './repositories'
 export { createAgendaRepository } from './agenda-repository'
 export type { AgendaRepository, AgendaSessionRecord } from './agenda-repository'
+export { createSpeakerTaskRepository } from './speaker-task-repository'
+export { createAcceptUnitOfWork } from './accept-unit-of-work'
 export { createFormBuilderUnitOfWork } from './form-builder-unit-of-work'
 export { createSessionUnitOfWork } from './session-unit-of-work'
 export { createSubmitUnitOfWork } from './submit-unit-of-work'

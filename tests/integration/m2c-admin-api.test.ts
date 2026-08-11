@@ -69,7 +69,7 @@ describe('admin reads with organizer session', () => {
 
     const versions = await authedRequest(
       'GET',
-      `/api/admin/forms/${DEMO_CONF_2026_FORM_ID}/versions`,
+      `/api/admin/events/demo-conf-2026/forms/${DEMO_CONF_2026_FORM_ID}/versions`,
       tokenValue,
     )
     expect(versions.status).toBe(200)
@@ -77,14 +77,14 @@ describe('admin reads with organizer session', () => {
 
     const versionDetail = await authedRequest(
       'GET',
-      `/api/admin/forms/${DEMO_CONF_2026_FORM_ID}/versions/${DEMO_CONF_2026_VERSION_ID}`,
+      `/api/admin/events/demo-conf-2026/forms/${DEMO_CONF_2026_FORM_ID}/versions/${DEMO_CONF_2026_VERSION_ID}`,
       tokenValue,
     )
     expect(versionDetail.status).toBe(200)
 
     const draft = await authedRequest(
       'GET',
-      `/api/admin/forms/${DEMO_CONF_2026_FORM_ID}/draft`,
+      `/api/admin/events/demo-conf-2026/forms/${DEMO_CONF_2026_FORM_ID}/draft`,
       tokenValue,
     )
     expect(draft.status).toBe(404)
@@ -98,7 +98,13 @@ describe('admin reads with organizer session', () => {
       404,
     )
     expect(
-      (await authedRequest('GET', `/api/admin/forms/unknown-form/versions`, tokenValue)).status,
+      (
+        await authedRequest(
+          'GET',
+          `/api/admin/events/demo-conf-2026/forms/unknown-form/versions`,
+          tokenValue,
+        )
+      ).status,
     ).toBe(404)
     expect(
       (
@@ -186,14 +192,14 @@ describe('admin mutations with CSRF', () => {
 
     const publishEmpty = await authedRequest(
       'POST',
-      `/api/admin/forms/${DEMO_CONF_2026_FORM_ID}/publish`,
+      `/api/admin/events/demo-conf-2026/forms/${DEMO_CONF_2026_FORM_ID}/publish`,
       tokenValue,
     )
     expect(publishEmpty.status).toBe(409)
 
     const save = await authedRequest(
       'PUT',
-      `/api/admin/forms/${DEMO_CONF_2026_FORM_ID}/draft`,
+      `/api/admin/events/demo-conf-2026/forms/${DEMO_CONF_2026_FORM_ID}/draft`,
       tokenValue,
       { pages: [], elements: [], conditionRules: [], routingRules: [] },
     )
@@ -201,7 +207,7 @@ describe('admin mutations with CSRF', () => {
 
     const publish = await authedRequest(
       'POST',
-      `/api/admin/forms/${DEMO_CONF_2026_FORM_ID}/publish`,
+      `/api/admin/events/demo-conf-2026/forms/${DEMO_CONF_2026_FORM_ID}/publish`,
       tokenValue,
     )
     expect(publish.status).toBe(200)
@@ -235,6 +241,12 @@ describe('admin mutations with CSRF', () => {
     expect((await patch('not-a-url', undefined)).status).toBe(403)
     expect((await patch(undefined, 'http://evil.example/')).status).toBe(403)
     expect((await patch(ALLOWED_ORIGIN, undefined, { ALLOWED_ORIGINS: '' })).status).toBe(403)
+    // An explicitly empty allowlist denies everything in local dev mode too:
+    // only a genuinely unset value may fall back to the dev origins.
+    expect(
+      (await patch(ALLOWED_ORIGIN, undefined, { ALLOWED_ORIGINS: '', LOCAL_DEV_MODE: 'true' }))
+        .status,
+    ).toBe(403)
   })
 
   it('applies Origin-over-Referer precedence and Referer fallback', async () => {

@@ -2,18 +2,67 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { env } from 'cloudflare:test'
 
 import app from '../../src/server'
+import {
+  DEFAULT_ORGANIZER_SESSION_TTL_MS,
+  DEFAULT_SUBMITTER_SESSION_TTL_MS,
+  DEFAULT_SUBMITTER_TOKEN_TTL_MS,
+  type ServerBindings,
+} from '../../src/server/env'
 
-/** Pool env with the admin secret and a CSRF allowlist configured. */
-export function bindings(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+export const ALLOWED_ORIGIN = 'http://localhost:8787'
+
+/** An ambient environment: the pool env, or a stand-in the guard test supplies. */
+export type AmbientEnv = { readonly [K in keyof ServerBindings]?: unknown }
+
+/**
+ * The suite's value for every key `ServerBindings` declares.
+ *
+ * The pool environment carries whatever a local `.dev.vars` defines, and that
+ * file is not part of the checkout, so nothing may reach the server by way of
+ * the ambient environment. The two resource bindings can only come from the
+ * pool and are forwarded by name; every value key — the admin token, the local
+ * mode flag, the origin allowlist, and all three TTLs — gets a suite value,
+ * whatever the ambient environment says.
+ *
+ * The return type is keyed by `ServerBindings`, so adding a binding to the
+ * server fails `pnpm typecheck` here until the suite pins that one too.
+ */
+function pinnedBindings(ambient: AmbientEnv): Record<keyof ServerBindings, unknown> {
   return {
-    ...env,
+    DB: ambient.DB,
+    FILES: ambient.FILES,
+    // The committed TTL defaults, which `wrangler.jsonc` `vars` mirrors.
+    ORGANIZER_SESSION_TTL_MS: String(DEFAULT_ORGANIZER_SESSION_TTL_MS),
+    SUBMITTER_SESSION_TTL_MS: String(DEFAULT_SUBMITTER_SESSION_TTL_MS),
+    SUBMITTER_TOKEN_TTL_MS: String(DEFAULT_SUBMITTER_TOKEN_TTL_MS),
     LOCAL_ADMIN_TOKEN: 'admin-secret',
-    ALLOWED_ORIGINS: 'http://localhost:8787',
-    ...overrides,
+    LOCAL_DEV_MODE: 'false',
+    ALLOWED_ORIGINS: ALLOWED_ORIGIN,
   }
 }
 
-export const ALLOWED_ORIGIN = 'http://localhost:8787'
+/**
+ * Bindings resolved against a given ambient environment.
+ *
+ * Exported for the hermeticity guard, which hands in an ambient environment
+ * where every value a `.dev.vars` could supply is wrong; tests use `bindings`.
+ */
+export function bindingsFrom(
+  ambient: AmbientEnv,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { ...pinnedBindings(ambient), ...overrides }
+}
+
+/**
+ * Pool bindings with the admin secret and a CSRF allowlist configured.
+ *
+ * `overrides` is the single opt-in for a test that wants a different value (for
+ * example `LOCAL_DEV_MODE: 'true'` to exercise the local-only surfaces).
+ */
+export function bindings(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return bindingsFrom(env, overrides)
+}
 
 export function parseCookieToken(setCookie: string | null): string | null {
   if (setCookie === null) return null

@@ -4,9 +4,8 @@ import {
   MAX_ORGANIZER_SESSION_TTL_MS,
   MAX_SUBMITTER_SESSION_TTL_MS,
   MAX_SUBMITTER_TOKEN_TTL_MS,
-  type OrganizerActor,
-  type SubmitterActor,
-} from '../application'
+} from '../application/security/token-policy'
+import type { OrganizerActor, SubmitterActor } from '../application/actors'
 import type { Session } from '../domain'
 
 /** Committed TTL defaults; mirror `wrangler.jsonc` `vars`. */
@@ -107,13 +106,15 @@ export function isLocalDevMode(context: ServerContext): boolean {
 }
 
 /**
- * CSRF origin allowlist: environment-supplied `ALLOWED_ORIGINS` wins; when
- * unset, local/test mode falls back to the dev origins and everything else
- * fails closed (empty list -> all cookie-authenticated mutations rejected).
+ * CSRF origin allowlist: any environment-supplied `ALLOWED_ORIGINS` wins,
+ * including an explicitly empty one — blanking the value is a deliberate
+ * "allow nothing" and fails closed (all cookie-authenticated mutations
+ * rejected) even in local/test mode. Only a genuinely unset variable falls
+ * back, to the dev origins in local/test mode and to the empty list otherwise.
  */
 export function getAllowedOrigins(context: ServerContext): readonly string[] {
   const raw = context.env.ALLOWED_ORIGINS
-  if (raw !== undefined && raw.trim().length > 0) {
+  if (raw !== undefined) {
     return raw
       .split(',')
       .map((entry) => entry.trim())

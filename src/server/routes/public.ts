@@ -1,17 +1,33 @@
 import { Hono } from 'hono'
 
-import type { CoSpeakerInput, SaveDraftInput, StartInput, SubmitInput } from '../../application'
+import type { SaveDraftInput } from '../../application/dtos/draft.dto'
+import type { StartInput } from '../../application/dtos/session.dto'
+import {
+  toOwnSubmissionListItemDto,
+  type CoSpeakerInput,
+  type SubmitInput,
+} from '../../application/dtos/submission.dto'
+import type { SubmitEvaluationInput } from '../../application/services/evaluations'
+import {
+  DOCUMENT_MAX_BYTES,
+  DocumentEmptyError,
+  DocumentFileNameError,
+  DocumentTooLargeError,
+  DocumentUnsupportedTypeError,
+} from '../../application/services/documents'
 import {
   HEADSHOT_MAX_BYTES,
   HeadshotEmptyError,
   HeadshotTooLargeError,
   HeadshotUnsupportedTypeError,
-} from '../../application'
+} from '../../application/services/headshots'
 import type { AnswerMap } from '../../domain'
 import {
   requireActor,
   requireSession,
   requireSubmitter,
+  readSessionToken,
+  serializeExpiredSessionCookie,
   serializeSessionCookie,
   sessionCookieMaxAgeSeconds,
 } from '../auth'
@@ -76,15 +92,37 @@ export async function handleSessionExchange(context: ServerContext): Promise<Res
   if (token === undefined || token.length === 0) return validationFailedResponse(context)
   const ttlMs = getTtlConfig(context).submitterSessionMs
   const result = await deps.session.redeemSubmitterToken(token, ttlMs)
+  // A committee member signing in came to review, not to write a proposal.
+  // The CFP form is the right landing for everyone else, so the destination is
+  // decided from who they are rather than from which link they happened to
+  // follow — the redeemed identity is already proven at this point.
+  const onCommittee = await deps.evaluations.isOnCommittee(result.eventId, result.contactId)
+  const destination = onCommittee ? '/evaluations' : result.redirectPath
   const secure = new URL(context.req.url).protocol === 'https:'
   const maxAge = sessionCookieMaxAgeSeconds(result.expiresAt, deps.clock.now())
   return new Response(null, {
     status: 303,
     headers: {
-      Location: result.redirectPath,
+      Location: destination,
       'Set-Cookie': serializeSessionCookie(result.token, maxAge, secure),
       'Cache-Control': 'no-store',
       'Referrer-Policy': 'no-referrer',
+    },
+  })
+}
+
+/** DELETE /api/session: revoke the active session and expire its browser cookie. */
+export async function handleSessionLogout(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const token = readSessionToken(context)
+  if (token !== null) await deps.session.revokeSession(token)
+  const secure = new URL(context.req.url).protocol === 'https:'
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Set-Cookie': serializeExpiredSessionCookie(secure),
+      'Cache-Control': 'no-store',
     },
   })
 }
@@ -203,14 +241,28 @@ export async function handleGetOwnSubmission(context: ServerContext): Promise<Re
   return submission === null ? notFoundResponse(context) : context.json(submission)
 }
 
-/** GET /api/public/submissions: the session speaker's own submissions. */
+/**
+ * GET /api/public/submissions: the session speaker's own submissions, each
+ * carrying its acceptance state. The persisted status can only ever be
+ * 'pending', so the acceptance record — read back through the actor-scoped
+ * onboarding read — is what the portal renders as the decision. The DTO drops
+ * the organizer-only routing outcome, and `inviteAvailable` tells the portal
+ * whether the .ics can actually be rendered for this event right now.
+ */
 export async function handleListOwnSubmissions(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
   if (deps === null) return databaseUnavailableResponse(context)
   const actor = requireSubmitter(context)
   if (actor === null) return forbiddenResponse(context)
   const submissions = await deps.submit.listOwn(actor)
-  return context.json({ submissions })
+  const accepted = new Set(await deps.onboarding.listAcceptedOwnSubmissionIds(actor))
+  const inviteAvailable = await deps.communications.isInviteAvailable(actor)
+  return context.json({
+    submissions: submissions.map((submission) => {
+      const isAccepted = accepted.has(submission.id)
+      return toOwnSubmissionListItemDto(submission, isAccepted, isAccepted && inviteAvailable)
+    }),
+  })
 }
 
 /** GET /api/public/tasks: the calling speaker own onboarding checklist. */
@@ -223,7 +275,11 @@ export async function handleListSpeakerTasks(context: ServerContext): Promise<Re
   return context.json(tasks)
 }
 
-/** POST /api/public/tasks/:id/complete: idempotent own-task completion. */
+/**
+ * POST /api/public/tasks/:id/complete: idempotent own-task completion. A form
+ * task requires an `{ answers }` body validated against its pinned published
+ * version; checklist tasks take no body.
+ */
 export async function handleCompleteSpeakerTask(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
   if (deps === null) return databaseUnavailableResponse(context)
@@ -231,8 +287,87 @@ export async function handleCompleteSpeakerTask(context: ServerContext): Promise
   if (actor === null) return forbiddenResponse(context)
   const taskId = context.req.param('id')
   if (taskId === undefined) return notFoundResponse(context)
-  const task = await deps.onboarding.completeTask(actor, taskId)
+  let answers: AnswerMap | undefined
+  if (context.req.header('content-type')?.includes('application/json') === true) {
+    // Clients routinely declare JSON with an EMPTY body for the bare
+    // checklist completion; only a non-empty body must parse.
+    const raw = await context.req.text()
+    if (raw.trim().length > 0) {
+      let body: unknown
+      try {
+        body = JSON.parse(raw)
+      } catch {
+        return validationFailedResponse(context)
+      }
+      const candidate = (body as { answers?: unknown } | null)?.answers
+      if (candidate !== undefined) {
+        if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+          return validationFailedResponse(context)
+        }
+        answers = candidate as AnswerMap
+      }
+    }
+  }
+  const task = await deps.onboarding.completeTask(actor, taskId, answers)
   return context.json(task)
+}
+
+/** GET /api/public/tasks/:id/form: the published definition behind one own form task. */
+export async function handleGetSpeakerTaskForm(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const taskId = context.req.param('id')
+  if (taskId === undefined) return notFoundResponse(context)
+  const definition = await deps.onboarding.getFormTaskDefinition(actor, taskId)
+  return context.json(definition)
+}
+
+/**
+ * GET /api/public/evaluations: a JSON array of the calling evaluator's rows,
+ * one per assigned submission. A session contact with no assignment in the
+ * event is forbidden — the surface belongs to the review committee only.
+ */
+export async function handleListOwnEvaluations(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  return context.json(await deps.evaluations.listOwnEvaluations(actor))
+}
+
+/**
+ * POST /api/public/evaluations: idempotent upsert of one rating on one
+ * assigned submission. The evaluator identity comes from the session, the
+ * criterion from the event's default, and the round from the assignment.
+ */
+export async function handleSubmitEvaluation(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const submissionId = body.submissionId
+  const rating = body.rating
+  const comments = body.comments
+  if (typeof submissionId !== 'string' || typeof rating !== 'number') {
+    return validationFailedResponse(context)
+  }
+  if (comments !== undefined && comments !== null && typeof comments !== 'string') {
+    return validationFailedResponse(context)
+  }
+  // `comments` is a partial update: an absent key leaves the stored
+  // justification alone, an explicit null or empty string clears it. Forwarding
+  // an absent key as null would let a rating-only edit erase what the evaluator
+  // wrote without ever showing it to them.
+  const input: SubmitEvaluationInput = {
+    submissionId,
+    rating,
+    ...('comments' in body ? { comments: comments as string | null } : {}),
+  }
+  return context.json(await deps.evaluations.upsertScore(actor, input))
 }
 
 /** True when the client declares a body that already exceeds the budget. */
@@ -315,7 +450,109 @@ export async function handlePutOwnHeadshot(context: ServerContext): Promise<Resp
   }
 }
 
+/**
+ * PUT /api/public/profile/document: owner-scoped supporting-document upload
+ * (REQ-007). Same discipline as the headshot: allow-list (415), size budget
+ * (413), non-empty (400), all before any write. The display name arrives in
+ * the explicit `x-file-name` header and is validated as a bounded plain
+ * label — never interpreted as a path.
+ */
+export async function handlePutOwnDocument(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.documents === null) return storageUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const contentType = (context.req.header('content-type') ?? '').split(';')[0]?.trim() ?? ''
+  const fileName = context.req.header('x-file-name') ?? ''
+  const declared = context.req.header('content-length')
+  if (declared !== undefined) {
+    const parsed = Number(declared)
+    if (Number.isFinite(parsed) && parsed > DOCUMENT_MAX_BYTES) {
+      return toErrorResponse(context, 'validation_failed', 413)
+    }
+  }
+  const bytes = await readCappedBody(context.req.raw, DOCUMENT_MAX_BYTES)
+  if (bytes === null) return toErrorResponse(context, 'validation_failed', 413)
+  try {
+    const stored = await deps.documents.storeDocument(actor, { contentType, bytes, fileName })
+    return context.json(stored)
+  } catch (error) {
+    if (error instanceof DocumentUnsupportedTypeError) {
+      return toErrorResponse(context, 'validation_failed', 415)
+    }
+    if (error instanceof DocumentTooLargeError) {
+      return toErrorResponse(context, 'validation_failed', 413)
+    }
+    if (error instanceof DocumentEmptyError || error instanceof DocumentFileNameError) {
+      return validationFailedResponse(context)
+    }
+    throw error
+  }
+}
+
+/** GET /api/public/profile/document: own bytes only; anything else is a 404. */
+export async function handleGetOwnDocument(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.documents === null) return storageUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const document = await deps.documents.getOwnDocument(actor)
+  if (document === null) return notFoundResponse(context)
+  return new Response(document.body, {
+    status: 200,
+    headers: {
+      'Content-Type': document.contentType,
+      'Content-Length': String(document.sizeBytes),
+      'Cache-Control': 'no-store',
+    },
+  })
+}
+
 /** GET /api/public/profile/headshot: own bytes only; anything else is a 404. */
+/** GET /api/public/profile: the calling speaker's own name/email/bio. */
+export async function handleGetOwnProfile(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  return context.json(await deps.profile.getOwnProfile(actor))
+}
+
+/**
+ * PUT /api/public/profile: strict body — exactly `name` (string) and `bio`
+ * (string or null). Unknown fields, including any attempt to write the
+ * read-only email, are a validation failure.
+ */
+export async function handlePutOwnProfile(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  let body: unknown
+  try {
+    body = await context.req.json()
+  } catch {
+    return validationFailedResponse(context)
+  }
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return validationFailedResponse(context)
+  }
+  const record = body as Record<string, unknown>
+  const keys = Object.keys(record).sort()
+  const validShape =
+    (keys.join(',') === 'bio,name' || keys.join(',') === 'name') &&
+    typeof record.name === 'string' &&
+    (record.bio === undefined || record.bio === null || typeof record.bio === 'string')
+  if (!validShape) return validationFailedResponse(context)
+  const profile = await deps.profile.updateOwnProfile(actor, {
+    name: record.name as string,
+    bio: (record.bio ?? null) as string | null,
+  })
+  return context.json(profile)
+}
+
 export async function handleGetOwnHeadshot(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
   if (deps === null) return databaseUnavailableResponse(context)
@@ -368,6 +605,7 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
 
   app.post('/api/public/start', handleStart)
   app.get('/api/public/session', handleSessionExchange)
+  app.delete('/api/session', csrfGate(), handleSessionLogout)
   app.get('/api/public/cfp/:eventSlug/:formSlug', handleGetPublishedCfp)
   app.get('/api/public/events/:slug/schedule', handleGetPublicSchedule)
 
@@ -388,6 +626,12 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     handleSubmit,
   )
   app.get('/api/public/tasks', requireSession(), requireActor('submitter'), handleListSpeakerTasks)
+  app.get(
+    '/api/public/tasks/:id/form',
+    requireSession(),
+    requireActor('submitter'),
+    handleGetSpeakerTaskForm,
+  )
   app.post(
     '/api/public/tasks/:id/complete',
     csrfGate(),
@@ -401,7 +645,41 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     requireActor('submitter'),
     handleListOwnSubmissions,
   )
+  app.get(
+    '/api/public/evaluations',
+    requireSession(),
+    requireActor('submitter'),
+    handleListOwnEvaluations,
+  )
+  app.post(
+    '/api/public/evaluations',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handleSubmitEvaluation,
+  )
 
+  app.put(
+    '/api/public/profile/document',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handlePutOwnDocument,
+  )
+  app.get(
+    '/api/public/profile/document',
+    requireSession(),
+    requireActor('submitter'),
+    handleGetOwnDocument,
+  )
+  app.get('/api/public/profile', requireSession(), requireActor('submitter'), handleGetOwnProfile)
+  app.put(
+    '/api/public/profile',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handlePutOwnProfile,
+  )
   app.put(
     '/api/public/profile/headshot',
     csrfGate(),

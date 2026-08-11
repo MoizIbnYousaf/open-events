@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterProvider,
   createMemoryHistory,
@@ -18,6 +18,7 @@ import type {
 } from '../../../src/application'
 import SubmissionDetail from '../../../src/app/features/admin/SubmissionDetail'
 import SubmissionList from '../../../src/app/features/admin/SubmissionList'
+import { createQueryClient } from '../../../src/app/query-client'
 
 const EVENT_SLUG = 'demo-conf-2026'
 const SUBMISSION_ID = 'submission-1'
@@ -131,7 +132,81 @@ function detailUrl() {
 }
 
 function versionUrl() {
-  return `/api/admin/forms/${FORM_ID}/versions/${VERSION_ID}`
+  return `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${VERSION_ID}`
+}
+
+function previewUrl() {
+  return `/api/admin/events/demo-conf-2026/submissions/${SUBMISSION_ID}/acceptance-preview`
+}
+
+function reminderPreviewUrl() {
+  return `/api/admin/events/demo-conf-2026/submissions/${SUBMISSION_ID}/reminder-preview`
+}
+
+function messagesUrl() {
+  return `/api/admin/events/demo-conf-2026/submissions/${SUBMISSION_ID}/messages`
+}
+
+function acceptUrl() {
+  return `/api/admin/events/demo-conf-2026/submissions/${SUBMISSION_ID}/accept`
+}
+
+/** Acceptance state the detail page's acceptance panel reads. */
+const ACCEPTANCE_PREVIEW = {
+  submissionId: SUBMISSION_ID,
+  kind: 'acceptance',
+  toEmail: 'speaker.a@example.test',
+  subject: 'Your proposal "My talk" is accepted for DemoConf 2026',
+  body: 'Hi Speaker A,',
+  accepted: false,
+  alreadySent: false,
+  audience: [{ email: 'speaker.a@example.test', alreadySent: false }],
+}
+
+const REMINDER_PREVIEW = {
+  ...ACCEPTANCE_PREVIEW,
+  kind: 'reminder',
+  subject: 'Reminder: your accepted proposal "My talk" for DemoConf 2026',
+}
+
+function roundsUrl() {
+  return `/api/admin/events/${EVENT_SLUG}/rounds`
+}
+
+function assignmentsUrl() {
+  return `/api/admin/events/demo-conf-2026/submissions/${SUBMISSION_ID}/assignments`
+}
+
+function summaryUrl() {
+  return `/api/admin/events/demo-conf-2026/submissions/${SUBMISSION_ID}/evaluation-summary`
+}
+
+/**
+ * The review-committee reads the detail page makes on behalf of its committee
+ * panel. Their own contract lives in tests/unit/app/admin-evaluations.test.tsx;
+ * here they only have to answer so the page's own states stay observable.
+ */
+function committeeResponse(url: string, method: string): Response | null {
+  if (method !== 'GET') return null
+  if (url === roundsUrl()) return jsonResponse([])
+  if (url === assignmentsUrl()) return jsonResponse([])
+  if (url === summaryUrl()) {
+    return jsonResponse({
+      submissionId: SUBMISSION_ID,
+      eventId: 'event-1',
+      title: 'My talk',
+      currentRoundId: null,
+      assignmentCount: 0,
+      scoredCount: 0,
+      scoreCount: 0,
+      weightSum: 0,
+      weightedTotal: 0,
+      weightedAverageCentis: 0,
+      criteria: [],
+      rounds: [],
+    })
+  }
+  return null
 }
 
 async function mountList(initialEntry = `/admin/events/${EVENT_SLUG}/submissions`) {
@@ -146,9 +221,7 @@ async function mountList(initialEntry = `/admin/events/${EVENT_SLUG}/submissions
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   })
   await router.load()
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
+  const queryClient = createQueryClient()
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -176,9 +249,7 @@ async function mountDetail() {
     }),
   })
   await router.load()
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
+  const queryClient = createQueryClient()
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -199,7 +270,19 @@ beforeEach(() => {
     if (method === 'GET' && url === versionUrl()) {
       return jsonResponse(FORM_VERSION_DETAIL)
     }
-    return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    if (method === 'GET' && url === previewUrl()) {
+      return jsonResponse(ACCEPTANCE_PREVIEW)
+    }
+    if (method === 'GET' && url === reminderPreviewUrl()) {
+      return jsonResponse(REMINDER_PREVIEW)
+    }
+    if (method === 'GET' && url === messagesUrl()) {
+      return jsonResponse([])
+    }
+    return (
+      committeeResponse(url, method) ??
+      jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    )
   }
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     return fetchHandler(requestUrl(input), init)
@@ -375,8 +458,44 @@ describe('organizer submissions', () => {
     expect(rendered).not.toMatch(/\btitle\b/)
     expect(rendered).not.toMatch(/\bformat\b/)
     expect(rendered).not.toContain(SUBMISSION_ID)
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    // The answers stay read-only: the only controls on the page are the
+    // acceptance actions, and nothing on the snapshot is editable.
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('reaches acceptance from the per-submission page and reflects the acceptance state', async () => {
+    const user = userEvent.setup()
+    let accepted = false
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === detailUrl()) return jsonResponse(SUBMISSION_DETAIL)
+      if (method === 'GET' && url === versionUrl()) return jsonResponse(FORM_VERSION_DETAIL)
+      if (method === 'GET' && url === previewUrl()) {
+        return jsonResponse({ ...ACCEPTANCE_PREVIEW, accepted })
+      }
+      if (method === 'GET' && url === messagesUrl()) return jsonResponse([])
+      if (method === 'POST' && url === acceptUrl()) {
+        accepted = true
+        return jsonResponse({
+          submissionId: SUBMISSION_ID,
+          eventId: SUBMISSION_DETAIL.eventId,
+          acceptedAt: '2026-08-09T09:00:00.000Z',
+          alreadyAccepted: false,
+          tasks: [],
+        })
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountDetail()
+
+    await screen.findByRole('heading', { name: 'My talk' })
+    const accept = await screen.findByRole('button', { name: 'Accept proposal' })
+    expect(screen.getByText('Pending')).toBeInTheDocument()
+
+    await user.click(accept)
+
+    await waitFor(() => expect(screen.getByText('Accepted')).toBeInTheDocument())
+    expect(screen.queryByText('Pending')).not.toBeInTheDocument()
   })
 
   it('focuses the route h1 on entry with tabIndex -1 and no control autofocus', async () => {
@@ -446,7 +565,16 @@ describe('organizer submissions', () => {
         }
         return jsonResponse(FORM_VERSION_DETAIL)
       }
-      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      if (method === 'GET' && url === previewUrl()) {
+        return jsonResponse(ACCEPTANCE_PREVIEW)
+      }
+      if (method === 'GET' && url === messagesUrl()) {
+        return jsonResponse([])
+      }
+      return (
+        committeeResponse(url, method) ??
+        jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      )
     }
     await mountDetail()
 
@@ -474,15 +602,31 @@ describe('organizer submissions', () => {
     fetchMock.mockClear()
     await mountDetail()
     await screen.findByRole('heading', { level: 1 })
-    expect(fetchMock.mock.calls.length).toBe(2)
-    const urls = fetchMock.mock.calls.map(([input, init]) => ({
-      url: requestUrl(input),
-      method: init?.method ?? 'GET',
-      credentials: init?.credentials,
-    }))
-    expect(urls).toEqual([
-      { url: detailUrl(), method: 'GET', credentials: 'include' },
-      { url: versionUrl(), method: 'GET', credentials: 'include' },
-    ])
+    // The detail page owns both acceptance and evaluation surfaces, so its
+    // committed read set includes both panels as well as the snapshot.
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.length).toBe(8)
+    })
+    const byUrl = (left: { url: string }, right: { url: string }) =>
+      left.url.localeCompare(right.url)
+    const urls = fetchMock.mock.calls
+      .map(([input, init]) => ({
+        url: requestUrl(input),
+        method: init?.method ?? 'GET',
+        credentials: init?.credentials,
+      }))
+      .sort(byUrl)
+    expect(urls).toEqual(
+      [
+        { url: detailUrl(), method: 'GET', credentials: 'include' },
+        { url: versionUrl(), method: 'GET', credentials: 'include' },
+        { url: previewUrl(), method: 'GET', credentials: 'include' },
+        { url: reminderPreviewUrl(), method: 'GET', credentials: 'include' },
+        { url: messagesUrl(), method: 'GET', credentials: 'include' },
+        { url: roundsUrl(), method: 'GET', credentials: 'include' },
+        { url: assignmentsUrl(), method: 'GET', credentials: 'include' },
+        { url: summaryUrl(), method: 'GET', credentials: 'include' },
+      ].sort(byUrl),
+    )
   })
 })

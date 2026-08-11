@@ -8,7 +8,7 @@ import {
   DEMO_CONF_2026_PUBLISHED_AT,
   DEMO_CONF_2026_VERSION_ID,
 } from '../../src/db'
-import { applyMigrations, countRows, seedDemoConf } from './m2b-helpers'
+import { SEEDED_CONTACTS, applyMigrations, countRows, seedDemoConf } from './m2b-helpers'
 
 const EXPECTED_TABLES = [
   'events',
@@ -27,6 +27,15 @@ const EXPECTED_TABLES = [
   'submission_contributors',
   'captured_messages',
   'confirmation_records',
+  'agenda_sessions',
+  'agenda_session_speakers',
+  'submission_acceptances',
+  'speaker_tasks',
+  'uploaded_files',
+  'evaluation_criteria',
+  'evaluation_rounds',
+  'evaluation_assignments',
+  'evaluation_scores',
 ] as const
 
 beforeEach(async () => {
@@ -35,18 +44,25 @@ beforeEach(async () => {
 })
 
 describe('migration apply from an empty local D1', () => {
-  it('applies migrations 0001-0004 idempotently and creates every M2 table', async () => {
+  it('applies the baseline migrations idempotently and creates every M2 table', async () => {
     await applyMigrations(env.DB)
 
     const migrations = await env.DB.prepare('SELECT name FROM d1_migrations ORDER BY name').all<{
       name: string
     }>()
+    // Every committed migration, in order and with no gaps: the baseline is
+    // the schema a deployment actually reaches.
     expect(migrations.results.map((row) => row.name)).toEqual([
       '0001_create_events_table.sql',
       '0002_create_m2_tables.sql',
       '0003_add_m2b_lookup_indexes_integrity.sql',
       '0004_global_unique_entity_ids.sql',
       '0005_add_submitter_token_form.sql',
+      '0006_create_agenda_tables.sql',
+      '0007_create_speaker_task_tables.sql',
+      '0008_create_uploaded_files_table.sql',
+      '0009_add_captured_message_submission.sql',
+      '0010_create_evaluation_tables.sql',
     ])
 
     const tables = await env.DB.prepare(
@@ -86,6 +102,11 @@ describe('migration apply from an empty local D1', () => {
     expect(await countRows(env.DB, 'cfp_condition_rules')).toBe(1)
     expect(await countRows(env.DB, 'cfp_routing_rules')).toBe(1)
     expect(await countRows(env.DB, 'taxonomy_items')).toBe(6)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS)
+    expect(await countRows(env.DB, 'evaluation_criteria')).toBe(1)
+    expect(await countRows(env.DB, 'evaluation_rounds')).toBe(1)
+    expect(await countRows(env.DB, 'evaluation_assignments')).toBe(0)
+    expect(await countRows(env.DB, 'evaluation_scores')).toBe(0)
 
     const form = await env.DB.prepare(
       'SELECT status, published_version_id FROM cfp_forms WHERE id = ?',

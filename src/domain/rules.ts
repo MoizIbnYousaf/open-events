@@ -179,7 +179,7 @@ export function applyRoutingRules(
   rules: readonly RoutingRule[],
   answers: AnswerMap,
 ): RoutingOutcome | null {
-  const ordered = [...rules].sort((a, b) => a.position - b.position)
+  const ordered = rules.toSorted((a, b) => a.position - b.position)
   for (const rule of ordered) {
     if (evaluateConditionSet(rule.condition, answers)) {
       return { actionKind: rule.actionKind, actionTarget: rule.actionTarget }

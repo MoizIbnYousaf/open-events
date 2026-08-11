@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyD1Migrations, env, reset } from 'cloudflare:test'
 
+import migration0006Sql from '../../migrations/0006_create_agenda_tables.sql?raw'
 import migration0007Sql from '../../migrations/0007_create_speaker_task_tables.sql?raw'
+import migration0011Sql from '../../migrations/0011_add_form_tasks.sql?raw'
 import app from '../../src/server'
 import { createAcceptUnitOfWork } from '../../src/db'
 import { DEMO_CONF_2026_ID } from '../../src/db'
@@ -93,7 +95,7 @@ async function acceptSubmission(
   headers: Record<string, string> = {},
 ): Promise<Response> {
   return app.request(
-    `/api/admin/submissions/${submissionId}/accept`,
+    `/api/admin/events/demo-conf-2026/submissions/${submissionId}/accept`,
     {
       method: 'POST',
       headers: {
@@ -119,6 +121,26 @@ async function countTasks(): Promise<number> {
   return row?.n ?? 0
 }
 
+interface AgendaSessionRow {
+  readonly event_id: string
+  readonly submission_id: string
+  readonly track_id: string | null
+  readonly room_id: string | null
+  readonly day: string
+  readonly start: string
+  readonly end: string
+  readonly position: number | null
+  readonly status: string
+  readonly assignment: string
+}
+
+async function countAgendaSessions(): Promise<number> {
+  const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM agenda_sessions').first<{
+    n: number
+  }>()
+  return row?.n ?? 0
+}
+
 let organizerToken: string
 let speakerCookie: string
 let submissionId: string
@@ -127,7 +149,11 @@ beforeEach(async () => {
   await reset()
   await applyMigrations(env.DB)
   await applyD1Migrations(env.DB, [
+    // 0006 creates agenda_sessions: acceptance places the accepted proposal on
+    // the agenda in the same atomic batch as the checklist.
+    { name: '0006_create_agenda_tables.sql', queries: splitSqlStatements(migration0006Sql) },
     { name: '0007_create_speaker_task_tables.sql', queries: splitSqlStatements(migration0007Sql) },
+    { name: '0011_add_form_tasks.sql', queries: splitSqlStatements(migration0011Sql) },
   ])
   await seedDemoConf(env.DB)
   const login = await loginOrganizer()
@@ -137,10 +163,10 @@ beforeEach(async () => {
   submissionId = await submitProposal(speakerCookie)
 })
 
-describe('POST /api/admin/submissions/:id/accept', () => {
+describe('POST /api/admin/events/demo-conf-2026/submissions/:id/accept', () => {
   it('requires an organizer session and a same-origin request', async () => {
     const anonymous = await app.request(
-      `/api/admin/submissions/${submissionId}/accept`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/accept`,
       { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
       bindings(),
     )
@@ -154,7 +180,7 @@ describe('POST /api/admin/submissions/:id/accept', () => {
     expect(await submitter.json()).toEqual({ error: { code: 'forbidden', message: 'Forbidden' } })
 
     const crossOrigin = await app.request(
-      `/api/admin/submissions/${submissionId}/accept`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/accept`,
       {
         method: 'POST',
         headers: { cookie: cookieHeader(organizerToken), origin: 'http://evil.test' },
@@ -178,6 +204,52 @@ describe('POST /api/admin/submissions/:id/accept', () => {
     )
     expect(body.tasks.every((task) => task.status === 'pending')).toBe(true)
     expect(await countTasks()).toBe(SPEAKER_TASK_KINDS.length * 2)
+  })
+
+  // Acceptance is what turns a proposal into something the organizer can place
+  // on the agenda; without this row the schedule stays permanently empty.
+  it('places the accepted submission on the agenda as an unassigned session', async () => {
+    expect(await countAgendaSessions()).toBe(0)
+
+    const response = await acceptSubmission(organizerToken, submissionId)
+    expect(response.status).toBe(200)
+
+    const session = await env.DB.prepare('SELECT * FROM agenda_sessions WHERE submission_id = ?')
+      .bind(submissionId)
+      .first<AgendaSessionRow>()
+    expect(session).not.toBeNull()
+    expect(session?.event_id).toBe(DEMO_CONF_2026_ID)
+    expect(session?.status).toBe('draft')
+    expect(session?.assignment).toBe('unassigned')
+    expect(session?.room_id).toBeNull()
+    expect(session?.track_id).toBeNull()
+    expect(session?.position).toBeNull()
+    // The seeded event starts 2026-05-13T08:00:00.000Z.
+    expect(session?.day).toBe('2026-05-13')
+    expect(session?.start).toBe('2026-05-13T08:00:00.000Z')
+    expect(session?.end).toBe('2026-05-13T09:00:00.000Z')
+
+    const speakers = await env.DB.prepare(
+      'SELECT contact_id FROM agenda_session_speakers WHERE submission_id = ?',
+    )
+      .bind(submissionId)
+      .all<{ contact_id: string }>()
+    expect(new Set(speakers.results.map((row) => row.contact_id))).toEqual(
+      new Set([await contactIdFor(SPEAKER_EMAIL), await contactIdFor(CO_SPEAKER_EMAIL)]),
+    )
+  })
+
+  it('never places a second agenda session on a repeated accept', async () => {
+    await acceptSubmission(organizerToken, submissionId)
+    await acceptSubmission(organizerToken, submissionId)
+
+    expect(await countAgendaSessions()).toBe(1)
+    const speakers = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM agenda_session_speakers WHERE submission_id = ?',
+    )
+      .bind(submissionId)
+      .first<{ n: number }>()
+    expect(speakers?.n).toBe(2)
   })
 
   it('is idempotent under a repeated accept', async () => {
@@ -211,6 +283,9 @@ describe('POST /api/admin/submissions/:id/accept', () => {
       kind: 'submit_bio',
       status: 'pending',
       position: 0,
+      formId: null,
+      formVersionId: null,
+      response: null,
       createdAt: NOW,
       completedAt: null,
     }
@@ -222,6 +297,12 @@ describe('POST /api/admin/submissions/:id/accept', () => {
         submissionId,
         acceptedAt: NOW,
         tasks: [invalidTask],
+        session: {
+          day: '2026-05-13',
+          start: '2026-05-13T08:00:00.000Z',
+          end: '2026-05-13T09:00:00.000Z',
+          speakerContactIds: [await contactIdFor(SPEAKER_EMAIL)],
+        },
       }),
     ).rejects.toBeInstanceOf(Error)
 
@@ -230,6 +311,7 @@ describe('POST /api/admin/submissions/:id/accept', () => {
     ).first<{ n: number }>()
     expect(acceptance?.n).toBe(0)
     expect(await countTasks()).toBe(0)
+    expect(await countAgendaSessions()).toBe(0)
   })
 })
 

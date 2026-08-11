@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useMutation } from '@tanstack/react-query'
 import { z } from 'zod'
 
+import { useServerMutation } from '../../../../adapters/tanstack-react-query'
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
 import { startSession } from '../../api/public'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '../../../components/ui/card'
+import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { StatusLive } from '../../../components/ui/status-live'
 
@@ -37,7 +38,7 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
   const [accepted, setAccepted] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const start = useMutation({
+  const start = useServerMutation({
     mutationFn: (values: StartValues) => startSession(values.email, eventSlug, formSlug),
     onSuccess: () => {
       setAccepted(true)
@@ -46,6 +47,10 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
     onError: (error) => {
       const code = getApiErrorCode(error)
       if (code === 'validation_failed') {
+        // Clearing the server message is part of the one-alert invariant: the
+        // field error below becomes the summary, and a stale transport error
+        // must not stay live beside it.
+        setErrorMessage(null)
         setError(
           'email',
           {
@@ -65,8 +70,12 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
   }, [setFocus])
 
   const onSubmit = (values: StartValues) => {
+    if (start.isPending) return
     const parsed = startSchema.safeParse(values)
     if (!parsed.success) {
+      // Without this the previous transport error stayed on screen next to the
+      // new field error, so the form held two live regions at once.
+      setErrorMessage(null)
       setError(
         'email',
         {
@@ -84,17 +93,21 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
   }
 
   const pending = start.isPending
+  // One summary, one live region. The transport error and the field error are
+  // never both meaningful at once, and FieldError is deliberately not live, so
+  // this is the single node that speaks.
+  const summary = errorMessage ?? errors.email?.message ?? null
 
   return (
-    <Card>
+    <Card data-tour="start-page">
       <CardHeader>
         <h1 className="font-heading text-base leading-snug font-medium">Start</h1>
         <CardDescription>Request a link to begin your proposal.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
-          <div className="grid gap-1.5">
-            <label htmlFor="start-email">Email</label>
+          <Field invalid={errors.email !== undefined}>
+            <FieldLabel htmlFor="start-email">Email</FieldLabel>
             <Input
               id="start-email"
               type="email"
@@ -104,18 +117,30 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
               {...register('email')}
             />
             {errors.email !== undefined ? (
-              <AlertLive id="start-email-error">{errors.email.message}</AlertLive>
+              <FieldError id="start-email-error">{errors.email.message}</FieldError>
             ) : null}
-          </div>
-          {errorMessage !== null ? <AlertLive>{errorMessage}</AlertLive> : null}
-          {accepted ? <StatusLive>Check your email</StatusLive> : null}
+          </Field>
+          {summary !== null ? <AlertLive>{summary}</AlertLive> : null}
+          {/* Mounted with the form and empty until the request is accepted: a
+              region whose text changes, never one created together with its
+              text — a polite live region has to be in the accessibility tree
+              before its content arrives or it announces nothing (DEC-014). */}
+          <StatusLive aria-live="polite">{accepted ? 'Check your email' : null}</StatusLive>
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={pending} aria-label={pending ? 'Sending…' : 'Start'}>
+            {/* The visible text is the accessible name. The old aria-label
+                said "Start" while the button read "Request a link", which
+                breaks WCAG 2.5.3 Label in Name. */}
+            <Button type="submit" pending={pending}>
               {pending ? 'Sending…' : 'Request a link'}
             </Button>
             {errorMessage !== null ? (
-              <Button type="button" variant="outline" onClick={() => onSubmit(getValues())}>
-                Retry
+              <Button
+                type="button"
+                variant="outline"
+                pending={pending}
+                onClick={() => onSubmit(getValues())}
+              >
+                {pending ? 'Sending…' : 'Retry'}
               </Button>
             ) : null}
           </div>

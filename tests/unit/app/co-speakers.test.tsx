@@ -312,7 +312,14 @@ describe('public CFP co-speakers', () => {
         }
         return {
           ...editor,
-          coSpeakers: [{ firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.test' }],
+          coSpeakers: [
+            {
+              clientId: 'co-speaker-ada',
+              firstName: 'Ada',
+              lastName: 'Lovelace',
+              email: 'ada@example.test',
+            },
+          ],
           title: 'Hydrated title',
           answers: { format: 'talk', title: 'Hydrated title' },
         }

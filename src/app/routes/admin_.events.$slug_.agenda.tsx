@@ -1,13 +1,18 @@
 import { createFileRoute, useParams } from '@tanstack/react-router'
 
 import AgendaAdminPage from '../features/admin/AgendaAdminPage'
+import AppShell from '../features/nav/AppShell'
 
 import type {} from '../routeTree.gen'
 
 function AgendaAdminRoutePage() {
   const params = useParams({ strict: false })
   const slug = params.slug as string | undefined
-  return <AgendaAdminPage eventSlug={slug ?? ''} />
+  return (
+    <AppShell slug={slug ?? ''}>
+      <AgendaAdminPage eventSlug={slug ?? ''} />
+    </AppShell>
+  )
 }
 
 const agendaAdminRoute = createFileRoute('/admin_/events/$slug_/agenda')({

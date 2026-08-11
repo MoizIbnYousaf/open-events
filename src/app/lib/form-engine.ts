@@ -1,6 +1,6 @@
-import type { ElementConditionGroupDto, ElementRuleDto, FormElementDto } from '../../application'
-import type { AnswerMap, ElementConditionGroup, ElementRule, FormElement } from '../../domain'
-import { evaluateElementGroups, isElementRequired, isElementVisible } from '../../domain/rules'
+import type { ElementRuleDto, FormElementDto } from '../../application'
+import type { AnswerMap, ElementRule, FormElement } from '../../domain'
+import { isElementRequired, isElementVisible } from '../../domain/rules'
 
 /**
  * Adapter boundary: the public DTOs are structurally compatible with the
@@ -30,11 +30,4 @@ export function isElementRequiredDto(
     rules as unknown as readonly ElementRule[],
     answers,
   )
-}
-
-export function evaluateElementGroupsDto(
-  groups: readonly ElementConditionGroupDto[],
-  answers: AnswerMap,
-): boolean {
-  return evaluateElementGroups(groups as unknown as readonly ElementConditionGroup[], answers)
 }

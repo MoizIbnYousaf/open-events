@@ -196,13 +196,13 @@ async function mountBuilder() {
   const rootRoute = createRootRoute()
   const builderRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/admin/forms/$formId',
+    path: '/admin/events/$slug/forms/$formId',
     component: BuilderEditor,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([builderRoute]),
     history: createMemoryHistory({
-      initialEntries: [`/admin/forms/${FORM_ID}?eventSlug=${EVENT_SLUG}`],
+      initialEntries: [`/admin/events/${EVENT_SLUG}/forms/${FORM_ID}`],
     }),
   })
   await router.load()
@@ -220,10 +220,10 @@ async function mountBuilder() {
 beforeEach(() => {
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       return jsonResponse(DRAFT_DTO)
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`) {
       return jsonResponse([])
     }
     if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {

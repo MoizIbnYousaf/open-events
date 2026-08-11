@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,6 +13,7 @@ import {
   putOwnHeadshot,
 } from '../../../src/app/queries/public-headshot'
 import { ApiClientError } from '../../../src/app/api/admin-events'
+import { Toaster } from '../../../src/components/ui/sonner'
 import {
   Route as HeadshotRoute,
   HeadshotPage as HeadshotRoutePage,
@@ -186,17 +187,37 @@ describe('public-headshot query module', () => {
 describe('headshot route module', () => {
   it('exposes the documented /headshot path and renders the uploader', () => {
     expect(HeadshotRoute.options.path).toBe('/headshot')
-    expect(HeadshotRoutePage).toBe(HeadshotUploader)
+    expect(HeadshotRoutePage).toBeTypeOf('function')
+  })
+
+  // The uploader is also composed into /portal, which owns its own h1, so the
+  // page-owned heading belongs to the standalone route page, never to the
+  // reusable section.
+  it('gives the standalone page exactly one h1 while the section owns none', async () => {
+    fetchHandler = () => envelopeResponse('not_found', 'Not found', 404)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <HeadshotRoutePage />
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText(/no headshot uploaded yet/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 1, name: /headshot/i })).toBeInTheDocument()
   })
 })
 
 describe('HeadshotUploader', () => {
-  it('owns an h1 and shows a busy loading state while the headshot loads', async () => {
+  it('owns a section heading, not an h1, and shows a busy loading state', async () => {
     fetchHandler = () => new Promise<Response>(() => undefined)
 
     renderUploader()
 
-    expect(screen.getByRole('heading', { level: 1, name: /headshot/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: /headshot/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
     expect(await screen.findByText(/loading your headshot/i)).toBeInTheDocument()
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull()
   })
@@ -245,6 +266,42 @@ describe('HeadshotUploader', () => {
     expect(
       fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT'),
     ).toBe(true)
+  })
+
+  it('reports the upload once, and leaves the record on the surface', async () => {
+    const user = userEvent.setup()
+    fetchHandler = () => envelopeResponse('not_found', 'Not found', 404)
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+          })
+        }
+      >
+        <HeadshotUploader />
+        <Toaster />
+      </QueryClientProvider>,
+    )
+    await screen.findByText(/no headshot uploaded yet/i)
+
+    fetchHandler = (_url, init) =>
+      init?.method === 'PUT' ? jsonResponse(HEADSHOT_DTO) : pngResponse()
+    await user.upload(fileInput(), pngFile())
+
+    // Spoken once, by the toaster's permanent region. The label the uploader
+    // keeps beside the re-read image is the durable record, not a second live
+    // region repeating the same sentence (DEC-014, DEC-019).
+    const notifications = await screen.findByRole('region', { name: /notifications/i })
+    await waitFor(() => expect(notifications).toHaveTextContent('Headshot updated'))
+    const confirmation = within(screen.getByRole('region', { name: /headshot/i })).getByText(
+      'Headshot updated',
+    )
+    expect(confirmation).not.toHaveAttribute('role', 'status')
+    expect(confirmation).not.toHaveAttribute('aria-live')
+    expect(
+      screen.queryAllByRole('status').filter((node) => node.textContent === 'Headshot updated'),
+    ).toHaveLength(0)
   })
 
   it('rejects an unsupported file client-side without any upload request', async () => {
@@ -318,6 +375,96 @@ describe('HeadshotUploader', () => {
     await user.upload(fileInput(), file)
 
     expect(await screen.findByText(/headshot updated/i)).toBeInTheDocument()
+  })
+
+  it('refuses a pick made mid-upload out loud and leaves the input ready to retry it', async () => {
+    const user = userEvent.setup()
+    let releaseUpload: ((response: Response) => void) | undefined
+    fetchHandler = (_url, init) => {
+      if (init?.method === 'PUT') {
+        return new Promise<Response>((resolve) => {
+          releaseUpload = resolve
+        })
+      }
+      return envelopeResponse('not_found', 'Not found', 404)
+    }
+    renderUploader()
+    await screen.findByText(/no headshot uploaded yet/i)
+
+    const first = pngFile('first.png')
+    const second = pngFile('second.png')
+    await user.upload(fileInput(), first)
+    await screen.findByText(/uploading your headshot/i)
+
+    // The control is intentionally not natively disabled — that throws focus to
+    // <body> mid-flow — so a second pick is possible. It must be refused with a
+    // message rather than swallowed, and the input must be emptied so the very
+    // same file can be chosen again (an unchanged selection fires no change
+    // event, which used to leave the control dead).
+    await user.upload(fileInput(), second)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/still uploading/i)
+    expect(fileInput().files).toHaveLength(0)
+    expect(fileInput()).toHaveAttribute('aria-invalid', 'true')
+    expect(
+      fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PUT',
+      ),
+    ).toHaveLength(1)
+
+    fetchHandler = (_url, init) =>
+      init?.method === 'PUT' ? jsonResponse(HEADSHOT_DTO) : pngResponse()
+    releaseUpload?.(jsonResponse(HEADSHOT_DTO))
+    await screen.findByText(/headshot updated/i)
+
+    // The refusal describes a condition that ends on its own. Once the first
+    // upload settles, "another headshot is still uploading" is false: leaving
+    // it on screen gives one settled action both a success status and a
+    // contradicting alert, and marks a control invalid that has nothing wrong
+    // with it.
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+    expect(screen.queryByText(/still uploading/i)).toBeNull()
+    expect(fileInput()).not.toHaveAttribute('aria-invalid')
+    expect(fileInput()).not.toHaveAttribute('aria-describedby')
+
+    await user.upload(fileInput(), second)
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(
+          ([, init]) => (init as RequestInit | undefined)?.method === 'PUT',
+        ),
+      ).toHaveLength(2)
+    })
+  })
+
+  it('reports the real failure once the upload a mid-flight pick was refused for fails', async () => {
+    const user = userEvent.setup()
+    let releaseUpload: ((response: Response) => void) | undefined
+    fetchHandler = (_url, init) => {
+      if (init?.method === 'PUT') {
+        return new Promise<Response>((resolve) => {
+          releaseUpload = resolve
+        })
+      }
+      return envelopeResponse('not_found', 'Not found', 404)
+    }
+    renderUploader()
+    await screen.findByText(/no headshot uploaded yet/i)
+
+    await user.upload(fileInput(), pngFile('first.png'))
+    await screen.findByText(/uploading your headshot/i)
+    await user.upload(fileInput(), pngFile('second.png'))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/still uploading/i)
+
+    releaseUpload?.(envelopeResponse('internal', 'Internal error', 500))
+
+    // The refusal must not outlive the flight it described and hide the
+    // outcome of the upload that was actually running.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/choose the file again to retry/i)
+    })
+    expect(screen.queryByText(/still uploading/i)).toBeNull()
   })
 
   it('revokes the object URL it created when the uploader unmounts', async () => {

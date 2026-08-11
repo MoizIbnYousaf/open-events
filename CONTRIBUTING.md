@@ -48,8 +48,25 @@ pnpm test           # Vitest: unit + Workers-pool integration
 pnpm build          # production build (tsc -b && vite build)
 pnpm ui:check       # shadcn/ui pinned to Base UI; no foreign UI kits
 pnpm notices:check  # Apache-2.0 LICENSE + third-party provenance
-pnpm e2e            # Playwright end-to-end smoke test
+pnpm e2e            # Playwright end-to-end smoke test (no local secrets needed)
+pnpm e2e:golden     # Playwright organizer journeys (needs LOCAL_ADMIN_TOKEN)
 ```
+
+`pnpm e2e` covers the specs that need no local secrets, and it runs from a
+clean checkout: it resets and seeds the local database the way `pnpm db:reset`
+does, then starts its own dev server on port 4173. When a dev server is already
+listening there it reuses that one and leaves the local database untouched.
+`pnpm e2e:golden` covers the specs that sign in as an organizer and needs a
+local admin token:
+
+```bash
+LOCAL_ADMIN_TOKEN=local-test pnpm e2e:golden
+```
+
+That command resets the local database, writes the token into a local
+`.dev.vars` for the dev server, and restores the previous `.dev.vars` when it
+finishes. A spec that needs the token belongs in `playwright.golden.config.ts`,
+not in the default gate.
 
 Format changed files only:
 
@@ -59,10 +76,6 @@ pnpm exec prettier --write <changed paths>
 
 ## Contribution conventions
 
-- **One writer per file.** Every file has a single designated owner; consult
-  the repository's ownership manifest before editing and coordinate with the
-  owner when your change touches an area you do not own. Reviews are
-  read-only and findings are reported rather than applied directly.
 - **Small, atomic commits.** One logical change per commit with a clear,
   descriptive message. Never rewrite shared history or force-push.
 - **Markdown only for docs.** Documentation changes are plain Markdown; no
@@ -71,12 +84,12 @@ pnpm exec prettier --write <changed paths>
   `.dev.vars*`, `.wrangler/`, environment files, logs, reports, screenshots,
   agent notes, briefs, credentials, `dist/`, and `.cache/`. Never commit real
   credentials or local-only state.
-- **Coordinate cross-area changes.** If a change affects more than one owned
-  area, discuss it with the maintainers first rather than editing outside
-  your scope.
+- **Coordinate cross-area changes.** Explain cross-cutting changes in the pull
+  request and keep migrations, application behavior, and tests in one coherent
+  review unit.
 
-## M1 acceptance checklist
+## Release acceptance checklist
 
-The M1 milestone's clean-tree acceptance checklist lives in
+The clean-tree release checklist lives in
 [docs/acceptance.md](docs/acceptance.md); point reviewers there and confirm
-every item passes before claiming M1 completion.
+every item passes before claiming release readiness.

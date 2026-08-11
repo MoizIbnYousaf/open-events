@@ -6,12 +6,18 @@ import { join } from 'node:path'
 // @ts-expect-error — scripts/golden-row-count.mjs is plain ESM (narrow documented boundary).
 import * as goldenRowCountModule from '../../../scripts/golden-row-count.mjs'
 
-const { countGoldenRows, resolveDatabaseFile, resolveStateRoot, runWranglerCount } =
-  goldenRowCountModule
+const {
+  countGoldenRows,
+  countLifecycleRows,
+  resolveDatabaseFile,
+  resolveStateRoot,
+  runWranglerCount,
+  selectCounter,
+} = goldenRowCountModule
 
 const EVENT_SLUG = 'demo-conf-2026'
 const FORM_ID = 'f0000000-0000-4000-8000-000000000001'
-const BINDING = 'speakerops-m1-local'
+const BINDING = 'speakerops-production'
 
 function emptyDbStateRoot() {
   const root = mkdtempSync(join(tmpdir(), 's3a-'))
@@ -290,5 +296,186 @@ describe('golden-row-count contract', () => {
       'SELECT COUNT(*) FROM proposal_submissions WHERE form_id = ?',
     )
     expect(call).toBe(7)
+  })
+})
+
+// Lifecycle-tail persisted-row proofs (acceptance -> checklist -> completion ->
+// headshot -> acceptance message). They are a SEPARATE callable rather than
+// extra keys on countGoldenRows so the frozen five-count golden contract above
+// keeps its exact shape; both share the same state-root resolution, the same
+// fail-closed database validation, and the same bounded wrangler seam.
+describe('golden-row-count lifecycle contract', () => {
+  /** Recording spawn seam: captures the SQL of every wrangler invocation. */
+  function recordingSpawn() {
+    const commands: string[] = []
+    const spawn = (_command: string, args: string[]) => {
+      const sql = args[args.length - 1]
+      if (sql === undefined) throw new Error('wrangler command missing its SQL argument')
+      commands.push(sql)
+      return { status: 0, stdout: JSON.stringify([{ results: [{ 'COUNT(*)': 0 }] }]), stderr: '' }
+    }
+    return { commands, spawn }
+  }
+
+  it('returns the five exact lifecycle count fields with numeric values', async () => {
+    const root = emptyDbStateRoot()
+    try {
+      const result = await countLifecycleRows({ persistTo: root, spawn: zeroRowSpawn() })
+      expect(Object.keys(result).sort()).toEqual([
+        'acceptanceMessages',
+        'acceptances',
+        'completedTasks',
+        'headshots',
+        'speakerTasks',
+      ])
+      for (const value of Object.values(result)) {
+        expect(typeof value).toBe('number')
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves the frozen golden five-count contract untouched', async () => {
+    const root = emptyDbStateRoot()
+    try {
+      const golden = await countGoldenRows({ persistTo: root, spawn: zeroRowSpawn() })
+      expect(golden).toEqual({
+        submissions: 0,
+        contributors: 0,
+        messages: 0,
+        confirmations: 0,
+        drafts: 0,
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('returns deterministic zeros for an existing empty seeded DB', async () => {
+    const root = emptyDbStateRoot()
+    try {
+      const result = await countLifecycleRows({ persistTo: root, spawn: zeroRowSpawn() })
+      expect(result).toEqual({
+        acceptances: 0,
+        speakerTasks: 0,
+        completedTasks: 0,
+        headshots: 0,
+        acceptanceMessages: 0,
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('scopes every lifecycle count by the committed event/form relational keys', async () => {
+    const root = emptyDbStateRoot()
+    const probe = recordingSpawn()
+    try {
+      await countLifecycleRows({ persistTo: root, spawn: probe.spawn })
+      expect(probe.commands).toHaveLength(5)
+      for (const sql of probe.commands) {
+        expect(sql).toContain('WHERE')
+        expect(sql).toMatch(new RegExp(`${EVENT_SLUG}|${FORM_ID}`))
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('pins each lifecycle count to its own table and narrowing predicate', async () => {
+    const root = emptyDbStateRoot()
+    const probe = recordingSpawn()
+    try {
+      await countLifecycleRows({ persistTo: root, spawn: probe.spawn })
+      const [acceptances, speakerTasks, completedTasks, headshots, acceptanceMessages] =
+        probe.commands
+      expect(acceptances).toContain('submission_acceptances')
+      expect(speakerTasks).toContain('speaker_tasks')
+      // The completed count must narrow by status, otherwise "blockers dropped"
+      // would be indistinguishable from "checklist created".
+      expect(completedTasks).toContain('speaker_tasks')
+      expect(completedTasks).toContain("status = 'completed'")
+      expect(headshots).toContain('uploaded_files')
+      expect(headshots).toContain("kind = 'headshot'")
+      // Acceptance messages are the submission-linked captured rows only;
+      // start-link and submit-confirmation rows keep a NULL submission_id.
+      expect(acceptanceMessages).toContain('captured_messages')
+      expect(acceptanceMessages).toContain('submission_id')
+      expect(acceptanceMessages).toContain(FORM_ID)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('drives the same bounded wrangler seam for the single committed binding', async () => {
+    const root = emptyDbStateRoot()
+    const calls: Array<{ command: string; args: string[] }> = []
+    try {
+      await countLifecycleRows({
+        persistTo: root,
+        spawn: (command: string, args: string[]) => {
+          calls.push({ command, args })
+          return {
+            status: 0,
+            stdout: JSON.stringify([{ results: [{ 'COUNT(*)': 0 }] }]),
+            stderr: '',
+          }
+        },
+      })
+      expect(calls).toHaveLength(5)
+      for (const call of calls) {
+        expect(call.command).toBe('pnpm')
+        expect(call.args.slice(0, 6)).toEqual([
+          'exec',
+          'wrangler',
+          'd1',
+          'execute',
+          BINDING,
+          '--local',
+        ])
+        expect(call.args).toContain('--json')
+        expect(call.args[call.args.indexOf('--persist-to') + 1]).toBe(root)
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('selects the lifecycle counter only for an explicit --counts lifecycle argv', () => {
+    expect(selectCounter(['node', 'golden-row-count.mjs', '--counts', 'lifecycle'])).toBe(
+      countLifecycleRows,
+    )
+    expect(selectCounter(['node', 'golden-row-count.mjs'])).toBe(countGoldenRows)
+    expect(selectCounter(['node', 'golden-row-count.mjs', '--counts', 'golden'])).toBe(
+      countGoldenRows,
+    )
+    // A bare flag, or an unknown set, must never silently pick lifecycle.
+    expect(selectCounter(['node', 'golden-row-count.mjs', '--counts'])).toBe(countGoldenRows)
+    expect(selectCounter(['node', 'golden-row-count.mjs', '--counts', 'nonsense'])).toBe(
+      countGoldenRows,
+    )
+    expect(selectCounter(['node', 'golden-row-count.mjs', 'lifecycle'])).toBe(countGoldenRows)
+  })
+
+  it('fails closed on a missing database and on a non-zero wrangler exit', async () => {
+    await expect(
+      countLifecycleRows({
+        persistTo: join(tmpdir(), 's3a-lifecycle-absent'),
+        spawn: zeroRowSpawn(),
+      }),
+    ).rejects.toThrow()
+
+    const root = emptyDbStateRoot()
+    try {
+      await expect(
+        countLifecycleRows({
+          persistTo: root,
+          spawn: () => ({ status: 1, stdout: '', stderr: 'boom' }),
+        }),
+      ).rejects.toThrow()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

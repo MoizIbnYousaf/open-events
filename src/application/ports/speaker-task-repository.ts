@@ -1,6 +1,8 @@
 import type {
+  AnswerMap,
   ContactId,
   EventId,
+  FormId,
   SpeakerTask,
   SpeakerTaskId,
   SubmissionAcceptance,
@@ -22,12 +24,26 @@ export interface SpeakerTaskRepository {
   listAcceptancesByEvent(eventId: EventId): Promise<readonly SubmissionAcceptance[]>
   /**
    * Completes a pending task and returns the resulting row; completing an
-   * already-completed task keeps the first `completedAt` (idempotent). Returns
-   * null when the task does not exist in the event.
+   * already-completed task keeps the first `completedAt` and `response`
+   * (idempotent). `response` is persisted only by the completing write of a
+   * form task. Returns null when the task does not exist in the event.
    */
   markCompleted(
     eventId: EventId,
     id: SpeakerTaskId,
     completedAt: UtcInstant,
+    response?: AnswerMap,
+  ): Promise<SpeakerTask | null>
+  /**
+   * Inserts one organizer-assigned form task. Re-assigning the same form to
+   * the same speaker on the same submission returns the existing row instead
+   * of a second task (idempotent by the partial unique form index).
+   */
+  createFormTask(task: SpeakerTask): Promise<SpeakerTask>
+  findFormTask(
+    eventId: EventId,
+    submissionId: SubmissionId,
+    contactId: ContactId,
+    formId: FormId,
   ): Promise<SpeakerTask | null>
 }

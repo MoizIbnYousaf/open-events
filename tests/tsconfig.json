@@ -11,5 +11,5 @@
       "vite/client"
     ]
   },
-  "include": ["**/*.ts", "**/*.tsx", "../worker-configuration.d.ts"]
+  "include": ["**/*.ts", "**/*.tsx", "../generated/worker-configuration.d.ts"]
 }

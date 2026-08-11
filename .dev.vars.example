@@ -1,7 +1,10 @@
 # Local-only development values. Never commit real secrets.
 LOCAL_ADMIN_TOKEN=
 LOCAL_DEV_MODE=true
-ALLOWED_ORIGINS=
+# CSRF origin allowlist, comma separated. Leave the line out entirely to use the
+# local development origins; an empty value is an explicit "allow nothing" and
+# rejects every cookie-authenticated cross-origin mutation.
+# ALLOWED_ORIGINS=
 # Optional TTL overrides (ms, within frozen maxima); committed defaults apply when empty:
 # ORGANIZER_SESSION_TTL_MS=7200000
 # SUBMITTER_SESSION_TTL_MS=1800000

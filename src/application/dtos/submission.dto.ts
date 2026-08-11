@@ -57,6 +57,27 @@ export interface SubmissionListItemDto {
   readonly submittedAt: UtcInstant
 }
 
+/**
+ * Speaker-portal row: the owner's own list item plus its acceptance state.
+ * `status` is pinned to 'pending' for the lifetime of a submission (migration
+ * 0002) because the acceptance record IS the accepted state, so `accepted` is
+ * the only way a speaker-facing surface can ever show that decision.
+ *
+ * `routing` is deliberately absent. It is the ORGANIZER's triage decision —
+ * manual_review flags and internal track/tag keys — rendered on the organizer
+ * submission list only; this row is a public read by the submitter, so the
+ * decision must not travel with it.
+ */
+export interface OwnSubmissionListItemDto extends Omit<SubmissionListItemDto, 'routing'> {
+  readonly accepted: boolean
+  /**
+   * Whether the calendar invite can actually be rendered right now. The invite
+   * route answers 409 for an event with no configured dates, so a surface that
+   * offers a download must gate on this and not on `accepted` alone.
+   */
+  readonly inviteAvailable: boolean
+}
+
 export interface CoSpeakerInput {
   readonly name: string
   readonly email: string
@@ -121,6 +142,32 @@ export function toSubmissionListItemDto(
     coSpeakerCount: contributors.filter((contributor) => contributor.role === 'co-speaker').length,
     createdAt: submission.createdAt,
     submittedAt: submission.submittedAt,
+  }
+}
+
+/**
+ * Projects the organizer row onto the speaker's own row. Every field is named
+ * explicitly so this is an allowlist rather than a subtraction: a new organizer
+ * field can never reach the public payload by being added upstream.
+ */
+export function toOwnSubmissionListItemDto(
+  item: SubmissionListItemDto,
+  accepted: boolean,
+  inviteAvailable: boolean,
+): OwnSubmissionListItemDto {
+  return {
+    id: item.id,
+    title: item.title,
+    status: item.status,
+    formId: item.formId,
+    formSlug: item.formSlug,
+    version: item.version,
+    primarySpeaker: item.primarySpeaker,
+    coSpeakerCount: item.coSpeakerCount,
+    createdAt: item.createdAt,
+    submittedAt: item.submittedAt,
+    accepted,
+    inviteAvailable,
   }
 }
 

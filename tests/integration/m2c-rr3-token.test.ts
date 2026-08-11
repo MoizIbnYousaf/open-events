@@ -386,6 +386,7 @@ describe('bounded statement counts', () => {
         subject: 's',
         body: 'b',
         createdAt: NOW,
+        kind: 'confirmation' as const,
       },
     })
 

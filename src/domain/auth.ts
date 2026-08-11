@@ -44,14 +44,11 @@ export interface SubmitterSession extends BaseSession {
 
 export type Session = OrganizerSession | SubmitterSession
 
-export const SESSION_IDENTITY_ISSUE_CODES = [
-  'submitter_without_contact',
-  'submitter_without_event',
-  'organizer_with_contact',
-  'organizer_with_event',
-] as const
-
-export type SessionIdentityIssueCode = (typeof SESSION_IDENTITY_ISSUE_CODES)[number]
+export type SessionIdentityIssueCode =
+  | 'submitter_without_contact'
+  | 'submitter_without_event'
+  | 'organizer_with_contact'
+  | 'organizer_with_event'
 
 export interface SessionIdentityIssue {
   readonly code: SessionIdentityIssueCode

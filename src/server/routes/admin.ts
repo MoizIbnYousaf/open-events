@@ -1,20 +1,19 @@
 import { Hono } from 'hono'
 
 import type {
+  AssignEvaluatorInput,
+  CriterionInput,
+  DefineCriteriaInput,
+  OpenRoundInput,
+  PlaceAgendaSessionInput,
   ReplaceTaxonomyInput,
   SaveFormDraftInput,
   TaxonomyItemInput,
   UpdateEventConfigInput,
 } from '../../application'
-import {
-  EVENT_STATUSES,
-  type ElementRule,
-  type EventDates,
-  type EventStatus,
-  type FormElement,
-  type FormPage,
-  type RoutingRule,
-} from '../../domain'
+import { EVENT_STATUSES, type EventDates, type EventStatus } from '../../domain/event'
+import type { FormElement, FormPage } from '../../domain/form-version'
+import type { ElementRule, RoutingRule } from '../../domain/rules'
 import {
   requireActor,
   requireOrganizer,
@@ -45,6 +44,15 @@ async function readJsonBody(context: ServerContext): Promise<Record<string, unkn
   } catch {
     return null
   }
+}
+
+function isCriterionInput(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    typeof value.weight === 'number' &&
+    typeof value.position === 'number'
+  )
 }
 
 function isTaxonomyItemInput(value: unknown): boolean {
@@ -201,6 +209,84 @@ export async function handleReplaceTaxonomies(context: ServerContext): Promise<R
   return context.json(dto)
 }
 
+/** Placement body: exactly the five placement fields, `trackId` optional. */
+function parsePlaceAgendaSession(body: Record<string, unknown>): PlaceAgendaSessionInput | null {
+  const allowed = new Set(['day', 'roomId', 'trackId', 'start', 'end'])
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) return null
+  }
+  const { day, roomId, trackId, start, end } = body
+  if (
+    typeof day !== 'string' ||
+    typeof roomId !== 'string' ||
+    typeof start !== 'string' ||
+    typeof end !== 'string'
+  ) {
+    return null
+  }
+  if (trackId !== undefined && trackId !== null && typeof trackId !== 'string') return null
+  return { day, roomId, start, end, trackId: typeof trackId === 'string' ? trackId : null }
+}
+
+/** GET /api/admin/events/:slug/agenda: the placeable board for one event. */
+export async function handleGetAgendaBoard(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const board = await deps.agendaBoard.getBoardBySlug(actor, slug)
+  return board === null ? notFoundResponse(context) : context.json(board)
+}
+
+/**
+ * PUT /api/admin/events/:slug/agenda/:submissionId: place one accepted
+ * submission. The event comes from the slug and the service checks the
+ * submission against it, so the path can never reach another event's agenda.
+ */
+export async function handlePlaceAgendaSession(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('submissionId')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const input = parsePlaceAgendaSession(body)
+  if (input === null) return validationFailedResponse(context)
+  return context.json(await deps.agendaBoard.place(actor, slug, submissionId, input))
+}
+
+/**
+ * DELETE /api/admin/events/:slug/agenda/:submissionId: take one session back
+ * off the schedule. Same event predicate as the placement, so a retraction can
+ * never reach another event's agenda.
+ */
+export async function handleUnplaceAgendaSession(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('submissionId')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  return context.json(await deps.agendaBoard.unplace(actor, slug, submissionId))
+}
+
+/** POST /api/admin/events/:slug/agenda/publish: idempotent, scheduled-only. */
+export async function handlePublishAgenda(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  return context.json(await deps.agendaBoard.publish(actor, slug))
+}
+
 /** GET /api/admin/events/:slug/forms. */
 export async function handleListForms(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -223,7 +309,11 @@ export async function handleGetFormDraft(context: ServerContext): Promise<Respon
   if (actor === null) return forbiddenResponse(context)
   const formId = context.req.param('id')
   if (formId === undefined) return notFoundResponse(context)
-  const draft = await deps.formBuilder.getDraft(actor, formId)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const draft = await deps.formBuilder.getDraft(actor, eventId, formId)
   return draft === null ? notFoundResponse(context) : context.json(draft)
 }
 
@@ -237,7 +327,11 @@ export async function handleListVersions(context: ServerContext): Promise<Respon
   if (formId === undefined) return notFoundResponse(context)
   const form = await deps.forms.findById(formId)
   if (form === null) return notFoundResponse(context)
-  const versions = await deps.formBuilder.listVersions(actor, formId)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const versions = await deps.formBuilder.listVersions(actor, eventId, formId)
   return context.json(versions)
 }
 
@@ -250,7 +344,11 @@ export async function handleGetVersionDetail(context: ServerContext): Promise<Re
   const formId = context.req.param('id')
   const versionId = context.req.param('versionId')
   if (formId === undefined || versionId === undefined) return notFoundResponse(context)
-  const detail = await deps.formBuilder.getVersionDetail(actor, formId, versionId)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const detail = await deps.formBuilder.getVersionDetail(actor, eventId, formId, versionId)
   return detail === null ? notFoundResponse(context) : context.json(detail)
 }
 
@@ -282,7 +380,11 @@ export async function handleUpdateFormDraft(context: ServerContext): Promise<Res
     conditionRules: conditionRules as ElementRule[],
     routingRules: routingRules as RoutingRule[],
   }
-  const detail = await deps.formBuilder.updateDraft(actor, formId, input)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const detail = await deps.formBuilder.updateDraft(actor, eventId, formId, input)
   return context.json(detail)
 }
 
@@ -294,7 +396,11 @@ export async function handlePublishForm(context: ServerContext): Promise<Respons
   if (actor === null) return forbiddenResponse(context)
   const formId = context.req.param('id')
   if (formId === undefined) return notFoundResponse(context)
-  const detail = await deps.formBuilder.publish(actor, formId)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const detail = await deps.formBuilder.publish(actor, eventId, formId)
   return context.json(detail)
 }
 
@@ -335,8 +441,38 @@ export async function handleAcceptSubmission(context: ServerContext): Promise<Re
   if (actor === null) return forbiddenResponse(context)
   const submissionId = context.req.param('id')
   if (submissionId === undefined) return notFoundResponse(context)
-  const accepted = await deps.onboarding.accept(actor, submissionId)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const accepted = await deps.onboarding.accept(actor, eventId, submissionId)
   return context.json(accepted)
+}
+
+/**
+ * POST /api/admin/submissions/:id/form-tasks: assign a published form to one
+ * accepted speaker as a form-backed onboarding task (idempotent).
+ */
+export async function handleAssignFormTask(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.formId !== 'string' || typeof body.contactId !== 'string') {
+    return validationFailedResponse(context)
+  }
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const task = await deps.onboarding.assignFormTask(actor, eventId, submissionId, {
+    formId: body.formId,
+    contactId: body.contactId,
+  })
+  return context.json(task)
 }
 
 /** GET /api/admin/readiness?eventSlug=: onboarding readiness for one event. */
@@ -361,7 +497,11 @@ export async function handleAcceptancePreview(context: ServerContext): Promise<R
   if (actor === null) return forbiddenResponse(context)
   const submissionId = context.req.param('id')
   if (submissionId === undefined) return notFoundResponse(context)
-  return context.json(await deps.communications.previewAcceptance(actor, submissionId))
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.communications.previewAcceptance(actor, eventId, submissionId))
 }
 
 /** POST /api/admin/submissions/:id/acceptance-send: idempotent, append-only. */
@@ -372,7 +512,41 @@ export async function handleAcceptanceSend(context: ServerContext): Promise<Resp
   if (actor === null) return forbiddenResponse(context)
   const submissionId = context.req.param('id')
   if (submissionId === undefined) return notFoundResponse(context)
-  return context.json(await deps.communications.queueAcceptance(actor, submissionId))
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.communications.queueAcceptance(actor, eventId, submissionId))
+}
+
+/** GET /api/admin/submissions/:id/reminder-preview. */
+export async function handleReminderPreview(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.communications.previewReminder(actor, eventId, submissionId))
+}
+
+/** POST /api/admin/submissions/:id/reminder-send: idempotent, append-only. */
+export async function handleReminderSend(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.communications.queueReminder(actor, eventId, submissionId))
 }
 
 /** GET /api/admin/submissions/:id/messages: immutable send history. */
@@ -383,7 +557,148 @@ export async function handleSubmissionMessages(context: ServerContext): Promise<
   if (actor === null) return forbiddenResponse(context)
   const submissionId = context.req.param('id')
   if (submissionId === undefined) return notFoundResponse(context)
-  return context.json(await deps.communications.listHistory(actor, submissionId))
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.communications.listHistory(actor, eventId, submissionId))
+}
+
+/** GET /api/admin/events/:slug/criteria: the event's weighted criteria. */
+export async function handleListCriteria(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.listCriteria(actor, eventId))
+}
+
+/** POST /api/admin/events/:slug/criteria: define criteria, keyed by name. */
+export async function handleDefineCriteria(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const criteria = body.criteria
+  if (!Array.isArray(criteria) || !criteria.every(isCriterionInput)) {
+    return validationFailedResponse(context)
+  }
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const input: DefineCriteriaInput = { criteria: criteria as CriterionInput[] }
+  return context.json(await deps.evaluations.defineCriteria(actor, eventId, input))
+}
+
+/** GET /api/admin/events/:slug/rounds: the event's review rounds. */
+export async function handleListRounds(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.listRounds(actor, eventId))
+}
+
+/** POST /api/admin/events/:slug/rounds: open a numbered round (idempotent). */
+export async function handleOpenRound(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const number = body.number
+  const name = body.name
+  if (typeof number !== 'number' || typeof name !== 'string') {
+    return validationFailedResponse(context)
+  }
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const input: OpenRoundInput = { number, name }
+  return context.json(await deps.evaluations.openRound(actor, eventId, input))
+}
+
+/** POST /api/admin/rounds/:id/close: idempotent one-way close. */
+export async function handleCloseRound(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const roundId = context.req.param('id')
+  if (roundId === undefined) return notFoundResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.closeRound(actor, eventId, roundId))
+}
+
+/** GET /api/admin/submissions/:id/assignments: the committee roster. */
+export async function handleListAssignments(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.listAssignments(actor, eventId, submissionId))
+}
+
+/** POST /api/admin/submissions/:id/assignments: idempotent evaluator assignment. */
+export async function handleAssignEvaluator(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const evaluatorEmail = body.evaluatorEmail
+  const roundId = body.roundId
+  if (typeof evaluatorEmail !== 'string') return validationFailedResponse(context)
+  if (roundId !== undefined && typeof roundId !== 'string') return validationFailedResponse(context)
+  const input: AssignEvaluatorInput = {
+    evaluatorEmail,
+    ...(typeof roundId === 'string' ? { roundId } : {}),
+  }
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.assign(actor, eventId, submissionId, input))
+}
+
+/** GET /api/admin/submissions/:id/evaluation-summary: weighted totals. */
+export async function handleEvaluationSummary(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.weightedSummary(actor, eventId, submissionId))
 }
 
 /** Registers the admin surface; CSRF runs before session validation on mutations. */
@@ -417,6 +732,33 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     handleReplaceTaxonomies,
   )
   app.get(
+    '/api/admin/events/:slug/agenda',
+    requireSession(),
+    requireActor('organizer'),
+    handleGetAgendaBoard,
+  )
+  app.put(
+    '/api/admin/events/:slug/agenda/:submissionId',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handlePlaceAgendaSession,
+  )
+  app.delete(
+    '/api/admin/events/:slug/agenda/:submissionId',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleUnplaceAgendaSession,
+  )
+  app.post(
+    '/api/admin/events/:slug/agenda/publish',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handlePublishAgenda,
+  )
+  app.get(
     '/api/admin/events/:slug/forms',
     requireSession(),
     requireActor('organizer'),
@@ -434,60 +776,132 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireActor('organizer'),
     handleGetSubmissionDetail,
   )
+  app.get(
+    '/api/admin/events/:slug/criteria',
+    requireSession(),
+    requireActor('organizer'),
+    handleListCriteria,
+  )
+  app.post(
+    '/api/admin/events/:slug/criteria',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleDefineCriteria,
+  )
+  app.get(
+    '/api/admin/events/:slug/rounds',
+    requireSession(),
+    requireActor('organizer'),
+    handleListRounds,
+  )
+  app.post(
+    '/api/admin/events/:slug/rounds',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleOpenRound,
+  )
+  app.post(
+    '/api/admin/events/:slug/rounds/:id/close',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleCloseRound,
+  )
+  app.get(
+    '/api/admin/events/:slug/submissions/:id/assignments',
+    requireSession(),
+    requireActor('organizer'),
+    handleListAssignments,
+  )
+  app.post(
+    '/api/admin/events/:slug/submissions/:id/assignments',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleAssignEvaluator,
+  )
+  app.get(
+    '/api/admin/events/:slug/submissions/:id/evaluation-summary',
+    requireSession(),
+    requireActor('organizer'),
+    handleEvaluationSummary,
+  )
   app.get('/api/admin/readiness', requireSession(), requireActor('organizer'), handleGetReadiness)
   app.post(
-    '/api/admin/submissions/:id/accept',
+    '/api/admin/events/:slug/submissions/:id/accept',
     csrfGate(),
     requireSession(),
     requireActor('organizer'),
     handleAcceptSubmission,
   )
+  app.post(
+    '/api/admin/events/:slug/submissions/:id/form-tasks',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleAssignFormTask,
+  )
   app.get(
-    '/api/admin/submissions/:id/acceptance-preview',
+    '/api/admin/events/:slug/submissions/:id/acceptance-preview',
     requireSession(),
     requireActor('organizer'),
     handleAcceptancePreview,
   )
   app.post(
-    '/api/admin/submissions/:id/acceptance-send',
+    '/api/admin/events/:slug/submissions/:id/acceptance-send',
     csrfGate(),
     requireSession(),
     requireActor('organizer'),
     handleAcceptanceSend,
   )
   app.get(
-    '/api/admin/submissions/:id/messages',
+    '/api/admin/events/:slug/submissions/:id/reminder-preview',
+    requireSession(),
+    requireActor('organizer'),
+    handleReminderPreview,
+  )
+  app.post(
+    '/api/admin/events/:slug/submissions/:id/reminder-send',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleReminderSend,
+  )
+  app.get(
+    '/api/admin/events/:slug/submissions/:id/messages',
     requireSession(),
     requireActor('organizer'),
     handleSubmissionMessages,
   )
   app.get(
-    '/api/admin/forms/:id/draft',
+    '/api/admin/events/:slug/forms/:id/draft',
     requireSession(),
     requireActor('organizer'),
     handleGetFormDraft,
   )
   app.get(
-    '/api/admin/forms/:id/versions',
+    '/api/admin/events/:slug/forms/:id/versions',
     requireSession(),
     requireActor('organizer'),
     handleListVersions,
   )
   app.get(
-    '/api/admin/forms/:id/versions/:versionId',
+    '/api/admin/events/:slug/forms/:id/versions/:versionId',
     requireSession(),
     requireActor('organizer'),
     handleGetVersionDetail,
   )
   app.put(
-    '/api/admin/forms/:id/draft',
+    '/api/admin/events/:slug/forms/:id/draft',
     csrfGate(),
     requireSession(),
     requireActor('organizer'),
     handleUpdateFormDraft,
   )
   app.post(
-    '/api/admin/forms/:id/publish',
+    '/api/admin/events/:slug/forms/:id/publish',
     csrfGate(),
     requireSession(),
     requireActor('organizer'),

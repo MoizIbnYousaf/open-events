@@ -57,7 +57,9 @@ export default function CfpSubmit({ formId, onSubmitted }: CfpSubmitProps) {
         <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold">
           Submission received
         </h1>
-        <StatusLive>Submission received. Thank you for your proposal.</StatusLive>
+        <StatusLive aria-live="polite">
+          Submission received. Thank you for your proposal.
+        </StatusLive>
       </div>
     )
   }
@@ -66,10 +68,16 @@ export default function CfpSubmit({ formId, onSubmitted }: CfpSubmitProps) {
     queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)?.draftId ?? null
   return (
     <div className="grid gap-3">
-      <div>
+      <div className="flex flex-wrap items-center gap-3">
+        {/* `pending` rather than a bare `disabled`: it is what puts aria-busy
+            on the control the speaker actually pressed, and it still makes the
+            control inert so the proposal cannot be submitted twice. The
+            separate `disabled` is a different condition — there is nothing
+            saved to submit — and must not claim to be in flight. */}
         <Button
           type="button"
-          disabled={submit.isPending || draftId === null}
+          pending={submit.isPending}
+          disabled={draftId === null}
           onClick={() =>
             submit.mutate(undefined, {
               onSuccess: () => {
@@ -81,6 +89,14 @@ export default function CfpSubmit({ formId, onSubmitted }: CfpSubmitProps) {
         >
           {submit.isPending ? 'Submitting…' : 'Submit'}
         </Button>
+        {/* aria-busy on a disabled control is not reliably announced, so the
+            in-flight state also exists as a status message beside it. A stable
+            region whose text changes, never one created together with its
+            text — a live region has to be in the accessibility tree before its
+            content arrives. */}
+        <StatusLive aria-live="polite">
+          {submit.isPending ? 'Submitting your proposal…' : null}
+        </StatusLive>
       </div>
       {bannerCopy !== null ? <AlertLive>{bannerCopy}</AlertLive> : null}
     </div>

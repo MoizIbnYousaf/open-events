@@ -1,4 +1,6 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+
+import { useServerMutation } from '../../../adapters/tanstack-react-query'
 import type { AnyRouter } from '@tanstack/react-router'
 
 import { getActiveDraft, saveDraft } from '../api/public'
@@ -13,6 +15,8 @@ export const publicDraftQueryKeys = {
 
 /** One editable co-speaker row kept in the shared editor cache. */
 export type CoSpeakerDraft = {
+  /** Stable render identity; never sent to the API. */
+  readonly clientId: string
   readonly firstName: string
   readonly lastName: string
   readonly email: string
@@ -64,7 +68,7 @@ export function usePublicEditor(formId: string, formVersionId: string) {
 
 export function useSaveDraft() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useServerMutation({
     mutationFn: () => {
       const editor = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
       if (editor === undefined) {

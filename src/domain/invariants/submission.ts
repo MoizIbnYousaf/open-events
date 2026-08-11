@@ -3,16 +3,13 @@ import type { ElementFieldKey, FormElement, FormVersionContent } from '../form-v
 import { isElementRequired, isElementVisible } from '../rules.ts'
 import { isValidEmailAddress } from './email.ts'
 
-export const ANSWER_ISSUE_CODES = [
-  'unknown_field',
-  'missing_required',
-  'invalid_type',
-  'exceeds_max_length',
-  'hidden_field_submitted',
-  'invalid_option',
-] as const
-
-export type AnswerIssueCode = (typeof ANSWER_ISSUE_CODES)[number]
+export type AnswerIssueCode =
+  | 'unknown_field'
+  | 'missing_required'
+  | 'invalid_type'
+  | 'exceeds_max_length'
+  | 'hidden_field_submitted'
+  | 'invalid_option'
 
 export interface AnswerValidationIssue {
   readonly code: AnswerIssueCode
@@ -127,8 +124,9 @@ function validateAnswerType(element: FormElement, value: unknown): AnswerValidat
         }
       }
       if (element.options.length > 0) {
+        const allowedOptions = new Set(element.options)
         for (const option of value) {
-          if (typeof option !== 'string' || !element.options.includes(option)) {
+          if (typeof option !== 'string' || !allowedOptions.has(option)) {
             return {
               code: 'invalid_option',
               fieldKey,

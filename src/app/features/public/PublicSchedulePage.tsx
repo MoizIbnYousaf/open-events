@@ -61,7 +61,7 @@ function ScheduleScreen({ eventSlug }: { readonly eventSlug: string | undefined 
         <Card>
           <CardContent className="grid gap-3">
             <Skeleton className="h-10 w-full" />
-            <StatusLive>Loading the schedule…</StatusLive>
+            <StatusLive aria-live="polite">Loading the schedule…</StatusLive>
           </CardContent>
         </Card>
       </section>
@@ -73,7 +73,7 @@ function ScheduleScreen({ eventSlug }: { readonly eventSlug: string | undefined 
         <h1 className="text-2xl font-semibold">Schedule</h1>
         <Card>
           <CardContent>
-            <StatusLive>No schedule yet.</StatusLive>
+            <StatusLive aria-live="polite">No schedule yet.</StatusLive>
           </CardContent>
         </Card>
       </div>
@@ -130,7 +130,7 @@ function ScheduleViews({
     })
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6" data-tour="schedule-page">
       <h1 className="text-2xl font-semibold">Schedule</h1>
       <ScheduleTable title="List" headers={['Time', 'Title', 'Track', 'Room']}>
         {sessionRows(views.list).map(({ session, time }) => (

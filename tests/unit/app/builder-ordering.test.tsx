@@ -182,13 +182,13 @@ async function mountBuilder() {
   const rootRoute = createRootRoute()
   const builderRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/admin/forms/$formId',
+    path: '/admin/events/$slug/forms/$formId',
     component: BuilderEditor,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([builderRoute]),
     history: createMemoryHistory({
-      initialEntries: [`/admin/forms/${FORM_ID}?eventSlug=${EVENT_SLUG}`],
+      initialEntries: [`/admin/events/${EVENT_SLUG}/forms/${FORM_ID}`],
     }),
   })
   await router.load()
@@ -206,16 +206,16 @@ async function mountBuilder() {
 beforeEach(() => {
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       return jsonResponse(DRAFT_DTO)
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`) {
       return jsonResponse(VERSIONS_DTO)
     }
     if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
       return jsonResponse(TAXONOMY_DTO)
     }
-    if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       const body = JSON.parse(String(init?.body)) as DraftPayload
       return jsonResponse(reissueContent(body))
     }
@@ -261,7 +261,7 @@ describe('builder element ordering', () => {
     ).toEqual(['Format', 'Abstract', 'Title'])
 
     await user.click(screen.getByRole('button', { name: /save/i }))
-    const put = fetchCall(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')
+    const put = fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
     const body = JSON.parse(String(put?.body)) as {
       elements: readonly { id: string; pageId: string }[]
     }
@@ -291,7 +291,7 @@ describe('builder element ordering', () => {
     await user.click(downButtons[0]!)
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    const put = fetchCall(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')
+    const put = fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
     const body = JSON.parse(String(put?.body)) as { elements: readonly { id: string }[] }
     expect(body.elements.map((element) => element.id)).toEqual(['e-3', 'e-1', 'e-2'])
   })
@@ -318,7 +318,9 @@ describe('builder element ordering', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(screen.getAllByLabelText('Label')[0]).toHaveFocus()
-    expect(fetchCall(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')).toBeUndefined()
+    expect(
+      fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT'),
+    ).toBeUndefined()
   })
 
   it('renders no internal ids, contentHash, or raw server messages', async () => {

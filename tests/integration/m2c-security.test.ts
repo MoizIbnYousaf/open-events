@@ -135,10 +135,14 @@ describe('CSRF gate on all six authenticated mutations', () => {
     },
     {
       method: 'PUT',
-      path: `/api/admin/forms/${DEMO_CONF_2026_FORM_ID}/draft`,
+      path: `/api/admin/events/demo-conf-2026/forms/${DEMO_CONF_2026_FORM_ID}/draft`,
       body: { pages: [], elements: [], conditionRules: [], routingRules: [] },
     },
-    { method: 'POST', path: `/api/admin/forms/${DEMO_CONF_2026_FORM_ID}/publish`, body: undefined },
+    {
+      method: 'POST',
+      path: `/api/admin/events/demo-conf-2026/forms/${DEMO_CONF_2026_FORM_ID}/publish`,
+      body: undefined,
+    },
     {
       method: 'PUT',
       path: '/api/public/draft',

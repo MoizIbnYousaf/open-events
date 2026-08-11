@@ -1,7 +1,8 @@
 import type { Context } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 
-import { ApplicationError, type ApplicationErrorCode, toApiErrorDto } from '../application'
+import { toApiErrorDto } from '../application/dtos/error.dto'
+import { ApplicationError, type ApplicationErrorCode } from '../application/errors'
 
 import { ConfigError } from './env'
 

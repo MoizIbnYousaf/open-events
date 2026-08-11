@@ -1,13 +1,7 @@
 import type { Event, EventDates } from '../event.ts'
 import { isValidUtcInstant } from './time.ts'
 
-export const EVENT_CONFIG_ISSUE_CODES = [
-  'invalid_timezone',
-  'invalid_utc_instant',
-  'invalid_date_range',
-] as const
-
-export type EventConfigIssueCode = (typeof EVENT_CONFIG_ISSUE_CODES)[number]
+export type EventConfigIssueCode = 'invalid_timezone' | 'invalid_utc_instant' | 'invalid_date_range'
 
 export interface EventConfigIssue {
   readonly code: EventConfigIssueCode

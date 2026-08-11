@@ -224,9 +224,14 @@ describe('public CFP draft save and resume', () => {
     renderDraftUi()
 
     await user.click(await screen.findByRole('button', { name: /save/i }))
-    expect(await screen.findByRole('button', { name: /saving/i })).toBeDisabled()
+    const saving = await screen.findByRole('button', { name: /saving/i })
+    expect(saving).toBeDisabled()
+    // The in-flight state is on the control AND in a status region: aria-busy
+    // on a disabled button is not reliably announced.
+    expect(saving).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent(/saving your draft/i)
     resolveSave?.(jsonResponse(SAVED_DRAFT))
-    expect(await screen.findByRole('status')).toHaveTextContent(/saved/i)
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/))
     expect(await screen.findByRole('button', { name: /save/i })).toBeEnabled()
   })
 

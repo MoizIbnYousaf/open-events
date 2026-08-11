@@ -6,6 +6,8 @@
  * transitions.
  */
 
+import type { EventDates, UtcInstant } from './event.ts'
+
 export type AgendaSessionStatus = 'draft' | 'published'
 
 export type AgendaSessionAssignment = 'unassigned' | 'scheduled'
@@ -65,6 +67,253 @@ export interface Req014Views {
   readonly room: Readonly<Record<string, readonly string[]>>
 }
 
+/** Length of the placeholder slot a newly accepted session starts with. */
+export const DEFAULT_SESSION_MINUTES = 60
+
+/** The embedded (day, start, end) triple every agenda session must carry. */
+export interface AgendaSlot {
+  readonly day: string
+  readonly start: UtcInstant
+  readonly end: UtcInstant
+}
+
+/**
+ * Placeholder slot for a session that has been accepted but not yet placed.
+ * The agenda row requires a day and a start/end pair even while it is
+ * `unassigned`, so acceptance anchors the session on a real instant (the event
+ * start when it is configured, the acceptance instant otherwise) and the
+ * organizer replaces it during placement.
+ */
+export function defaultAgendaSlot(anchor: UtcInstant): AgendaSlot {
+  const startMs = Date.parse(anchor)
+  if (Number.isNaN(startMs)) {
+    throw new Error('An agenda slot requires a parsable UTC instant')
+  }
+  const start = new Date(startMs).toISOString()
+  const end = new Date(startMs + DEFAULT_SESSION_MINUTES * 60_000).toISOString()
+  return { day: start.slice(0, 10), start, end }
+}
+
+/** A `YYYY-MM-DD` agenda day. */
+export function isAgendaDay(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`))
+}
+
+/**
+ * The latest instant a session that starts on `day` may end: the midnight that
+ * closes the day. The last slot the grid offers can run to that midnight, so it
+ * is allowed; anything beyond it would hold its room for days the organizer
+ * never placed it on.
+ */
+export function latestAgendaEnd(day: string): UtcInstant {
+  return new Date(Date.parse(`${day}T00:00:00.000Z`) + 86_400_000).toISOString()
+}
+
+/** One placeable cell of the agenda grid, as a UTC `HH:mm` time-of-day pair. */
+export interface AgendaGridSlot {
+  readonly startTime: string
+  readonly endTime: string
+}
+
+/**
+ * One day of the event window and the slots that day offers. Slots belong to a
+ * day rather than to the grid: the days of an event are not interchangeable —
+ * the event starts partway through the first and stops partway through the
+ * last — so one shared slot list could only ever be right about one of them.
+ */
+export interface AgendaGridDay {
+  readonly day: string
+  readonly slots: readonly AgendaGridSlot[]
+}
+
+/**
+ * The placeable days an event window offers, each with its own slots, together
+ * with how many days that window covers in total.
+ *
+ * The two are not always the same number: a runaway window is listed only as
+ * far as `MAX_AGENDA_DAYS`. `windowDays` is what lets a reader tell a day the
+ * window does not cover from a day it covers that this grid stops short of —
+ * the second is still a day the server places a session on, and calling it a
+ * day the event does not have would be false.
+ */
+export interface AgendaGrid {
+  readonly days: readonly AgendaGridDay[]
+  readonly windowDays: number
+}
+
+/** Upper bound keeping a misconfigured event window from producing a huge grid. */
+const MAX_AGENDA_DAYS = 31
+const MINUTES_PER_DAY = 24 * 60
+const MILLISECONDS_PER_DAY = 86_400_000
+
+function minutesOfDay(instant: UtcInstant): number {
+  const date = new Date(instant)
+  return date.getUTCHours() * 60 + date.getUTCMinutes()
+}
+
+function formatTimeOfDay(minutes: number): string {
+  const hours = Math.floor(minutes / 60) % 24
+  return `${String(hours).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+/**
+ * The UTC instants one grid cell of `day` stands for. A slot whose end time is
+ * not after its start time closes on the following day, so a cell running to
+ * midnight still yields a start before its end.
+ */
+export function gridSlotInstants(day: string, slot: AgendaGridSlot): AgendaSlot {
+  const endDay =
+    slot.endTime > slot.startTime
+      ? day
+      : new Date(Date.parse(`${day}T00:00:00.000Z`) + MILLISECONDS_PER_DAY)
+          .toISOString()
+          .slice(0, 10)
+  return {
+    day,
+    start: `${day}T${slot.startTime}:00.000Z`,
+    end: `${endDay}T${slot.endTime}:00.000Z`,
+  }
+}
+
+/**
+ * THE rule that decides whether a (day, start, end) belongs to an event window.
+ * One rule, exported once: `buildAgendaGrid` offers only slots this accepts and
+ * the placement service accepts only slots this offers, so the set an organizer
+ * is shown and the set the server takes cannot drift apart. They used to: the
+ * grid clipped every day to the window while the server checked the calendar
+ * date alone, and a nine-to-five event took sixteen hours a day that no cell of
+ * the board ever offered.
+ *
+ * The rule is interval clipping, plus the day bound a stored session carries:
+ *
+ *  - the slot must be well formed — a real `YYYY-MM-DD` day, two parsable
+ *    instants, and a start before its end;
+ *  - `day` must be the day the session starts on, and the session must end no
+ *    later than the midnight that closes that day (`latestAgendaEnd`), because
+ *    a session that ran past it would hold its room across days it was never
+ *    placed on;
+ *  - and the whole interval must lie inside the window: `start` no earlier than
+ *    the event's start and `end` no later than the event's end.
+ *
+ * An event with no dates configured yet has no window to be inside, so any
+ * well-formed slot is placeable — the dates are set first and the placements
+ * they would contradict are reported afterwards.
+ */
+export function isPlaceableSlot(dates: EventDates | null, slot: AgendaSlot): boolean {
+  if (!isAgendaDay(slot.day)) return false
+  const startMs = Date.parse(slot.start)
+  const endMs = Date.parse(slot.end)
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) return false
+  if (slot.day !== slot.start.slice(0, 10)) return false
+  if (endMs > Date.parse(latestAgendaEnd(slot.day))) return false
+  if (dates === null) return true
+  return startMs >= Date.parse(dates.startsAt) && endMs <= Date.parse(dates.endsAt)
+}
+
+/**
+ * The whole `DEFAULT_SESSION_MINUTES` cells of one day that the window really
+ * holds. Candidates are cut from `openMinutes` onwards and every one of them is
+ * put to `isPlaceableSlot`, so a cell reaches the board only if a placement into
+ * it would be accepted.
+ */
+function placeableSlotsOfDay(
+  dates: EventDates,
+  day: string,
+  openMinutes: number,
+): readonly AgendaGridSlot[] {
+  const slots: AgendaGridSlot[] = []
+  for (
+    let minute = openMinutes;
+    minute + DEFAULT_SESSION_MINUTES <= MINUTES_PER_DAY;
+    minute += DEFAULT_SESSION_MINUTES
+  ) {
+    const slot: AgendaGridSlot = {
+      startTime: formatTimeOfDay(minute),
+      endTime: formatTimeOfDay(minute + DEFAULT_SESSION_MINUTES),
+    }
+    if (isPlaceableSlot(dates, gridSlotInstants(day, slot))) slots.push(slot)
+  }
+  return slots
+}
+
+/**
+ * The grid an organizer places sessions on, derived from the event's own
+ * window, one day at a time.
+ *
+ * The daily window rule this adopts, in full: each day offers the part of the
+ * event's own window that falls on it — the window clipped to that day.
+ *
+ *  - A day opens at the midnight that begins it, except the event's own first
+ *    day, which opens at the event's start time of day because that instant is
+ *    when the event begins.
+ *  - A day closes at the midnight that ends it — exactly the bound
+ *    `latestAgendaEnd` puts on a session placed on that day — except the
+ *    event's own final day, which closes at the event's end time of day,
+ *    because that instant is when the event is over.
+ *  - So the first day runs from the event's start, the last day to the event's
+ *    end, and an interior day — one the window covers from end to end — offers
+ *    the whole of itself. A single-day event is both first and last: it runs
+ *    from its start time to its end time.
+ *
+ * Neither edge of the window is a daily one, and treating either as one hides
+ * hours the event really covers and the server really accepts:
+ *
+ *  - `endsAt` is the instant the whole event ends. Used as a daily close it
+ *    would cap every day at the last day's finish, so an event ending at 10:00
+ *    on its third morning would offer a single 09:00 slot for all three days
+ *    and no afternoon session could be expressed anywhere.
+ *  - `startsAt` is the instant the whole event begins. Used as a daily open it
+ *    would cut the same amount off every morning, so an event running from
+ *    18:00 on one evening to 18:00 two days later would offer nothing at all on
+ *    its final day — the day it covers most of — and nothing before 18:00 on
+ *    the interior day it covers end to end.
+ *
+ * Each day is then sliced into whole `DEFAULT_SESSION_MINUTES` slots, so a day
+ * with less than one session's worth of window offers none: a half-day event
+ * that ends thirty minutes after it starts, or a last day the window ends on
+ * within the hour after midnight. That day is still listed, with no slots on it
+ * — a real answer about a configured window, which the organizer surface can
+ * name, and never the same thing as an event that has no dates at all.
+ *
+ * None of that is a second rule, though: the clipping above is only how the
+ * candidates are cut, and every candidate is then put to `isPlaceableSlot`,
+ * which is the one rule the server places by as well. A cell is offered exactly
+ * when a placement into it would be accepted.
+ *
+ * An event without dates (or one whose window ends before it starts) offers no
+ * day at all — the dates are configured first. A window longer than
+ * `MAX_AGENDA_DAYS` is listed only that far, because a board of a thousand days
+ * is not a board anyone can read; `windowDays` then reports how long the window
+ * really is, so the unlisted days can be named as days the board stops short of
+ * rather than days the event does not have. They ARE days the event has: a
+ * placement on one of them is accepted, and nothing here may quietly move it.
+ */
+export function buildAgendaGrid(dates: EventDates | null): AgendaGrid {
+  if (dates === null) return { days: [], windowDays: 0 }
+  const startMs = Date.parse(dates.startsAt)
+  const endMs = Date.parse(dates.endsAt)
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) {
+    return { days: [], windowDays: 0 }
+  }
+  const firstDayMs = Date.parse(`${dates.startsAt.slice(0, 10)}T00:00:00.000Z`)
+  const lastDayMs = Date.parse(`${dates.endsAt.slice(0, 10)}T00:00:00.000Z`)
+  const windowDays = Math.round((lastDayMs - firstDayMs) / MILLISECONDS_PER_DAY) + 1
+  const openMinutes = minutesOfDay(dates.startsAt)
+  const days: AgendaGridDay[] = []
+  for (
+    let dayMs = firstDayMs;
+    dayMs <= lastDayMs && days.length < MAX_AGENDA_DAYS;
+    dayMs += MILLISECONDS_PER_DAY
+  ) {
+    const day = new Date(dayMs).toISOString().slice(0, 10)
+    days.push({
+      day,
+      slots: placeableSlotsOfDay(dates, day, dayMs === firstDayMs ? openMinutes : 0),
+    })
+  }
+  return { days, windowDays }
+}
+
 /**
  * Assigns every session a room, track, slot, and explicit position.
  * Sessions keep their own track/room when set; otherwise they deterministically
@@ -98,18 +347,29 @@ export function placeSessions(input: AgendaPlacementInput): readonly AgendaPlace
 }
 
 /**
- * Strictly-overlapping but not slot-identical sessions conflict. Identical
- * (day, start, end) slots are the deliberate multi-session co-location the
- * position model supports, so they never conflict.
+ * Two sessions overlap when their half-open [start, end) instant intervals
+ * intersect. An identical (start, end) pair is the strongest overlap there is —
+ * two sessions in one room at one time — so it counts too. The comparison is on
+ * the instants alone: `day` is a denormalisation of the start, so a session
+ * that runs from one evening into the next morning still holds its room across
+ * the boundary. The position model lets both rows exist; reporting the overlap
+ * is what lets the organizer resolve it.
  */
 function overlaps(a: AgendaPlacement, b: AgendaPlacement): boolean {
-  if (a.day !== b.day) return false
-  if (a.start === b.start && a.end === b.end) return false
   return a.start < b.end && b.start < a.end
 }
 
+/**
+ * An empty identifier means "not set" (an unplaced session carries no room,
+ * an unrouted session carries no track), and absence can never be shared.
+ */
+function sharesIdentifier(first: string, second: string): boolean {
+  return first.length > 0 && first === second
+}
+
 function sharesSpeaker(a: AgendaPlacement, b: AgendaPlacement): boolean {
-  return a.speakerIds.some((speakerId) => b.speakerIds.includes(speakerId))
+  const bSpeakerIds = new Set(b.speakerIds)
+  return a.speakerIds.some((speakerId) => bSpeakerIds.has(speakerId))
 }
 
 function orderedPair(
@@ -129,8 +389,9 @@ const CONFLICT_KIND_ORDER: readonly AgendaConflictKind[] = ['room', 'speaker', '
 /**
  * Deterministic conflict set: room (same room, overlapping), speaker (shared
  * speaker, overlapping), track (same track, different rooms, overlapping).
- * Returns every distinct (kind, first, second) exactly once, sorted by kind
- * then submission id.
+ * Overlapping includes the identical slot, so a same-room double booking is
+ * reported. Returns every distinct (kind, first, second) exactly once, sorted
+ * by kind then submission id.
  */
 export function findAgendaConflicts(
   placements: readonly AgendaPlacement[],
@@ -143,13 +404,13 @@ export function findAgendaConflicts(
       const b = placements[other]
       if (b === undefined) continue
       if (!overlaps(a, b)) continue
-      if (a.roomId === b.roomId) {
+      if (sharesIdentifier(a.roomId, b.roomId)) {
         conflicts.push({ kind: 'room', ...orderedPair(a, b) })
       }
       if (sharesSpeaker(a, b)) {
         conflicts.push({ kind: 'speaker', ...orderedPair(a, b) })
       }
-      if (a.trackId === b.trackId && a.roomId !== b.roomId) {
+      if (sharesIdentifier(a.trackId, b.trackId) && a.roomId !== b.roomId) {
         conflicts.push({ kind: 'track', ...orderedPair(a, b) })
       }
     }
@@ -247,12 +508,16 @@ export function deriveReq014Views(aggregates: AgendaAggregates): Req014Views {
   }
 }
 
-/** Only draft → published is a valid agenda status transition. */
+/**
+ * Publishing is reversible: draft → published puts a session on the public
+ * programme and published → draft takes it back off, which is how a cancelled
+ * session stops being served. Only the no-ops are invalid.
+ */
 export function transitionAgendaStatus(
   from: AgendaSessionStatus,
   to: AgendaSessionStatus,
 ): AgendaSessionStatus {
-  if (from === 'draft' && to === 'published') return to
+  if (from !== to) return to
   throw new Error(`Invalid agenda status transition: ${from} -> ${to}`)
 }
 

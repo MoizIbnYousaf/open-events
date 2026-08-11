@@ -2,6 +2,7 @@ import { applyD1Migrations, env, reset } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import migration0008Sql from '../../migrations/0008_create_uploaded_files_table.sql?raw'
+import migration0014Sql from '../../migrations/0014_widen_uploaded_file_kinds.sql?raw'
 import { HEADSHOT_MAX_BYTES } from '../../src/application'
 import app from '../../src/server'
 import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
@@ -16,6 +17,7 @@ beforeEach(async () => {
   await applyMigrations(env.DB)
   await applyD1Migrations(env.DB, [
     { name: '0008_create_uploaded_files_table.sql', queries: splitSqlStatements(migration0008Sql) },
+    { name: '0014_widen_uploaded_file_kinds.sql', queries: splitSqlStatements(migration0014Sql) },
   ])
   await seedDemoConf(env.DB)
 })

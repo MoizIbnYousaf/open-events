@@ -65,7 +65,7 @@ describe('FormBuilderService.updateDraft', () => {
   it('creates draft version 1 and persists the content through the unit of work', async () => {
     const { service, versions, content } = buildHarness()
 
-    const detail = await service.updateDraft(organizerActor, FORM_ID, draftInput())
+    const detail = await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
 
     expect(detail.formId).toBe(FORM_ID)
     expect(detail.version).toBe(1)
@@ -96,9 +96,9 @@ describe('FormBuilderService.updateDraft', () => {
       ],
     }
 
-    await expect(service.updateDraft(organizerActor, FORM_ID, badInput)).rejects.toBeInstanceOf(
-      ValidationFailedError,
-    )
+    await expect(
+      service.updateDraft(organizerActor, EVENT_ID, FORM_ID, badInput),
+    ).rejects.toBeInstanceOf(ValidationFailedError)
     expect(await versions.listByForm(FORM_ID)).toEqual([])
     expect(await content.loadByVersion(EVENT_ID, 'version-1')).toEqual({
       pages: [],
@@ -112,9 +112,9 @@ describe('FormBuilderService.updateDraft', () => {
 describe('FormBuilderService.publish', () => {
   it('freezes the draft with a content hash and binds the form', async () => {
     const { service, forms, versions } = buildHarness()
-    const draft = await service.updateDraft(organizerActor, FORM_ID, draftInput())
+    const draft = await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
 
-    const published = await service.publish(organizerActor, FORM_ID)
+    const published = await service.publish(organizerActor, EVENT_ID, FORM_ID)
 
     expect(published.status).toBe('published')
     expect(published.contentHash).toMatch(/^[0-9a-f]{64}$/)
@@ -128,7 +128,7 @@ describe('FormBuilderService.publish', () => {
 
   it('refuses to publish a version with invalid rules', async () => {
     const { service, versions, content } = buildHarness()
-    const draft = await service.updateDraft(organizerActor, FORM_ID, draftInput())
+    const draft = await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
     await content.saveForVersion(
       EVENT_ID,
       draft.versionId,
@@ -143,7 +143,7 @@ describe('FormBuilderService.publish', () => {
       }),
     )
 
-    await expect(service.publish(organizerActor, FORM_ID)).rejects.toBeInstanceOf(
+    await expect(service.publish(organizerActor, EVENT_ID, FORM_ID)).rejects.toBeInstanceOf(
       ValidationFailedError,
     )
     const version = (await versions.listByForm(FORM_ID))[0]
@@ -154,17 +154,17 @@ describe('FormBuilderService.publish', () => {
   it('refuses to publish when there is no draft version', async () => {
     const { service } = buildHarness()
 
-    await expect(service.publish(organizerActor, FORM_ID)).rejects.toMatchObject({
+    await expect(service.publish(organizerActor, EVENT_ID, FORM_ID)).rejects.toMatchObject({
       code: 'conflict',
     })
   })
 
   it('forks a new draft version when editing a published form', async () => {
     const { service, versions } = buildHarness()
-    await service.updateDraft(organizerActor, FORM_ID, draftInput())
-    const published = await service.publish(organizerActor, FORM_ID)
+    await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
+    const published = await service.publish(organizerActor, EVENT_ID, FORM_ID)
 
-    const nextDraft = await service.updateDraft(organizerActor, FORM_ID, draftInput())
+    const nextDraft = await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
 
     expect(nextDraft.version).toBe(2)
     expect(nextDraft.status).toBe('draft')
@@ -199,28 +199,38 @@ describe('FormBuilderService P0 contracts', () => {
 
   it('returns version detail for any version of the form and null otherwise', async () => {
     const { service, versions, content } = buildHarness()
-    const draft = await service.updateDraft(organizerActor, FORM_ID, draftInput())
-    await service.publish(organizerActor, FORM_ID)
+    const draft = await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
+    await service.publish(organizerActor, EVENT_ID, FORM_ID)
     const versionTwo = createVersion({ id: 'version-2', version: 2, updatedAt: FIXED_NOW })
     await versions.save(versionTwo)
     await content.saveForVersion(EVENT_ID, versionTwo.id, createContent())
 
-    expect(await service.getVersionDetail(organizerActor, FORM_ID, draft.versionId)).toMatchObject({
+    expect(
+      await service.getVersionDetail(organizerActor, EVENT_ID, FORM_ID, draft.versionId),
+    ).toMatchObject({
       versionId: draft.versionId,
       status: 'published',
     })
-    expect(await service.getVersionDetail(organizerActor, FORM_ID, 'version-2')).toMatchObject({
+    expect(
+      await service.getVersionDetail(organizerActor, EVENT_ID, FORM_ID, 'version-2'),
+    ).toMatchObject({
       versionId: 'version-2',
       status: 'draft',
     })
-    expect(await service.getVersionDetail(organizerActor, FORM_ID, 'version-ghost')).toBeNull()
-    expect(await service.getVersionDetail(organizerActor, 'form-other', draft.versionId)).toBeNull()
+    expect(
+      await service.getVersionDetail(organizerActor, EVENT_ID, FORM_ID, 'version-ghost'),
+    ).toBeNull()
+    // O3: an unknown/other form under this event now throws the same safe
+    // not_found as a cross-event form instead of answering null.
+    await expect(
+      service.getVersionDetail(organizerActor, EVENT_ID, 'form-other', draft.versionId),
+    ).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('exposes the eventSlug on public definitions', async () => {
     const { service } = buildHarness()
-    await service.updateDraft(organizerActor, FORM_ID, draftInput())
-    await service.publish(organizerActor, FORM_ID)
+    await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
+    await service.publish(organizerActor, EVENT_ID, FORM_ID)
 
     const definition = await service.getPublishedByEventSlug(EVENT_SLUG, 'cfp')
     expect(definition?.eventSlug).toBe(EVENT_SLUG)
@@ -231,8 +241,8 @@ describe('FormBuilderService P0 contracts', () => {
 
   it('resolves the single published form by event slug', async () => {
     const { service } = buildHarness()
-    await service.updateDraft(organizerActor, FORM_ID, draftInput())
-    await service.publish(organizerActor, FORM_ID)
+    await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
+    await service.publish(organizerActor, EVENT_ID, FORM_ID)
 
     const definition = await service.getPublishedByEvent(EVENT_SLUG)
     expect(definition?.eventSlug).toBe(EVENT_SLUG)
@@ -282,7 +292,7 @@ describe('FormBuilderService errors and DTO shape', () => {
     const { service } = buildHarness()
 
     await expect(
-      service.updateDraft(organizerActor, 'form-ghost', draftInput()),
+      service.updateDraft(organizerActor, EVENT_ID, 'form-ghost', draftInput()),
     ).rejects.toMatchObject({ code: 'not_found' })
   })
 })

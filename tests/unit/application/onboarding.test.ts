@@ -9,15 +9,22 @@ import {
   OWNER_CONTACT_ID,
   createSubmission,
   createSubmitterActor,
+  eventFixture,
   organizerActor,
+  ownerContact,
 } from '../helpers/fixtures'
 import {
+  InMemoryContactRepository,
+  InMemoryEventRepository,
+  InMemoryFormContentRepository,
+  InMemoryFormRepository,
   InMemoryFormVersionRepository,
   InMemorySubmissionRepository,
 } from '../helpers/in-memory-repositories'
 import {
   InMemoryAcceptUnitOfWork,
   InMemorySpeakerTaskRepository,
+  InMemoryUploadedFileRepository,
 } from '../helpers/in-memory-onboarding'
 
 const CO_SPEAKER_CONTACT_ID = 'contact-speaker-b'
@@ -33,9 +40,42 @@ const otherEventSubmission = createSubmission({
 let now: string
 let tasks: InMemorySpeakerTaskRepository
 let submissions: InMemorySubmissionRepository
+let events: InMemoryEventRepository
+let acceptUnitOfWork: InMemoryAcceptUnitOfWork
 let service: OnboardingService
 
 const clock: Clock = { now: () => now }
+
+/** Rebuilds the service against a specific event configuration. */
+function buildService(event = eventFixture): OnboardingService {
+  events = new InMemoryEventRepository([event])
+  acceptUnitOfWork = new InMemoryAcceptUnitOfWork(
+    tasks,
+    [submission.id, otherEventSubmission.id],
+    [OWNER_CONTACT_ID, CO_SPEAKER_CONTACT_ID],
+  )
+  return new OnboardingService(
+    submissions,
+    events,
+    tasks,
+    acceptUnitOfWork,
+    clock,
+    new InMemoryFormRepository(),
+    new InMemoryFormVersionRepository(),
+    new InMemoryFormContentRepository(),
+    new InMemoryContactRepository([
+      { ...ownerContact, bio: 'Seeded bio' },
+      {
+        id: CO_SPEAKER_CONTACT_ID,
+        email: 'speaker-b@example.test',
+        name: 'Speaker B',
+        createdAt: '2026-05-20T09:00:00.000Z',
+        bio: 'Seeded co-speaker bio',
+      },
+    ]),
+    seededUploads(),
+  )
+}
 
 beforeEach(async () => {
   now = FIXED_NOW
@@ -60,21 +100,39 @@ beforeEach(async () => {
       position: 1,
     },
   ])
-  service = new OnboardingService(
-    submissions,
-    tasks,
-    new InMemoryAcceptUnitOfWork(
-      tasks,
-      [submission.id, otherEventSubmission.id],
-      [OWNER_CONTACT_ID, CO_SPEAKER_CONTACT_ID],
-    ),
-    clock,
-  )
+  service = buildService()
 })
+
+function seededUploads(): InMemoryUploadedFileRepository {
+  const uploads = new InMemoryUploadedFileRepository()
+  void uploads.upsert({
+    id: 'upload-seeded-b',
+    eventId: 'event-demo-conf',
+    ownerContactId: 'contact-speaker-b',
+    kind: 'headshot',
+    storageKey: 'events/event-demo-conf/contacts/contact-speaker-b/headshot/upload-seeded-b',
+    contentType: 'image/png',
+    sizeBytes: 10,
+    createdAt: '2026-05-20T09:00:00.000Z',
+    updatedAt: '2026-05-20T09:00:00.000Z',
+  })
+  void uploads.upsert({
+    id: 'upload-seeded',
+    eventId: 'event-demo-conf',
+    ownerContactId: 'contact-speaker-a',
+    kind: 'headshot',
+    storageKey: 'events/event-demo-conf/contacts/contact-speaker-a/headshot/upload-seeded',
+    contentType: 'image/png',
+    sizeBytes: 10,
+    createdAt: '2026-05-20T09:00:00.000Z',
+    updatedAt: '2026-05-20T09:00:00.000Z',
+  })
+  return uploads
+}
 
 describe('OnboardingService.accept', () => {
   it('creates one task per checklist kind for every contributor', async () => {
-    const result = await service.accept(organizerActor, submission.id)
+    const result = await service.accept(organizerActor, EVENT_ID, submission.id)
 
     expect(result.submissionId).toBe(submission.id)
     expect(result.acceptedAt).toBe(FIXED_NOW)
@@ -89,9 +147,9 @@ describe('OnboardingService.accept', () => {
   })
 
   it('is idempotent: a repeated accept creates no second checklist', async () => {
-    const first = await service.accept(organizerActor, submission.id)
+    const first = await service.accept(organizerActor, EVENT_ID, submission.id)
     now = LATER
-    const second = await service.accept(organizerActor, submission.id)
+    const second = await service.accept(organizerActor, EVENT_ID, submission.id)
 
     expect(second.alreadyAccepted).toBe(true)
     expect(second.acceptedAt).toBe(FIXED_NOW)
@@ -100,18 +158,57 @@ describe('OnboardingService.accept', () => {
   })
 
   it('rejects an unknown submission with not_found', async () => {
-    await expect(service.accept(organizerActor, 'submission-missing')).rejects.toMatchObject({
+    await expect(
+      service.accept(organizerActor, EVENT_ID, 'submission-missing'),
+    ).rejects.toMatchObject({
       code: 'not_found',
     })
-    await expect(service.accept(organizerActor, 'submission-missing')).rejects.toBeInstanceOf(
-      ApplicationError,
+    await expect(
+      service.accept(organizerActor, EVENT_ID, 'submission-missing'),
+    ).rejects.toBeInstanceOf(ApplicationError)
+  })
+
+  // The accepted proposal has to become a placeable session in the same batch,
+  // otherwise nothing the organizer can drag ever exists.
+  it('materialises one unassigned agenda session carrying every contributor', async () => {
+    await service.accept(organizerActor, EVENT_ID, submission.id)
+
+    const sessions = acceptUnitOfWork.listSessions()
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]).toMatchObject({
+      eventId: EVENT_ID,
+      submissionId: submission.id,
+      day: '2026-05-13',
+      start: '2026-05-13T08:00:00.000Z',
+    })
+    expect(sessions[0]?.end).toBe('2026-05-13T09:00:00.000Z')
+    expect(new Set(sessions[0]?.speakerContactIds)).toEqual(
+      new Set([OWNER_CONTACT_ID, CO_SPEAKER_CONTACT_ID]),
     )
+  })
+
+  it('places the session on the acceptance day when the event has no dates yet', async () => {
+    service = buildService({ ...eventFixture, dates: null })
+
+    await service.accept(organizerActor, EVENT_ID, submission.id)
+
+    const session = acceptUnitOfWork.listSessions()[0]
+    expect(session?.day).toBe(FIXED_NOW.slice(0, 10))
+    expect(session?.start).toBe(FIXED_NOW)
+  })
+
+  it('creates no second agenda session on a repeated accept', async () => {
+    await service.accept(organizerActor, EVENT_ID, submission.id)
+    now = LATER
+    await service.accept(organizerActor, EVENT_ID, submission.id)
+
+    expect(acceptUnitOfWork.listSessions()).toHaveLength(1)
   })
 })
 
 describe('OnboardingService task list and completion', () => {
   beforeEach(async () => {
-    await service.accept(organizerActor, submission.id)
+    await service.accept(organizerActor, EVENT_ID, submission.id)
   })
 
   it('lists only the calling speaker own tasks', async () => {
@@ -174,7 +271,7 @@ describe('OnboardingService.readiness', () => {
   })
 
   it('aggregates completion across the accepted checklists', async () => {
-    await service.accept(organizerActor, submission.id)
+    await service.accept(organizerActor, EVENT_ID, submission.id)
     const actor = createSubmitterActor()
     const [first] = await service.listTasks(actor)
     if (first === undefined) throw new Error('expected a seeded task')
@@ -199,7 +296,7 @@ describe('OnboardingService.readiness', () => {
   })
 
   it('marks a submission ready once every task is completed', async () => {
-    await service.accept(organizerActor, submission.id)
+    await service.accept(organizerActor, EVENT_ID, submission.id)
     for (const contactId of [OWNER_CONTACT_ID, CO_SPEAKER_CONTACT_ID]) {
       const actor = createSubmitterActor({ contactId })
       for (const task of await service.listTasks(actor)) {
@@ -210,5 +307,36 @@ describe('OnboardingService.readiness', () => {
     const readiness = await service.readiness(organizerActor, EVENT_ID)
     expect(readiness.percentComplete).toBe(100)
     expect(readiness.submissions[0]?.ready).toBe(true)
+  })
+})
+
+// The speaker's own acceptance state. proposal_submissions.status is pinned to
+// 'pending' by migration 0002 and the acceptance row IS the accepted state, so
+// this actor-scoped read is what lets the portal show it. It never reveals
+// another speaker's submissions and never leaves the actor's own event.
+describe('OnboardingService.listAcceptedOwnSubmissionIds', () => {
+  it('is empty before any acceptance', async () => {
+    expect(await service.listAcceptedOwnSubmissionIds(createSubmitterActor())).toEqual([])
+  })
+
+  it('returns only the calling speaker own accepted submissions', async () => {
+    await service.accept(organizerActor, EVENT_ID, submission.id)
+
+    expect(await service.listAcceptedOwnSubmissionIds(createSubmitterActor())).toEqual([
+      submission.id,
+    ])
+  })
+
+  it('never reports another speaker submissions or another event', async () => {
+    await service.accept(organizerActor, EVENT_ID, submission.id)
+
+    expect(
+      await service.listAcceptedOwnSubmissionIds(
+        createSubmitterActor({ contactId: CO_SPEAKER_CONTACT_ID }),
+      ),
+    ).toEqual([])
+    expect(
+      await service.listAcceptedOwnSubmissionIds(createSubmitterActor({ eventId: 'event-other' })),
+    ).toEqual([])
   })
 })

@@ -21,6 +21,11 @@ import {
 // states, redirects unauthenticated visitors toward /start via the provided
 // callback, and renders one accessible row per submission with its title and
 // current status. No dead controls, no invented data.
+//
+// The persisted submission status is pinned to 'pending' by migration 0002 and
+// acceptance is its own record, so the acceptance state travels as the
+// `accepted` flag on the own-submissions payload — the ONLY status vocabulary
+// the API can produce. An accepted submission also exposes its calendar invite.
 
 const PORTAL_URL = '/api/public/submissions'
 
@@ -29,7 +34,9 @@ const SUBMISSIONS_ENVELOPE = {
     {
       id: 'submission-1',
       title: 'Deterministic conflict detection at scale',
-      status: 'submitted',
+      status: 'pending',
+      accepted: false,
+      inviteAvailable: false,
       formSlug: 'cfp',
       version: 1,
       coSpeakerCount: 1,
@@ -38,13 +45,20 @@ const SUBMISSIONS_ENVELOPE = {
     {
       id: 'submission-2',
       title: 'Base UI in production',
-      status: 'accepted',
+      status: 'pending',
+      accepted: true,
+      inviteAvailable: true,
       formSlug: 'cfp',
       version: 1,
       coSpeakerCount: 0,
       submittedAt: '2026-04-20T10:00:00.000Z',
     },
   ],
+} as const
+
+/** Accepted, but the organizer has cleared the event dates: no .ics exists. */
+const UNDATED_ENVELOPE = {
+  submissions: [{ ...SUBMISSIONS_ENVELOPE.submissions[1], inviteAvailable: false }],
 } as const
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -178,9 +192,55 @@ describe('speaker portal', () => {
     const items = within(list).getAllByRole('listitem')
     expect(items).toHaveLength(2)
     expect(items[0]).toHaveTextContent('Deterministic conflict detection at scale')
-    expect(items[0]).toHaveTextContent(/submitted/i)
+    expect(items[0]).toHaveTextContent(/pending review/i)
+    expect(items[0]).not.toHaveTextContent(/accepted/i)
     expect(items[1]).toHaveTextContent('Base UI in production')
     expect(items[1]).toHaveTextContent(/accepted/i)
+  })
+
+  it('offers the calendar invite only for an accepted submission', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === PORTAL_URL) {
+        return jsonResponse(SUBMISSIONS_ENVELOPE)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPage()
+    const list = await screen.findByRole('list', { name: /your submissions/i })
+    const links = within(list).getAllByRole('link', { name: /calendar invite/i })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/api/public/invite/submission-2.ics')
+  })
+
+  // The invite route answers 409 JSON when the event has no dates, and a
+  // `download` anchor would save that error body as the .ics file. The link
+  // must not exist unless the server says an invite can be built.
+  it('never offers a download the invite route cannot serve', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === PORTAL_URL) {
+        return jsonResponse(UNDATED_ENVELOPE)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPage()
+    const list = await screen.findByRole('list', { name: /your submissions/i })
+    expect(within(list).queryByRole('link', { name: /calendar invite/i })).toBeNull()
+    expect(within(list).getByText(/event dates/i)).toBeInTheDocument()
+  })
+
+  it('keeps exactly one page-owned h1 on the composed portal', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === PORTAL_URL) {
+        return jsonResponse(SUBMISSIONS_ENVELOPE)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPage()
+    await screen.findByRole('list', { name: /your submissions/i })
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
   })
 
   it('shows generic error copy with a working retry and no raw server leakage', async () => {

@@ -5,10 +5,13 @@ import {
   ACCEPTANCE_SUBJECT_TEMPLATE,
   ApplicationError,
   CommunicationsService,
+  SPEAKER_PORTAL_PATH,
   renderAcceptanceTemplate,
 } from '../../../src/application'
+import type { Event } from '../../../src/domain'
 import { buildInviteUid } from '../../../src/domain'
 import {
+  EVENT_ID,
   createSubmission,
   createVersion,
   crossEventActor,
@@ -26,16 +29,28 @@ import {
   InMemoryFormVersionRepository,
   InMemorySubmissionRepository,
 } from '../helpers/in-memory-repositories'
+import { InMemorySpeakerTaskRepository } from '../helpers/in-memory-onboarding'
 
 const SUBMISSION_ID = 'submission-1'
 
-function buildHarness() {
+const ACCEPTANCE = {
+  eventId: EVENT_ID,
+  submissionId: SUBMISSION_ID,
+  acceptedAt: '2026-05-19T09:00:00.000Z',
+}
+
+/** Accepted by default: acceptance is the precondition of every send. */
+function buildHarness({
+  accepted = true,
+  event = eventFixture,
+}: { accepted?: boolean; event?: Event } = {}) {
   const versions = new InMemoryFormVersionRepository([createVersion()])
   const submissions = new InMemorySubmissionRepository(versions, [createSubmission()])
-  const events = new InMemoryEventRepository([eventFixture])
+  const events = new InMemoryEventRepository([event])
   const contacts = new InMemoryContactRepository([ownerContact])
   const messages = new InMemoryCapturedMessageRepository()
-  const service = new CommunicationsService(submissions, events, contacts, messages, {
+  const tasks = new InMemorySpeakerTaskRepository([], accepted ? [ACCEPTANCE] : [])
+  const service = new CommunicationsService(submissions, events, contacts, messages, tasks, {
     now: () => FIXED_NOW,
   })
   return { service, messages }
@@ -68,13 +83,45 @@ describe('renderAcceptanceTemplate', () => {
     expect(combined).toContain('{{eventName}}')
     expect(combined).toContain('{{title}}')
   })
+
+  // No attachment exists on a CapturedMessage and none can, so the body must
+  // not claim one; it points at the portal, where the .ics is downloadable.
+  it('never claims an attachment the captured message cannot carry', () => {
+    expect(ACCEPTANCE_BODY_TEMPLATE).not.toMatch(/attach/i)
+    expect(ACCEPTANCE_BODY_TEMPLATE).toMatch(/portal/i)
+    expect(ACCEPTANCE_BODY_TEMPLATE).toMatch(/calendar invite/i)
+  })
+
+  // The message is the only thing an accepted speaker is handed, so naming a
+  // destination without its address is not a way in: the body must carry the
+  // portal's real path.
+  it('addresses the speaker portal by its real path', () => {
+    expect(SPEAKER_PORTAL_PATH).toBe('/portal')
+    expect(ACCEPTANCE_BODY_TEMPLATE).toContain(SPEAKER_PORTAL_PATH)
+  })
+})
+
+describe('CommunicationsService.isInviteAvailable', () => {
+  it('is true only while the event still has configured dates', async () => {
+    const dated = buildHarness()
+    await expect(dated.service.isInviteAvailable(ownerActor)).resolves.toBe(true)
+
+    const undated = buildHarness({ event: { ...eventFixture, dates: null } })
+    await expect(undated.service.isInviteAvailable(ownerActor)).resolves.toBe(false)
+  })
+
+  it('is false for an unknown event rather than throwing', async () => {
+    const { service } = buildHarness()
+
+    await expect(service.isInviteAvailable(crossEventActor)).resolves.toBe(false)
+  })
 })
 
 describe('CommunicationsService.previewAcceptance', () => {
   it('renders the subject and body with the submission substitutions', async () => {
     const { service } = buildHarness()
 
-    const preview = await service.previewAcceptance(organizerActor, SUBMISSION_ID)
+    const preview = await service.previewAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
 
     expect(preview.submissionId).toBe(SUBMISSION_ID)
     expect(preview.toEmail).toBe('speaker-a@example.test')
@@ -86,21 +133,32 @@ describe('CommunicationsService.previewAcceptance', () => {
     expect(preview.body).not.toContain('{{')
     expect(preview.subject).not.toContain('{{')
     expect(preview.alreadySent).toBe(false)
+    expect(preview.accepted).toBe(true)
+  })
+
+  it('reports the acceptance state so the organizer never sends ahead of it', async () => {
+    const { service } = buildHarness({ accepted: false })
+
+    expect(
+      (await service.previewAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)).accepted,
+    ).toBe(false)
   })
 
   it('reports alreadySent once the acceptance has been queued', async () => {
     const { service } = buildHarness()
 
-    await service.queueAcceptance(organizerActor, SUBMISSION_ID)
+    await service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
 
-    expect((await service.previewAcceptance(organizerActor, SUBMISSION_ID)).alreadySent).toBe(true)
+    expect(
+      (await service.previewAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)).alreadySent,
+    ).toBe(true)
   })
 
   it('is a pure read: previewing never writes a captured message', async () => {
     const { service, messages } = buildHarness()
 
-    await service.previewAcceptance(organizerActor, SUBMISSION_ID)
-    await service.previewAcceptance(organizerActor, SUBMISSION_ID)
+    await service.previewAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
+    await service.previewAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
 
     expect(messages.list()).toEqual([])
   })
@@ -108,30 +166,46 @@ describe('CommunicationsService.previewAcceptance', () => {
   it('raises not_found for an unknown submission', async () => {
     const { service } = buildHarness()
 
-    await expect(service.previewAcceptance(organizerActor, 'missing')).rejects.toBeInstanceOf(
-      ApplicationError,
-    )
+    await expect(
+      service.previewAcceptance(organizerActor, EVENT_ID, 'missing'),
+    ).rejects.toBeInstanceOf(ApplicationError)
   })
 })
 
 describe('CommunicationsService.queueAcceptance', () => {
+  // O2 updated this contract: sends are per-recipient (owner + contributors),
+  // so queueAcceptance answers the stored rows as a list. This harness has no
+  // contributors, so the audience is exactly the owner.
   it('writes exactly one captured message carrying the rendered acceptance', async () => {
     const { service, messages } = buildHarness()
 
-    const queued = await service.queueAcceptance(organizerActor, SUBMISSION_ID)
+    const queued = await service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
 
     expect(messages.list()).toHaveLength(1)
-    expect(queued.submissionId).toBe(SUBMISSION_ID)
-    expect(queued.toEmail).toBe('speaker-a@example.test')
-    expect(queued.createdAt).toBe(FIXED_NOW)
-    expect(queued.body).toContain('Speaker A')
+    expect(queued).toHaveLength(1)
+    expect(queued[0]?.submissionId).toBe(SUBMISSION_ID)
+    expect(queued[0]?.toEmail).toBe('speaker-a@example.test')
+    expect(queued[0]?.createdAt).toBe(FIXED_NOW)
+    expect(queued[0]?.body).toContain('Speaker A')
+    expect(queued[0]?.kind).toBe('acceptance')
+  })
+
+  it('refuses to announce an acceptance that was never recorded', async () => {
+    const { service, messages } = buildHarness({ accepted: false })
+
+    await expect(
+      service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID),
+    ).rejects.toMatchObject({
+      code: 'conflict',
+    })
+    expect(messages.list()).toEqual([])
   })
 
   it('is idempotent: a second send returns the first row and never duplicates', async () => {
     const { service, messages } = buildHarness()
 
-    const first = await service.queueAcceptance(organizerActor, SUBMISSION_ID)
-    const second = await service.queueAcceptance(organizerActor, SUBMISSION_ID)
+    const first = await service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
+    const second = await service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
 
     expect(second).toEqual(first)
     expect(messages.list()).toHaveLength(1)
@@ -140,9 +214,9 @@ describe('CommunicationsService.queueAcceptance', () => {
   it('never mutates the stored row on a repeat send', async () => {
     const { service, messages } = buildHarness()
 
-    await service.queueAcceptance(organizerActor, SUBMISSION_ID)
+    await service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
     const before = structuredClone(messages.list())
-    await service.queueAcceptance(organizerActor, SUBMISSION_ID)
+    await service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
 
     expect(messages.list()).toEqual(before)
   })
@@ -150,9 +224,9 @@ describe('CommunicationsService.queueAcceptance', () => {
   it('raises not_found for an unknown submission', async () => {
     const { service } = buildHarness()
 
-    await expect(service.queueAcceptance(organizerActor, 'missing')).rejects.toBeInstanceOf(
-      ApplicationError,
-    )
+    await expect(
+      service.queueAcceptance(organizerActor, EVENT_ID, 'missing'),
+    ).rejects.toBeInstanceOf(ApplicationError)
   })
 })
 
@@ -160,16 +234,16 @@ describe('CommunicationsService.listHistory', () => {
   it('is empty before any send', async () => {
     const { service } = buildHarness()
 
-    expect(await service.listHistory(organizerActor, SUBMISSION_ID)).toEqual([])
+    expect(await service.listHistory(organizerActor, EVENT_ID, SUBMISSION_ID)).toEqual([])
   })
 
   it('returns the immutable single-entry history after repeat sends', async () => {
     const { service } = buildHarness()
 
-    await service.queueAcceptance(organizerActor, SUBMISSION_ID)
-    const first = await service.listHistory(organizerActor, SUBMISSION_ID)
-    await service.queueAcceptance(organizerActor, SUBMISSION_ID)
-    const second = await service.listHistory(organizerActor, SUBMISSION_ID)
+    await service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
+    const first = await service.listHistory(organizerActor, EVENT_ID, SUBMISSION_ID)
+    await service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID)
+    const second = await service.listHistory(organizerActor, EVENT_ID, SUBMISSION_ID)
 
     expect(first).toHaveLength(1)
     expect(second).toEqual(first)
@@ -178,7 +252,7 @@ describe('CommunicationsService.listHistory', () => {
   it('raises not_found for an unknown submission', async () => {
     const { service } = buildHarness()
 
-    await expect(service.listHistory(organizerActor, 'missing')).rejects.toBeInstanceOf(
+    await expect(service.listHistory(organizerActor, EVENT_ID, 'missing')).rejects.toBeInstanceOf(
       ApplicationError,
     )
   })

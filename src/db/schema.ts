@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import {
   foreignKey,
   index,
@@ -8,23 +9,17 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
 import { UPLOADED_FILE_KINDS } from '../application/ports/uploaded-file-repository'
-import {
-  CONDITION_EFFECTS,
-  CONDITION_OPERATORS,
-  CONTACT_ROLES,
-  ELEMENT_KINDS,
-  EVENT_STATUSES,
-  FORM_STATUSES,
-  PAGE_KINDS,
-  QUESTION_TYPES,
-  ROUTING_ACTIONS,
-  SESSION_KINDS,
-  SPEAKER_TASK_KINDS,
-  SPEAKER_TASK_STATUSES,
-  SUBMISSION_STATUSES,
-  TAXONOMY_KINDS,
-  VERSION_STATUSES,
-} from '../domain'
+import { SESSION_KINDS } from '../domain/auth'
+import { CAPTURED_MESSAGE_KINDS } from '../domain/confirmation'
+import { CONTACT_ROLES } from '../domain/contact'
+import { EVALUATION_ROUND_STATUSES } from '../domain/evaluation'
+import { EVENT_STATUSES } from '../domain/event'
+import { FORM_STATUSES } from '../domain/form'
+import { ELEMENT_KINDS, PAGE_KINDS, QUESTION_TYPES, VERSION_STATUSES } from '../domain/form-version'
+import { CONDITION_EFFECTS, CONDITION_OPERATORS, ROUTING_ACTIONS } from '../domain/rules'
+import { ALL_SPEAKER_TASK_KINDS, SPEAKER_TASK_STATUSES } from '../domain/speaker-task'
+import { SUBMISSION_STATUSES } from '../domain/submission'
+import { TAXONOMY_KINDS } from '../domain/taxonomy'
 
 /**
  * Drizzle mirror of migrations/0002_create_m2_tables.sql. The migration is the
@@ -54,6 +49,8 @@ export const contacts = sqliteTable('contacts', {
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
   createdAt: text('created_at').notNull(),
+  /** 0013: speaker-authored bio; null until the speaker writes one. */
+  bio: text('bio'),
 })
 
 export const submitterTokens = sqliteTable(
@@ -382,12 +379,23 @@ export const capturedMessages = sqliteTable(
     subject: text('subject').notNull(),
     body: text('body').notNull(),
     createdAt: text('created_at').notNull(),
+    /** 0012: what the message is; pre-0012 rows are backfilled by linkage. */
+    kind: text('kind', { enum: [...CAPTURED_MESSAGE_KINDS] })
+      .notNull()
+      .default('confirmation'),
     /** 0007: acceptance messages carry their submission; start links keep NULL. */
     submissionId: text('submission_id'),
   },
   (table) => [
     index('idx_captured_messages_email').on(table.toEmail),
-    uniqueIndex('idx_captured_messages_submission').on(table.submissionId),
+    // Mirrors 0012: one row per (submission, kind, recipient); confirmation
+    // captures with a NULL submission stay outside the send-once rule.
+    uniqueIndex('idx_captured_messages_submission_kind_email')
+      .on(table.submissionId, table.kind, table.toEmail)
+      .where(sql`submission_id IS NOT NULL`),
+    index('idx_captured_messages_submission')
+      .on(table.submissionId)
+      .where(sql`submission_id IS NOT NULL`),
     foreignKey({
       columns: [table.eventId],
       foreignColumns: [events.id],
@@ -522,20 +530,26 @@ export const speakerTasks = sqliteTable(
     id: text('id').notNull(),
     submissionId: text('submission_id').notNull(),
     contactId: text('contact_id').notNull(),
-    kind: text('kind', { enum: [...SPEAKER_TASK_KINDS] }).notNull(),
+    kind: text('kind', { enum: [...ALL_SPEAKER_TASK_KINDS] }).notNull(),
     status: text('status', { enum: [...SPEAKER_TASK_STATUSES] }).notNull(),
     position: integer('position').notNull(),
     createdAt: text('created_at').notNull(),
     completedAt: text('completed_at'),
+    formId: text('form_id').references(() => cfpForms.id),
+    formVersionId: text('form_version_id').references(() => cfpFormVersions.id),
+    response: text('response'),
   },
   (table) => [
     primaryKey({ columns: [table.eventId, table.id] }),
     uniqueIndex('idx_speaker_tasks_id').on(table.id),
-    uniqueIndex('speaker_tasks_submission_contact_kind').on(
-      table.submissionId,
-      table.contactId,
-      table.kind,
-    ),
+    // Mirrors 0011: checklist idempotency for classic kinds, form idempotency
+    // keyed by the assigned form (both partial in SQL).
+    uniqueIndex('speaker_tasks_submission_contact_kind')
+      .on(table.submissionId, table.contactId, table.kind)
+      .where(sql`form_id IS NULL`),
+    uniqueIndex('speaker_tasks_submission_contact_form')
+      .on(table.submissionId, table.contactId, table.formId)
+      .where(sql`form_id IS NOT NULL`),
     index('idx_speaker_tasks_event_contact').on(table.eventId, table.contactId),
     index('idx_speaker_tasks_event_submission').on(table.eventId, table.submissionId),
     foreignKey({
@@ -583,6 +597,8 @@ export const uploadedFiles = sqliteTable(
     sizeBytes: integer('size_bytes').notNull(),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
+    /** 0014: sanitized display name; present exactly for document rows. */
+    fileName: text('file_name'),
   },
   (table) => [
     primaryKey({ columns: [table.eventId, table.id] }),
@@ -606,3 +622,136 @@ export const uploadedFiles = sqliteTable(
 )
 
 export type UploadedFileRow = typeof uploadedFiles.$inferSelect
+
+/**
+ * Evaluation (0010) mirror. Enum values come from the evaluation domain
+ * (`src/domain/evaluation.ts`); the migration's CHECKs (weight/position
+ * bounds, the 1-5 rating scale, instant lengths, updated_at >= created_at)
+ * and the `evaluation_rounds_no_reopen` trigger are SQL-side only, matching
+ * the repo convention.
+ */
+export const evaluationCriteria = sqliteTable(
+  'evaluation_criteria',
+  {
+    eventId: text('event_id').notNull(),
+    id: text('id').notNull(),
+    name: text('name').notNull(),
+    weight: integer('weight').notNull(),
+    position: integer('position').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('idx_evaluation_criteria_id').on(table.id),
+    uniqueIndex('evaluation_criteria_event_name').on(table.eventId, table.name),
+    foreignKey({
+      columns: [table.eventId],
+      foreignColumns: [events.id],
+    }),
+  ],
+)
+
+export const evaluationRounds = sqliteTable(
+  'evaluation_rounds',
+  {
+    eventId: text('event_id').notNull(),
+    id: text('id').notNull(),
+    number: integer('number').notNull(),
+    name: text('name').notNull(),
+    status: text('status', { enum: [...EVALUATION_ROUND_STATUSES] }).notNull(),
+    /** JSON [{criterionId, weight}] recorded at close; NULL while open. */
+    weightsJson: text('weights_json'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('idx_evaluation_rounds_id').on(table.id),
+    uniqueIndex('evaluation_rounds_event_number').on(table.eventId, table.number),
+    foreignKey({
+      columns: [table.eventId],
+      foreignColumns: [events.id],
+    }),
+  ],
+)
+
+export const evaluationAssignments = sqliteTable(
+  'evaluation_assignments',
+  {
+    eventId: text('event_id').notNull(),
+    id: text('id').notNull(),
+    roundId: text('round_id').notNull(),
+    submissionId: text('submission_id').notNull(),
+    evaluatorContactId: text('evaluator_contact_id').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('idx_evaluation_assignments_id').on(table.id),
+    uniqueIndex('evaluation_assignments_round_submission_evaluator').on(
+      table.roundId,
+      table.submissionId,
+      table.evaluatorContactId,
+    ),
+    index('idx_evaluation_assignments_event_evaluator').on(table.eventId, table.evaluatorContactId),
+    index('idx_evaluation_assignments_event_submission').on(table.eventId, table.submissionId),
+    foreignKey({
+      columns: [table.eventId, table.roundId],
+      foreignColumns: [evaluationRounds.eventId, evaluationRounds.id],
+    }),
+    foreignKey({
+      columns: [table.eventId, table.submissionId],
+      foreignColumns: [proposalSubmissions.eventId, proposalSubmissions.id],
+    }),
+    foreignKey({
+      columns: [table.evaluatorContactId],
+      foreignColumns: [contacts.id],
+    }),
+  ],
+)
+
+export const evaluationScores = sqliteTable(
+  'evaluation_scores',
+  {
+    eventId: text('event_id').notNull(),
+    id: text('id').notNull(),
+    assignmentId: text('assignment_id').notNull(),
+    criterionId: text('criterion_id').notNull(),
+    rating: integer('rating').notNull(),
+    comment: text('comment'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('idx_evaluation_scores_id').on(table.id),
+    uniqueIndex('evaluation_scores_assignment_criterion').on(table.assignmentId, table.criterionId),
+    index('idx_evaluation_scores_event_assignment').on(table.eventId, table.assignmentId),
+    foreignKey({
+      columns: [table.eventId, table.assignmentId],
+      foreignColumns: [evaluationAssignments.eventId, evaluationAssignments.id],
+    }),
+    foreignKey({
+      columns: [table.eventId, table.criterionId],
+      foreignColumns: [evaluationCriteria.eventId, evaluationCriteria.id],
+    }),
+  ],
+)
+
+export const evaluationCommitteeMembers = sqliteTable(
+  'evaluation_committee_members',
+  {
+    eventId: text('event_id').notNull(),
+    contactId: text('contact_id').notNull(),
+    addedAt: text('added_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.contactId] }),
+    index('idx_evaluation_committee_members_event').on(table.eventId),
+    foreignKey({ columns: [table.eventId], foreignColumns: [events.id] }),
+    foreignKey({ columns: [table.contactId], foreignColumns: [contacts.id] }),
+  ],
+)
+
+export type EvaluationCriterionRow = typeof evaluationCriteria.$inferSelect
+export type EvaluationRoundRow = typeof evaluationRounds.$inferSelect
+export type EvaluationAssignmentRow = typeof evaluationAssignments.$inferSelect
+export type EvaluationScoreRow = typeof evaluationScores.$inferSelect
+export type EvaluationCommitteeMemberRow = typeof evaluationCommitteeMembers.$inferSelect

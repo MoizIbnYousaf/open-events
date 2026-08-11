@@ -1,5 +1,6 @@
 import { createFileRoute, useParams } from '@tanstack/react-router'
 
+import AppShell from '../features/nav/AppShell'
 import ReadinessPage from '../features/admin/ReadinessPage'
 
 import type {} from '../routeTree.gen'
@@ -7,7 +8,11 @@ import type {} from '../routeTree.gen'
 function ReadinessRoutePage() {
   const params = useParams({ strict: false })
   const slug = params.slug as string | undefined
-  return <ReadinessPage eventSlug={slug ?? ''} />
+  return (
+    <AppShell slug={slug ?? ''}>
+      <ReadinessPage eventSlug={slug ?? ''} />
+    </AppShell>
+  )
 }
 
 const readinessRoute = createFileRoute('/admin_/events/$slug_/readiness')({

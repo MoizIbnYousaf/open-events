@@ -16,6 +16,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'jsdom',
+          setupFiles: ['./tests/setup/jsdom-browser-apis.ts'],
           include: ['tests/unit/**/*.test.{ts,tsx}'],
         },
       },

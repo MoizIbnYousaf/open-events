@@ -17,6 +17,8 @@ import type {
   VersionId,
 } from '../../../src/domain'
 import type {
+  AgendaRepository,
+  AgendaSessionRecord,
   CapturedMessageRepository,
   ConfirmationRepository,
   ContactRepository,
@@ -173,6 +175,65 @@ export class InMemoryTaxonomyRepository implements TaxonomyRepository {
   }
 }
 
+/**
+ * In-memory twin of the D1 agenda adapter. It reproduces the two rules the
+ * migration enforces — one session per submission, and one session per
+ * (event, room, day, start, end, position) once a room and position exist —
+ * plus the adapter's deterministic read order, so the agenda service contract
+ * is adapter-independent.
+ */
+export class InMemoryAgendaRepository implements AgendaRepository {
+  readonly #sessions = new Map<string, AgendaSessionRecord>()
+
+  constructor(sessions: readonly AgendaSessionRecord[] = []) {
+    for (const session of sessions) this.#sessions.set(session.submissionId, session)
+  }
+
+  async listByEvent(eventId: string): Promise<readonly AgendaSessionRecord[]> {
+    return [...this.#sessions.values()]
+      .filter((session) => session.eventId === eventId)
+      .sort(
+        (left, right) =>
+          left.day.localeCompare(right.day) ||
+          left.start.localeCompare(right.start) ||
+          nullsFirst(left.position, right.position) ||
+          nullsFirst(left.roomId, right.roomId) ||
+          left.submissionId.localeCompare(right.submissionId),
+      )
+  }
+
+  async findBySubmission(
+    eventId: string,
+    submissionId: string,
+  ): Promise<AgendaSessionRecord | null> {
+    const session = this.#sessions.get(submissionId)
+    return session !== undefined && session.eventId === eventId ? session : null
+  }
+
+  async saveSession(session: AgendaSessionRecord): Promise<void> {
+    if (session.roomId !== null && session.position !== null) {
+      for (const stored of this.#sessions.values()) {
+        if (stored.submissionId === session.submissionId) continue
+        if (
+          stored.eventId === session.eventId &&
+          stored.roomId === session.roomId &&
+          stored.day === session.day &&
+          stored.start === session.start &&
+          stored.end === session.end &&
+          stored.position === session.position
+        ) {
+          throw new Error('agenda_sessions room/slot/position uniqueness violated')
+        }
+      }
+    }
+    this.#sessions.set(session.submissionId, { ...session, speakerIds: [...session.speakerIds] })
+  }
+
+  list(): readonly AgendaSessionRecord[] {
+    return [...this.#sessions.values()]
+  }
+}
+
 export class InMemoryDraftRepository implements DraftRepository {
   readonly #drafts = new Map<string, ProposalDraft>()
 
@@ -321,6 +382,16 @@ export class InMemoryContactRepository implements ContactRepository {
     return null
   }
 
+  async updateProfile(
+    id: string,
+    fields: { readonly name: string; readonly bio: string | null },
+  ): Promise<void> {
+    const existing = this.#contacts.get(id)
+    if (existing !== undefined) {
+      this.#contacts.set(id, { ...existing, name: fields.name, bio: fields.bio })
+    }
+  }
+
   async save(contact: Contact): Promise<void> {
     for (const existing of this.#contacts.values()) {
       if (existing.email === contact.email) return
@@ -352,14 +423,21 @@ export class InMemoryConfirmationRepository implements ConfirmationRepository {
 export class InMemoryCapturedMessageRepository implements CapturedMessageRepository {
   readonly #messages: CapturedMessage[] = []
 
-  /** Mirrors the D1 unique submission index: one acceptance per submission. */
+  /** Mirrors 0012: one row per (submission, kind, recipient). */
   async save(message: CapturedMessage): Promise<void> {
     const submissionId = message.submissionId ?? null
     if (
       submissionId !== null &&
-      this.#messages.some((stored) => (stored.submissionId ?? null) === submissionId)
+      this.#messages.some(
+        (stored) =>
+          (stored.submissionId ?? null) === submissionId &&
+          stored.kind === message.kind &&
+          stored.toEmail === message.toEmail,
+      )
     ) {
-      throw new Error(`captured message for submission '${submissionId}' already exists`)
+      throw new Error(
+        `captured ${message.kind} for submission '${submissionId}' to '${message.toEmail}' already exists`,
+      )
     }
     this.#messages.push(message)
   }
@@ -368,8 +446,19 @@ export class InMemoryCapturedMessageRepository implements CapturedMessageReposit
     return this.#messages.filter((message) => message.toEmail === email)
   }
 
-  async findBySubmissionId(submissionId: string): Promise<CapturedMessage | null> {
-    return this.#messages.find((message) => message.submissionId === submissionId) ?? null
+  async findBySubmissionKindEmail(
+    submissionId: string,
+    kind: CapturedMessage['kind'],
+    toEmail: string,
+  ): Promise<CapturedMessage | null> {
+    return (
+      this.#messages.find(
+        (message) =>
+          message.submissionId === submissionId &&
+          message.kind === kind &&
+          message.toEmail === toEmail,
+      ) ?? null
+    )
   }
 
   async listBySubmissionId(submissionId: string): Promise<readonly CapturedMessage[]> {
@@ -412,6 +501,13 @@ export class InMemorySessionRepository implements SessionRepository {
 
   async findByHash(tokenHash: TokenHash): Promise<Session | null> {
     return this.#sessions.get(tokenHash) ?? null
+  }
+
+  async consumeByHash(tokenHash: TokenHash, consumedAt: string): Promise<void> {
+    const session = this.#sessions.get(tokenHash)
+    if (session !== undefined && session.consumedAt === null) {
+      this.#sessions.set(tokenHash, { ...session, consumedAt })
+    }
   }
 
   async markConsumed(id: string, consumedAt: string): Promise<void> {
@@ -479,6 +575,14 @@ export class InMemoryObjectStorage implements ObjectStoragePort {
     this.deletes.push(storageKey)
     this.objects.delete(storageKey)
   }
+}
+
+/** SQLite orders NULL before every value; the twin's reads do the same. */
+function nullsFirst(left: string | number | null, right: string | number | null): number {
+  if (left === right) return 0
+  if (left === null) return -1
+  if (right === null) return 1
+  return left < right ? -1 : 1
 }
 
 function ownerKey(eventId: string, ownerContactId: string, kind: UploadedFileKind): string {

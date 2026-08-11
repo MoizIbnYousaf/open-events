@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -224,8 +224,13 @@ describe('public multi-step CFP form', () => {
     expect(details).toBeInTheDocument()
     expect(await screen.findByLabelText(/summary/i)).toBeInTheDocument()
     expect(details).toHaveFocus()
-    const live = await screen.findByRole('status')
-    expect(live).toHaveTextContent(/workshop/i)
+    // One of the surface's live regions carries it: the save bar owns a second
+    // one, mounted and silent, so the query cannot be a singular one.
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('status').some((region) => /workshop/i.test(region.textContent ?? '')),
+      ).toBe(true),
+    )
   })
 
   it('clears the hidden workshop_details answer when format changes away and back', async () => {

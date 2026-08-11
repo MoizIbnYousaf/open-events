@@ -12,6 +12,16 @@ export interface ConfirmationRecord {
   readonly createdAt: UtcInstant
 }
 
+/**
+ * What a captured outbound message is: a public confirmation capture (start
+ * links and submit confirmations, never submission-scoped for idempotency) or
+ * an organizer acceptance/reminder send (submission-scoped, once per
+ * kind/recipient).
+ */
+export const CAPTURED_MESSAGE_KINDS = ['confirmation', 'acceptance', 'reminder'] as const
+
+export type CapturedMessageKind = (typeof CAPTURED_MESSAGE_KINDS)[number]
+
 /** Captured (dev) outbound message; the raw magic link appears only here. */
 export interface CapturedMessage {
   readonly id: CapturedMessageId
@@ -20,9 +30,11 @@ export interface CapturedMessage {
   readonly subject: string
   readonly body: string
   readonly createdAt: UtcInstant
+  readonly kind: CapturedMessageKind
   /**
-   * Submission this message belongs to (acceptance communications). Absent or
-   * null for start-link deliveries, which are not scoped to a submission.
+   * Submission this message belongs to (acceptance/reminder communications).
+   * Absent or null for confirmation captures, which are not scoped to a
+   * submission.
    */
   readonly submissionId?: SubmissionId | null
 }

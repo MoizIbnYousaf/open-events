@@ -57,13 +57,19 @@ function CfpScreen({
         <Card>
           <CardContent>
             <Skeleton className="h-10 w-full" />
-            <StatusLive>Loading the call for papers…</StatusLive>
+            <StatusLive aria-live="polite">Loading the call for papers…</StatusLive>
           </CardContent>
         </Card>
       </section>
     )
   }
   return (
-    <CfpWizard form={definitionQuery.data} eventSlug={eventSlug ?? ''} formSlug={formSlug ?? ''} />
+    <div data-tour="cfp-page">
+      <CfpWizard
+        form={definitionQuery.data}
+        eventSlug={eventSlug ?? ''}
+        formSlug={formSlug ?? ''}
+      />
+    </div>
   )
 }

@@ -1,4 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { useServerMutation } from '../../../adapters/tanstack-react-query'
 
 import {
   adminLogin,
@@ -23,7 +25,7 @@ export const adminQueryKeys = {
 }
 
 export function useAdminLogin() {
-  return useMutation({ mutationFn: (secret: string) => adminLogin(secret) })
+  return useServerMutation({ mutationFn: (secret: string) => adminLogin(secret) })
 }
 
 export function useEventConfig(slug: EventSlug | undefined) {
@@ -36,7 +38,7 @@ export function useEventConfig(slug: EventSlug | undefined) {
 
 export function useUpdateEventConfig(slug: EventSlug) {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useServerMutation({
     mutationFn: (input: UpdateEventConfigInput) => updateEventConfig(slug, input),
     onSuccess: (updated: AdminEventConfigDto) => {
       queryClient.setQueryData(adminQueryKeys.config(slug), updated)
@@ -63,7 +65,7 @@ export function useFormsList(slug: EventSlug | undefined) {
 
 export function useReplaceTaxonomies(slug: EventSlug) {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useServerMutation({
     mutationFn: (items: readonly TaxonomyItemInput[]) => replaceTaxonomies(slug, items),
     onSuccess: (updated: TaxonomyListDto) => {
       queryClient.setQueryData(adminQueryKeys.taxonomies(slug), updated)

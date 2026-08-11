@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 
 import type { SpeakerTaskRepository } from '../application/ports/speaker-task-repository'
 import type {
+  AnswerMap,
   SpeakerTask,
   SpeakerTaskKind,
   SpeakerTaskStatus,
@@ -18,6 +19,9 @@ interface RawSpeakerTaskRow {
   readonly position: number
   readonly created_at: string
   readonly completed_at: string | null
+  readonly form_id: string | null
+  readonly form_version_id: string | null
+  readonly response: string | null
 }
 
 interface RawAcceptanceRow {
@@ -27,7 +31,7 @@ interface RawAcceptanceRow {
 }
 
 const TASK_COLUMNS = `event_id, id, submission_id, contact_id, kind, status, position,
-                created_at, completed_at`
+                created_at, completed_at, form_id, form_version_id, response`
 
 const TASK_ORDER = 'ORDER BY submission_id, position'
 
@@ -42,6 +46,9 @@ function toSpeakerTask(row: RawSpeakerTaskRow): SpeakerTask {
     position: row.position,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+    formId: row.form_id,
+    formVersionId: row.form_version_id,
+    response: row.response === null ? null : (JSON.parse(row.response) as AnswerMap),
   }
 }
 
@@ -129,17 +136,66 @@ export function createSpeakerTaskRepository(db: D1Database): SpeakerTaskReposito
       eventId: string,
       id: string,
       completedAt: string,
+      response?: AnswerMap,
     ): Promise<SpeakerTask | null> {
       await db
         .prepare(
-          `UPDATE speaker_tasks SET status = 'completed', completed_at = ?
+          `UPDATE speaker_tasks SET status = 'completed', completed_at = ?, response = ?
             WHERE event_id = ? AND id = ? AND status = 'pending'`,
         )
-        .bind(completedAt, eventId, id)
+        .bind(completedAt, response === undefined ? null : JSON.stringify(response), eventId, id)
         .run()
       const row = await db
         .prepare(`SELECT ${TASK_COLUMNS} FROM speaker_tasks WHERE event_id = ? AND id = ?`)
         .bind(eventId, id)
+        .first<RawSpeakerTaskRow>()
+      return row === null ? null : toSpeakerTask(row)
+    },
+
+    async createFormTask(task: SpeakerTask): Promise<SpeakerTask> {
+      await db
+        .prepare(
+          `INSERT INTO speaker_tasks
+             (event_id, id, submission_id, contact_id, kind, status, position,
+              created_at, completed_at, form_id, form_version_id, response)
+           VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, NULL, ?, ?, NULL)
+           ON CONFLICT DO NOTHING`,
+        )
+        .bind(
+          task.eventId,
+          task.id,
+          task.submissionId,
+          task.contactId,
+          task.kind,
+          task.position,
+          task.createdAt,
+          task.formId,
+          task.formVersionId,
+        )
+        .run()
+      const row = await db
+        .prepare(
+          `SELECT ${TASK_COLUMNS} FROM speaker_tasks
+            WHERE submission_id = ? AND contact_id = ? AND form_id = ?`,
+        )
+        .bind(task.submissionId, task.contactId, task.formId)
+        .first<RawSpeakerTaskRow>()
+      if (row === null) throw new Error('form task insert produced no row')
+      return toSpeakerTask(row)
+    },
+
+    async findFormTask(
+      eventId: string,
+      submissionId: string,
+      contactId: string,
+      formId: string,
+    ): Promise<SpeakerTask | null> {
+      const row = await db
+        .prepare(
+          `SELECT ${TASK_COLUMNS} FROM speaker_tasks
+            WHERE event_id = ? AND submission_id = ? AND contact_id = ? AND form_id = ?`,
+        )
+        .bind(eventId, submissionId, contactId, formId)
         .first<RawSpeakerTaskRow>()
       return row === null ? null : toSpeakerTask(row)
     },

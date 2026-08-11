@@ -14,16 +14,18 @@ import {
   getPortalTasks,
   organizerReadinessQueryOptions,
   portalTaskQueryKeys,
+  speakerTaskLabel,
 } from '../../../src/app/queries/portal-tasks'
 import { Route as ReadinessRoute } from '../../../src/app/routes/admin_.events.$slug_.readiness'
 
-// REQ-011/012 surfaces. Speaker task panel: GET /api/public/tasks returns
-// { tasks: [...] }, 401 is the unauthenticated seam, and completing a task
-// POSTs /api/public/tasks/:id/complete with an optimistic flip plus
-// invalidation. Organizer readiness uses the pinned cross-slice contract GET
-// /api/admin/readiness -> { rows: [...] }, scoped to the routed event with an
-// eventSlug query parameter so the surface can only ever read the routed
-// event's rows. The rows render as a real table refreshed by bounded polling.
+// REQ-011/012 surfaces, pinned to the SHAPES THE SERVER ACTUALLY SENDS.
+// GET /api/public/tasks answers a bare SpeakerTaskDto[] (no envelope) whose
+// rows carry `kind` + `submissionTitle` and a 'pending' | 'completed' status;
+// POST /api/public/tasks/:id/complete answers the bare updated DTO; and GET
+// /api/admin/readiness?eventSlug= answers an EventReadinessDto aggregate whose
+// per-submission rows are `submissions`, never `rows`. The human task label is
+// client copy derived from `kind` because the wire carries no title, and the
+// readiness table renders only fields the server produces (no speaker email).
 
 const TASKS_URL = '/api/public/tasks'
 const EVENT_SLUG = 'demo-conf-2026'
@@ -32,36 +34,75 @@ const READINESS_PATH = '/api/admin/readiness'
 const READINESS_URL = `${READINESS_PATH}?eventSlug=${EVENT_SLUG}`
 const OTHER_READINESS_URL = `${READINESS_PATH}?eventSlug=${OTHER_EVENT_SLUG}`
 const COMPLETE_URL = '/api/public/tasks/task-1/complete'
+const EVENT_ID = 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d'
 
-const TASKS = {
-  tasks: [
-    { id: 'task-1', title: 'Upload your headshot', status: 'pending', completedAt: null },
-    {
-      id: 'task-2',
-      title: 'Confirm your travel dates',
-      status: 'complete',
-      completedAt: '2026-05-01T09:00:00.000Z',
-    },
-  ],
-} as const
+const HEADSHOT_LABEL = 'Upload your headshot'
+const CONFIRM_LABEL = 'Confirm your participation'
 
+/** Exactly the body src/server/routes/public.ts:223 emits (bare array). */
+const TASKS = [
+  {
+    id: 'task-1',
+    eventId: EVENT_ID,
+    submissionId: 'submission-1',
+    submissionTitle: 'My talk',
+    contactId: 'contact-1',
+    kind: 'submit_headshot',
+    status: 'pending',
+    position: 2,
+    createdAt: '2026-05-01T08:00:00.000Z',
+    completedAt: null,
+  },
+  {
+    id: 'task-2',
+    eventId: EVENT_ID,
+    submissionId: 'submission-1',
+    submissionTitle: 'My talk',
+    contactId: 'contact-1',
+    kind: 'confirm_participation',
+    status: 'completed',
+    position: 0,
+    createdAt: '2026-05-01T08:00:00.000Z',
+    completedAt: '2026-05-01T09:00:00.000Z',
+  },
+] as const
+
+const COMPLETED_TASK = { ...TASKS[0], status: 'completed', completedAt: '2026-05-02T09:00:00.000Z' }
+
+/** Exactly the body src/server/routes/admin.ts:353 emits (EventReadinessDto). */
 const READINESS = {
-  rows: [
+  eventId: EVENT_ID,
+  acceptedSubmissions: 2,
+  totalTasks: 6,
+  completedTasks: 4,
+  percentComplete: 67,
+  submissions: [
     {
       submissionId: 'submission-1',
       title: 'My talk',
-      speakerEmail: 'speaker.a@example.test',
-      outstandingCount: 2,
-      completeCount: 1,
+      totalTasks: 3,
+      completedTasks: 1,
+      percentComplete: 33,
+      ready: false,
     },
     {
       submissionId: 'submission-2',
       title: 'Hands-on workshop',
-      speakerEmail: 'speaker.b@example.test',
-      outstandingCount: 0,
-      completeCount: 3,
+      totalTasks: 3,
+      completedTasks: 3,
+      percentComplete: 100,
+      ready: true,
     },
   ],
+} as const
+
+const EMPTY_READINESS = {
+  ...READINESS,
+  acceptedSubmissions: 0,
+  totalTasks: 0,
+  completedTasks: 0,
+  percentComplete: 100,
+  submissions: [],
 } as const
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -98,17 +139,8 @@ beforeEach(() => {
     const method = init?.method ?? 'GET'
     if (method === 'GET' && url === TASKS_URL) return jsonResponse(TASKS)
     if (method === 'GET' && url === READINESS_URL) return jsonResponse(READINESS)
-    if (method === 'GET' && url === OTHER_READINESS_URL) return jsonResponse({ rows: [] })
-    if (method === 'POST' && url === COMPLETE_URL) {
-      return jsonResponse({
-        task: {
-          id: 'task-1',
-          title: 'Upload your headshot',
-          status: 'complete',
-          completedAt: '2026-05-02T09:00:00.000Z',
-        },
-      })
-    }
+    if (method === 'GET' && url === OTHER_READINESS_URL) return jsonResponse(EMPTY_READINESS)
+    if (method === 'POST' && url === COMPLETE_URL) return jsonResponse(COMPLETED_TASK)
     return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
   }
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
@@ -133,8 +165,29 @@ describe('portal task queries', () => {
     ])
   })
 
-  it('getPortalTasks GETs the exact URL and returns the task list', async () => {
-    await expect(getPortalTasks()).resolves.toEqual(TASKS.tasks)
+  it('labels every checklist kind the domain can emit', () => {
+    expect(speakerTaskLabel('confirm_participation')).toBe(CONFIRM_LABEL)
+    expect(speakerTaskLabel('submit_bio')).toBe('Submit your speaker bio')
+    expect(speakerTaskLabel('submit_headshot')).toBe(HEADSHOT_LABEL)
+  })
+
+  it('getPortalTasks reads the bare array the server sends', async () => {
+    await expect(getPortalTasks()).resolves.toEqual([
+      {
+        id: 'task-1',
+        kind: 'submit_headshot',
+        submissionTitle: 'My talk',
+        status: 'pending',
+        completedAt: null,
+      },
+      {
+        id: 'task-2',
+        kind: 'confirm_participation',
+        submissionTitle: 'My talk',
+        status: 'completed',
+        completedAt: '2026-05-01T09:00:00.000Z',
+      },
+    ])
     expect(countCalls(TASKS_URL)).toBe(1)
   })
 
@@ -144,16 +197,38 @@ describe('portal task queries', () => {
     await expect(getPortalTasks()).rejects.toMatchObject({ status: 401 })
   })
 
-  it('completePortalTask POSTs the exact complete URL and returns the task', async () => {
-    await expect(completePortalTask('task-1')).resolves.toMatchObject({
+  it('completePortalTask POSTs the exact URL and reads the bare updated task', async () => {
+    await expect(completePortalTask('task-1')).resolves.toEqual({
       id: 'task-1',
-      status: 'complete',
+      kind: 'submit_headshot',
+      submissionTitle: 'My talk',
+      status: 'completed',
+      completedAt: '2026-05-02T09:00:00.000Z',
     })
     expect(countCalls(COMPLETE_URL, 'POST')).toBe(1)
   })
 
-  it('getOrganizerReadiness GETs the pinned readiness path and returns the rows', async () => {
-    await expect(getOrganizerReadiness(EVENT_SLUG)).resolves.toEqual(READINESS.rows)
+  it('getOrganizerReadiness reads the aggregate submissions the server sends', async () => {
+    await expect(getOrganizerReadiness(EVENT_SLUG)).resolves.toEqual([
+      {
+        submissionId: 'submission-1',
+        title: 'My talk',
+        totalTasks: 3,
+        completedTasks: 1,
+        outstandingCount: 2,
+        percentComplete: 33,
+        ready: false,
+      },
+      {
+        submissionId: 'submission-2',
+        title: 'Hands-on workshop',
+        totalTasks: 3,
+        completedTasks: 3,
+        outstandingCount: 0,
+        percentComplete: 100,
+        ready: true,
+      },
+    ])
     expect(countCalls(READINESS_URL)).toBe(1)
   })
 
@@ -171,7 +246,7 @@ describe('portal task queries', () => {
   })
 
   it('percent-encodes the event scope so a slug can never escape the query', async () => {
-    fetchHandler = () => jsonResponse({ rows: [] })
+    fetchHandler = () => jsonResponse(EMPTY_READINESS)
     await getOrganizerReadiness('a&b c')
     const [input] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined]
     const parsed = new URL(requestUrl(input), 'https://speakerops.test')
@@ -202,7 +277,7 @@ describe('speaker tasks panel', () => {
     expect(screen.getByRole('status')).toBeInTheDocument()
 
     resolveTasks?.(jsonResponse(TASKS))
-    expect(await screen.findByText('Upload your headshot')).toBeInTheDocument()
+    expect(await screen.findByText(HEADSHOT_LABEL)).toBeInTheDocument()
     expect(document.querySelector('[aria-busy="true"]')).toBeNull()
   })
 
@@ -211,17 +286,19 @@ describe('speaker tasks panel', () => {
 
     const items = await screen.findAllByRole('listitem')
     expect(items).toHaveLength(2)
-    expect(items[0]).toHaveTextContent('Upload your headshot')
+    expect(items[0]).toHaveTextContent(HEADSHOT_LABEL)
+    expect(items[0]).toHaveTextContent('My talk')
     expect(items[0]).toHaveTextContent('Outstanding')
-    expect(items[1]).toHaveTextContent('Confirm your travel dates')
+    expect(items[1]).toHaveTextContent(CONFIRM_LABEL)
     expect(items[1]).toHaveTextContent('Complete')
     expect(
-      screen.queryByRole('button', { name: 'Mark complete: Confirm your travel dates' }),
+      screen.queryByRole('button', { name: `Mark complete: ${CONFIRM_LABEL} for My talk` }),
     ).not.toBeInTheDocument()
+    expect(document.body.textContent ?? '').not.toContain('undefined')
   })
 
   it('renders a real empty state when there are no tasks', async () => {
-    fetchHandler = () => jsonResponse({ tasks: [] })
+    fetchHandler = () => jsonResponse([])
     renderWithClient(<TasksPanel />)
 
     expect(await screen.findByText('No tasks yet.')).toBeInTheDocument()
@@ -250,14 +327,16 @@ describe('speaker tasks panel', () => {
     fetchHandler = () => jsonResponse(TASKS)
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
-    expect(await screen.findByText('Upload your headshot')).toBeInTheDocument()
+    expect(await screen.findByText(HEADSHOT_LABEL)).toBeInTheDocument()
   })
 
-  it('optimistically marks a task complete before the response settles', async () => {
+  it('optimistically marks a task complete and keeps it complete after the refetch', async () => {
     let resolveComplete: ((response: Response) => void) | undefined
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === TASKS_URL) return jsonResponse(TASKS)
+      if (method === 'GET' && url === TASKS_URL) {
+        return jsonResponse(countCalls(TASKS_URL) > 1 ? [COMPLETED_TASK, TASKS[1]] : TASKS)
+      }
       if (method === 'POST' && url === COMPLETE_URL) {
         return new Promise<Response>((resolve) => {
           resolveComplete = resolve
@@ -267,9 +346,9 @@ describe('speaker tasks panel', () => {
     }
     renderWithClient(<TasksPanel />)
 
-    await screen.findByText('Upload your headshot')
+    await screen.findByText(HEADSHOT_LABEL)
     await userEvent.click(
-      screen.getByRole('button', { name: 'Mark complete: Upload your headshot' }),
+      screen.getByRole('button', { name: `Mark complete: ${HEADSHOT_LABEL} for My talk` }),
     )
 
     await waitFor(() => {
@@ -277,20 +356,19 @@ describe('speaker tasks panel', () => {
     })
     expect(countCalls(TASKS_URL)).toBe(1)
 
-    resolveComplete?.(
-      jsonResponse({
-        task: {
-          id: 'task-1',
-          title: 'Upload your headshot',
-          status: 'complete',
-          completedAt: '2026-05-02T09:00:00.000Z',
-        },
-      }),
-    )
+    resolveComplete?.(jsonResponse(COMPLETED_TASK))
 
     await waitFor(() => {
       expect(countCalls(TASKS_URL)).toBe(2)
     })
+    // The server's own vocabulary must survive the refetch: no revert to
+    // "Outstanding" and no reappearing completion button.
+    await waitFor(() => {
+      expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Complete')
+    })
+    expect(
+      screen.queryByRole('button', { name: `Mark complete: ${HEADSHOT_LABEL} for My talk` }),
+    ).not.toBeInTheDocument()
   })
 
   it('rolls the optimistic flip back and alerts when completing fails', async () => {
@@ -301,9 +379,9 @@ describe('speaker tasks panel', () => {
     }
     renderWithClient(<TasksPanel />)
 
-    await screen.findByText('Upload your headshot')
+    await screen.findByText(HEADSHOT_LABEL)
     await userEvent.click(
-      screen.getByRole('button', { name: 'Mark complete: Upload your headshot' }),
+      screen.getByRole('button', { name: `Mark complete: ${HEADSHOT_LABEL} for My talk` }),
     )
 
     const alert = await screen.findByRole('alert')
@@ -335,9 +413,12 @@ describe('organizer readiness', () => {
     expect(screen.getAllByRole('row')).toHaveLength(3)
     const rendered = document.body.textContent ?? ''
     expect(rendered).toContain('My talk')
-    expect(rendered).toContain('speaker.b@example.test')
+    expect(rendered).toContain('Hands-on workshop')
     expect(screen.getByText('2 outstanding')).toBeInTheDocument()
     expect(screen.getByText('0 outstanding')).toBeInTheDocument()
+    expect(screen.getByText('1 complete')).toBeInTheDocument()
+    expect(screen.getByText('3 complete')).toBeInTheDocument()
+    expect(rendered).not.toContain('undefined')
   })
 
   it('shows an aria-busy loading status, an empty state, and an error retry', async () => {
@@ -349,7 +430,7 @@ describe('organizer readiness', () => {
     const first = renderWithClient(<ReadinessPage eventSlug={EVENT_SLUG} />)
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull()
     expect(screen.getByRole('status')).toBeInTheDocument()
-    resolveRows?.(jsonResponse({ rows: [] }))
+    resolveRows?.(jsonResponse(EMPTY_READINESS))
     expect(await screen.findByText('No submissions to track yet.')).toBeInTheDocument()
     first.queryClient.clear()
     cleanup()
@@ -366,13 +447,13 @@ describe('organizer readiness', () => {
     expect(await screen.findByText('My talk')).toBeInTheDocument()
   })
 
-  it('reads only the routed event dataset, never another event\u2019s rows', async () => {
+  it('reads only the routed event dataset, never another event’s rows', async () => {
     renderWithClient(<ReadinessPage eventSlug={OTHER_EVENT_SLUG} />)
 
     expect(await screen.findByText('No submissions to track yet.')).toBeInTheDocument()
     expect(countCalls(OTHER_READINESS_URL)).toBe(1)
     expect(countCalls(READINESS_URL)).toBe(0)
-    expect(document.body.textContent ?? '').not.toContain('speaker.a@example.test')
+    expect(document.body.textContent ?? '').not.toContain('My talk')
   })
 
   it('refreshes readiness on the pinned bounded polling interval', async () => {

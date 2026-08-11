@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -12,11 +12,12 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getFormDraft, listFormVersions, publishForm } from '../../../src/app/api/admin-forms'
+import { ThemeProvider } from '../../../src/components/ui/theme-provider'
 import BuilderEditor from '../../../src/app/features/builder/BuilderEditor'
 import PublishConfirmDialog from '../../../src/app/features/builder/PublishConfirmDialog'
 import { routeTree } from '../../../src/app/routeTree.gen'
-import { Route as BuilderFormRoute } from '../../../src/app/routes/admin_.forms.$formId'
-import { Route as VersionDetailRoute } from '../../../src/app/routes/admin_.forms.$formId_.versions.$versionId'
+import { Route as BuilderFormRoute } from '../../../src/app/routes/admin_.events.$slug_.forms.$formId'
+import { Route as VersionDetailRoute } from '../../../src/app/routes/admin_.events.$slug_.forms.$formId_.versions.$versionId'
 
 const FORM_ID = 'f0000000-0000-4000-8000-000000000001'
 const VERSION_ID = 'f0000000-0000-4000-8000-000000000002'
@@ -162,18 +163,18 @@ async function mountBuilder() {
   const rootRoute = createRootRoute()
   const builderRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/admin/forms/$formId',
+    path: '/admin/events/$slug/forms/$formId',
     component: BuilderEditor,
   })
   const versionDetailRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/admin/forms/$formId/versions/$versionId',
+    path: '/admin/events/$slug/forms/$formId/versions/$versionId',
     component: () => <div data-testid="version-detail-stub">Version detail</div>,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([builderRoute, versionDetailRoute]),
     history: createMemoryHistory({
-      initialEntries: [`/admin/forms/${FORM_ID}?eventSlug=${EVENT_SLUG}`],
+      initialEntries: [`/admin/events/${EVENT_SLUG}/forms/${FORM_ID}`],
     }),
   })
   await router.load()
@@ -181,9 +182,11 @@ async function mountBuilder() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ThemeProvider>,
   )
   return { router }
 }
@@ -192,22 +195,25 @@ beforeEach(() => {
   let published = false
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       return jsonResponse(published ? FORK_DTO : DRAFT_DTO)
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`) {
       return jsonResponse(published ? VERSIONS_AFTER_PUBLISH_DTO : VERSIONS_DTO)
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions/${VERSION_ID}`) {
+    if (
+      method === 'GET' &&
+      url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${VERSION_ID}`
+    ) {
       return jsonResponse(PUBLISHED_DTO)
     }
     if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
       return jsonResponse(TAXONOMY_DTO)
     }
-    if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       return jsonResponse(published ? FORK_DTO : DRAFT_DTO)
     }
-    if (method === 'POST' && url === `/api/admin/forms/${FORM_ID}/publish`) {
+    if (method === 'POST' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish`) {
       published = true
       return jsonResponse(PUBLISHED_DTO)
     }
@@ -232,8 +238,10 @@ describe('builder publish confirmation and version history', () => {
     expect(getFormDraft).toBeTypeOf('function')
     expect(listFormVersions).toBeTypeOf('function')
     expect(publishForm).toBeTypeOf('function')
-    expect(getRoutePath(BuilderFormRoute)).toBe('/admin/forms/$formId')
-    expect(getRoutePath(VersionDetailRoute)).toBe('/admin/forms/$formId/versions/$versionId')
+    expect(getRoutePath(BuilderFormRoute)).toBe('/admin/events/$slug/forms/$formId')
+    expect(getRoutePath(VersionDetailRoute)).toBe(
+      '/admin/events/$slug/forms/$formId/versions/$versionId',
+    )
   })
 
   it('requires an explicit confirmation dialog before publishing and never publishes on cancel', async () => {
@@ -245,11 +253,15 @@ describe('builder publish confirmation and version history', () => {
     expect(dialog).toBeInTheDocument()
     expect(dialog).toHaveTextContent('Version 1')
     expect(dialog).toHaveTextContent(/frozen/i)
-    expect(fetchCall(`/api/admin/forms/${FORM_ID}/publish`, 'POST')).toBeUndefined()
+    expect(
+      fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish`, 'POST'),
+    ).toBeUndefined()
 
     await user.click(screen.getByRole('button', { name: /cancel/i }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(fetchCall(`/api/admin/forms/${FORM_ID}/publish`, 'POST')).toBeUndefined()
+    expect(
+      fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish`, 'POST'),
+    ).toBeUndefined()
   })
 
   it('disables the confirm action while publish is pending and announces published on success', async () => {
@@ -257,16 +269,22 @@ describe('builder publish confirmation and version history', () => {
     let resolvePublish: ((response: Response) => void) | undefined
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse(VERSIONS_AFTER_PUBLISH_DTO)
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'POST' && url === `/api/admin/forms/${FORM_ID}/publish`) {
+      if (
+        method === 'POST' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish`
+      ) {
         return new Promise<Response>((resolve) => {
           resolvePublish = resolve
         })
@@ -280,8 +298,14 @@ describe('builder publish confirmation and version history', () => {
     await user.click(confirmButton)
 
     expect(confirmButton).toBeDisabled()
+    // The in-flight publish is on the control that was pressed AND in a status
+    // region: aria-busy on a disabled button is not reliably announced.
+    expect(confirmButton).toHaveAttribute('aria-busy', 'true')
+    // Scoped to the dialog: the editor behind it owns a status region of its
+    // own, which is mounted and silent while the publish runs.
+    expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent(/publishing/i)
     resolvePublish?.(jsonResponse(PUBLISHED_DTO))
-    expect(await screen.findByRole('status')).toHaveTextContent('Published')
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Published'))
     expect(await screen.findByText('Version 2')).toBeInTheDocument()
     expect(screen.getAllByText('Published').length).toBeGreaterThan(0)
   })
@@ -290,16 +314,22 @@ describe('builder publish confirmation and version history', () => {
     const user = userEvent.setup()
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse(VERSIONS_DTO)
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'POST' && url === `/api/admin/forms/${FORM_ID}/publish`) {
+      if (
+        method === 'POST' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish`
+      ) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -315,7 +345,7 @@ describe('builder publish confirmation and version history', () => {
     expect(screen.getByRole('button', { name: /reload latest/i })).toBeInTheDocument()
     const publishCalls = fetchMock.mock.calls.filter(([input, init]) => {
       return (
-        requestUrl(input) === `/api/admin/forms/${FORM_ID}/publish` &&
+        requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish` &&
         (init?.method ?? 'GET') === 'POST'
       )
     })
@@ -329,13 +359,13 @@ describe('builder publish confirmation and version history', () => {
     const publishPostCalls = () =>
       fetchMock.mock.calls.filter(([input, init]) => {
         return (
-          requestUrl(input) === `/api/admin/forms/${FORM_ID}/publish` &&
+          requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish` &&
           (init?.method ?? 'GET') === 'POST'
         )
       })
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         draftGets += 1
         if (draftGets > 1) {
           return new Promise<Response>((resolve) => {
@@ -344,13 +374,19 @@ describe('builder publish confirmation and version history', () => {
         }
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse(VERSIONS_DTO)
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'POST' && url === `/api/admin/forms/${FORM_ID}/publish`) {
+      if (
+        method === 'POST' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish`
+      ) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -387,26 +423,32 @@ describe('builder publish confirmation and version history', () => {
     const publishPostCalls = () =>
       fetchMock.mock.calls.filter(([input, init]) => {
         return (
-          requestUrl(input) === `/api/admin/forms/${FORM_ID}/publish` &&
+          requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish` &&
           (init?.method ?? 'GET') === 'POST'
         )
       })
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         draftGets += 1
         if (draftGets > 1) {
           return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
         }
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse(VERSIONS_DTO)
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'POST' && url === `/api/admin/forms/${FORM_ID}/publish`) {
+      if (
+        method === 'POST' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish`
+      ) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -442,7 +484,7 @@ describe('builder publish confirmation and version history', () => {
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('Saved')
-    const put = fetchCall(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')
+    const put = fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
     const body = JSON.parse(String(put?.body)) as {
       pages: readonly { id: string }[]
       elements: readonly { id: string; pageId: string }[]
@@ -460,7 +502,9 @@ describe('builder publish confirmation and version history', () => {
     await user.click(screen.getByRole('link', { name: /version 1/i }))
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe(`/admin/forms/${FORM_ID}/versions/${VERSION_ID}`)
+      expect(router.state.location.pathname).toBe(
+        `/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${VERSION_ID}`,
+      )
     })
   })
 
@@ -468,7 +512,7 @@ describe('builder publish confirmation and version history', () => {
     const router = createRouter({
       routeTree,
       history: createMemoryHistory({
-        initialEntries: [`/admin/forms/${FORM_ID}/versions/${VERSION_ID}`],
+        initialEntries: [`/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${VERSION_ID}`],
       }),
     })
     await router.load()
@@ -476,9 +520,11 @@ describe('builder publish confirmation and version history', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
     render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
     )
 
     expect(await screen.findByText('Title')).toBeInTheDocument()
@@ -506,7 +552,10 @@ describe('builder publish confirmation and version history', () => {
   it('renders the denied state when the version detail 404s', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions/${VERSION_ID}`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${VERSION_ID}`
+      ) {
         return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -514,7 +563,7 @@ describe('builder publish confirmation and version history', () => {
     const router = createRouter({
       routeTree,
       history: createMemoryHistory({
-        initialEntries: [`/admin/forms/${FORM_ID}/versions/${VERSION_ID}`],
+        initialEntries: [`/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${VERSION_ID}`],
       }),
     })
     await router.load()
@@ -522,9 +571,11 @@ describe('builder publish confirmation and version history', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
     render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
     )
 
     expect(await screen.findByText('Not found')).toBeInTheDocument()

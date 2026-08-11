@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { toOrganizerActor } from '../../application'
+import { toOrganizerActor } from '../../application/actors'
 import { readSessionToken } from '../auth'
 import { depsFromContext } from '../container'
 import type { ServerContext, ServerEnv } from '../env'

@@ -1,11 +1,27 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs'
 import { execFileSync, spawn } from 'node:child_process'
 import { resolve } from 'node:path'
-import { devVarsContent, ownsDevVars } from './golden-dev-vars.mjs'
 
+import { devServerCommand, terminateChild } from './golden-dev-child.mjs'
+import { devVarsContent, installDevVars, restoreDevVars } from './golden-dev-vars.mjs'
+
+/**
+ * Dev server wrapper for the organizer end-to-end gate.
+ *
+ * It installs a local `.dev.vars` so the Worker has an admin token, resets D1,
+ * and runs the dev server. The `.dev.vars` lifecycle is the important part: a
+ * leaked file silently switches later local runs into local development mode,
+ * so the previous state is snapshotted on the way in and replayed on every way
+ * out — normal exit, non-zero exit, SIGINT/SIGTERM/SIGHUP, and an uncaught
+ * exception. A run that is hard-killed before any handler can fire leaves the
+ * snapshot behind, and the next run replays it before installing again.
+ *
+ * A signal also has to stop the server, not just restore the file: see
+ * `golden-dev-child.mjs` for why the child is the dev server itself and why an
+ * unresponsive one is killed rather than waited on.
+ */
 const root = resolve(import.meta.dirname, '..')
-const devVarsPath = resolve(root, '.dev.vars')
+const PORT = 4173
 
 let devVars
 try {
@@ -15,16 +31,43 @@ try {
   process.exit(2)
 }
 
-if (existsSync(devVarsPath)) {
-  const existing = readFileSync(devVarsPath, 'utf8')
-  if (ownsDevVars(existing)) {
-    rmSync(devVarsPath)
-  } else {
-    console.error(`golden-dev-server: refusing to overwrite ${devVarsPath}`)
-    process.exit(2)
+const message = (error) => (error instanceof Error ? error.message : String(error))
+
+const restore = () => {
+  try {
+    return restoreDevVars(root)
+  } catch (error) {
+    console.error('golden-dev-server: could not restore .dev.vars:', message(error))
+    return 'failed'
   }
 }
-writeFileSync(devVarsPath, devVars, { mode: 0o600 })
+
+/** @type {import('node:child_process').ChildProcess | null} */
+let child = null
+
+// Registered before anything can throw, so no exit path skips the restore.
+process.on('exit', restore)
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => {
+    restore()
+    if (child === null) {
+      process.exit(1)
+    } else {
+      void terminateChild(child, signal).then(() => {
+        process.exit(1)
+      })
+    }
+  })
+}
+process.on('uncaughtException', (error) => {
+  console.error('golden-dev-server:', message(error))
+  process.exit(1)
+})
+
+const snapshot = installDevVars(root, devVars)
+if (snapshot.existed) {
+  console.log('golden-dev-server: existing .dev.vars saved; it is restored on exit')
+}
 
 // Fresh D1 state before the Worker opens the database.
 execFileSync(process.execPath, [resolve(root, 'scripts', 'db-reset.mjs')], {
@@ -32,26 +75,13 @@ execFileSync(process.execPath, [resolve(root, 'scripts', 'db-reset.mjs')], {
   stdio: 'inherit',
 })
 
-const child = spawn('pnpm', ['dev', '--port', '4173', '--strictPort'], {
+const { command, args } = devServerCommand(root, PORT)
+child = spawn(command, args, {
   cwd: root,
   stdio: 'inherit',
 })
 
-const cleanup = () => {
-  if (existsSync(devVarsPath) && ownsDevVars(readFileSync(devVarsPath, 'utf8'))) {
-    rmSync(devVarsPath)
-  }
-}
-
-const forward = (signal) => () => {
-  cleanup()
-  child.kill(signal)
-}
-process.on('SIGINT', forward('SIGINT'))
-process.on('SIGTERM', forward('SIGTERM'))
-process.on('exit', cleanup)
-
 child.on('exit', (code, signal) => {
-  cleanup()
+  restore()
   process.exit(code ?? (signal !== null ? 1 : 0))
 })

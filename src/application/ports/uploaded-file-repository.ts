@@ -1,7 +1,7 @@
 import type { ContactId, EventId, UtcInstant } from '../../domain'
 
 /** Upload kinds backed by `uploaded_files.kind`. */
-export const UPLOADED_FILE_KINDS = ['headshot'] as const
+export const UPLOADED_FILE_KINDS = ['headshot', 'document'] as const
 
 export type UploadedFileKind = (typeof UPLOADED_FILE_KINDS)[number]
 
@@ -16,6 +16,8 @@ export interface UploadedFileRecord {
   readonly sizeBytes: number
   readonly createdAt: UtcInstant
   readonly updatedAt: UtcInstant
+  /** Sanitized display name; present exactly for `document` rows (0014). */
+  readonly fileName?: string | null
 }
 
 export interface UploadedFileRepository {

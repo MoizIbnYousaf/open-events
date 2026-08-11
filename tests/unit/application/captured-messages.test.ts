@@ -17,6 +17,7 @@ const stored = {
   subject: 'Your SpeakerOps CFP link',
   body: 'Open your CFP session: http://localhost/cfp/demo-conf-2026/cfp?token=demo-token',
   createdAt: NOW,
+  kind: 'confirmation' as const,
 }
 
 describe('CapturedMessageService.listByEmail', () => {

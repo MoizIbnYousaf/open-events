@@ -484,7 +484,9 @@ describe('public CFP submit and confirmation', () => {
         const rendered = document.body.textContent ?? ''
         expect(rendered).not.toContain('draft-1')
         expect(rendered).not.toContain(message)
-        expect(screen.queryByRole('status')).not.toBeInTheDocument()
+        // Every status region is mounted and silent: a refused submit must
+        // leave nothing behind that reads as an outcome.
+        for (const region of screen.queryAllByRole('status')) expect(region).toHaveTextContent('')
         expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument()
         const editor = queryClient.getQueryData<{
           readonly draftId: string | null

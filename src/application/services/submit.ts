@@ -1,20 +1,14 @@
-import type {
-  CapturedMessage,
-  CfpForm,
-  Contact,
-  EventId,
-  FormVersion,
-  ProposalSubmission,
-  SubmissionId,
-} from '../../domain'
-import {
-  applyRoutingRules,
-  computeSubmissionContentHash,
-  isValidEmailAddress,
-  MAX_CO_SPEAKERS,
-  normalizeEmail,
-  validateAnswersAgainstVersion,
-} from '../../domain'
+import type { CapturedMessage } from '../../domain/confirmation'
+import type { Contact } from '../../domain/contact'
+import { MAX_CO_SPEAKERS } from '../../domain/contact'
+import type { EventId } from '../../domain/event'
+import type { CfpForm } from '../../domain/form'
+import type { FormVersion } from '../../domain/form-version'
+import { computeSubmissionContentHash } from '../../domain/invariants/content-hash'
+import { isValidEmailAddress, normalizeEmail } from '../../domain/invariants/email'
+import { validateAnswersAgainstVersion } from '../../domain/invariants/submission'
+import { applyRoutingRules } from '../../domain/rules'
+import type { ProposalSubmission, SubmissionId } from '../../domain/submission'
 import type {
   ContributorDto,
   SubmissionDetailDto,
@@ -147,6 +141,7 @@ export class SubmitService {
       subject: 'Your submission was received',
       body: `SpeakerOps: your submission "${input.title}" was received (${submissionId}).`,
       createdAt: now,
+      kind: 'confirmation',
     }
     const confirmation = {
       id: crypto.randomUUID(),
@@ -196,21 +191,13 @@ export class SubmitService {
     eventId: EventId,
   ): Promise<readonly SubmissionListItemDto[]> {
     const submissions = await this.#submissions.listByEvent(eventId)
-    const items: SubmissionListItemDto[] = []
-    for (const submission of submissions) {
-      items.push(await this.#listItem(submission))
-    }
-    return items
+    return Promise.all(submissions.map((submission) => this.#listItem(submission)))
   }
 
   /** Submitter-owned list: the actor's own submissions, newest first, no answers. */
   async listOwn(actor: SubmitterActor): Promise<readonly SubmissionListItemDto[]> {
     const submissions = await this.#submissions.listByOwner(actor.eventId, actor.contactId)
-    const items: SubmissionListItemDto[] = []
-    for (const submission of submissions) {
-      items.push(await this.#listItem(submission))
-    }
-    return items
+    return Promise.all(submissions.map((submission) => this.#listItem(submission)))
   }
 
   /** Organizer/event-scoped retrieval: mismatched event returns null (safe 404). */
@@ -252,7 +239,10 @@ export class SubmitService {
     readonly version: FormVersion
     readonly contributors: readonly ContributorDto[]
   }> {
-    const version = await this.#versions.findById(submission.formVersionId)
+    const [version, rows] = await Promise.all([
+      this.#versions.findById(submission.formVersionId),
+      this.#submissions.listContributorsBySubmission(submission.eventId, submission.id),
+    ])
     if (version === null) {
       throw new ApplicationError(
         'not_found',
@@ -263,24 +253,21 @@ export class SubmitService {
     if (form === null) {
       throw new ApplicationError('not_found', `Form '${version.formId}' not found`)
     }
-    const rows = await this.#submissions.listContributorsBySubmission(
-      submission.eventId,
-      submission.id,
+    const contributors = await Promise.all(
+      rows.map(async (row): Promise<ContributorDto> => {
+        const contact = await this.#contacts.findById(row.contactId)
+        if (contact === null) {
+          throw new ApplicationError('not_found', `Contact '${row.contactId}' not found`)
+        }
+        return {
+          contactId: contact.id,
+          name: contact.name,
+          email: contact.email,
+          role: row.role,
+          position: row.position,
+        }
+      }),
     )
-    const contributors: ContributorDto[] = []
-    for (const row of rows) {
-      const contact = await this.#contacts.findById(row.contactId)
-      if (contact === null) {
-        throw new ApplicationError('not_found', `Contact '${row.contactId}' not found`)
-      }
-      contributors.push({
-        contactId: contact.id,
-        name: contact.name,
-        email: contact.email,
-        role: row.role,
-        position: row.position,
-      })
-    }
     return { form, version, contributors }
   }
 

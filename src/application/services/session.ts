@@ -1,13 +1,7 @@
-import type {
-  ContactId,
-  EventId,
-  OrganizerSession,
-  Session,
-  SubmitterSession,
-  SubmitterToken,
-  UtcInstant,
-} from '../../domain'
-import { isValidEmailAddress, normalizeEmail } from '../../domain'
+import type { OrganizerSession, Session, SubmitterSession, SubmitterToken } from '../../domain/auth'
+import type { ContactId } from '../../domain/contact'
+import type { EventId, UtcInstant } from '../../domain/event'
+import { isValidEmailAddress, normalizeEmail } from '../../domain/invariants/email'
 import type {
   OrganizerSessionDto,
   RedeemResult,
@@ -133,6 +127,7 @@ export class SessionService {
       subject: 'Your SpeakerOps CFP link',
       body: `Open your CFP session: ${linkBuilder(token, publicCfpPath(input.eventSlug, input.formSlug))}`,
       createdAt: now,
+      kind: 'confirmation' as const,
     }
     await this.#unitOfWork.issueStart({
       contact: { id: contactId, email: normalized, name: normalized, createdAt: now },
@@ -195,6 +190,11 @@ export class SessionService {
     const session = await this.#sessions.findByHash(await this.#hasher.hash(token))
     if (session === null || !isSessionValid(session, now)) return null
     return session
+  }
+
+  /** Idempotently revokes the session represented by a raw cookie token. */
+  async revokeSession(token: string): Promise<void> {
+    await this.#sessions.consumeByHash(await this.#hasher.hash(token), this.#clock.now())
   }
 
   /** Rotation seam: consume the current session and issue a fresh one, preserving identity. */

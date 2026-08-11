@@ -106,3 +106,48 @@ VALUES (
   'workshop'
 )
 ON CONFLICT(event_id, id) DO NOTHING;
+
+-- The demo cast, by the names the frozen scope uses: the organizer, the two
+-- speakers, and the standing review committee. Contacts are keyed by email
+-- (the identity dedupe key), so anyone who later starts a session reuses the
+-- seeded row instead of creating a second identity.
+INSERT INTO contacts (id, email, name, created_at) VALUES
+  ('c0000000-0000-4000-8000-000000000601', 'reviewer.one@example.test', 'Reviewer One', '2026-01-01T09:00:00.000Z'),
+  ('c0000000-0000-4000-8000-000000000602', 'reviewer.two@example.test', 'Reviewer Two', '2026-01-01T09:00:00.000Z'),
+  ('c0000000-0000-4000-8000-000000000603', 'organizer@example.test', 'Demo Organizer', '2026-01-01T09:00:00.000Z'),
+  ('c0000000-0000-4000-8000-000000000604', 'speaker.ada@example.test', 'Ada Speaker', '2026-01-01T09:00:00.000Z'),
+  ('c0000000-0000-4000-8000-000000000605', 'speaker.grace@example.test', 'Grace Speaker', '2026-01-01T09:00:00.000Z')
+ON CONFLICT(email) DO NOTHING;
+
+-- One default weighted criterion and one open review round: the minimum an
+-- evaluator needs to record a rating on a freshly reset database.
+INSERT INTO evaluation_criteria (event_id, id, name, weight, position)
+VALUES (
+  'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+  'e0000000-0000-4000-8000-000000000701',
+  'Overall fit',
+  1,
+  0
+)
+ON CONFLICT(event_id, id) DO NOTHING;
+
+INSERT INTO evaluation_rounds (event_id, id, number, name, status)
+VALUES (
+  'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+  'e0000000-0000-4000-8000-000000000702',
+  1,
+  'Round 1',
+  'open'
+)
+ON CONFLICT(event_id, id) DO NOTHING;
+
+-- Both reviewers sit on the standing committee from the first reset. Being on
+-- the committee is what makes the evaluations surface theirs: a member with an
+-- empty queue is told it is empty, while a speaker never sees it at all.
+INSERT INTO evaluation_committee_members (event_id, contact_id, added_at) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'c0000000-0000-4000-8000-000000000601',
+   '2026-01-01T09:00:00.000Z'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'c0000000-0000-4000-8000-000000000602',
+   '2026-01-01T09:00:00.000Z')
+ON CONFLICT(event_id, contact_id) DO NOTHING;
+

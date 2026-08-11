@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '../../../src/app/query-client'
 import AdminLogin from '../../../src/app/features/admin/AdminLogin'
+import { Toaster } from '../../../src/components/ui/sonner'
 
 const SESSION_TOKEN = 'test-session-token'
 const EXPIRES_AT = '2026-08-08T12:00:00.000Z'
@@ -38,7 +39,7 @@ function fetchCall(url: string, method: string): RequestInit | undefined {
   return call?.[1]
 }
 
-async function mountLogin() {
+async function mountLogin({ withToaster = false }: { withToaster?: boolean } = {}) {
   const rootRoute = createRootRoute()
   const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -59,6 +60,9 @@ async function mountLogin() {
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
+      {/* The shell mounts the toaster beside the router, so an outcome
+          reported here outlives the navigation that follows it. */}
+      {withToaster ? <Toaster /> : null}
     </QueryClientProvider>,
   )
   return { router }
@@ -117,6 +121,32 @@ describe('admin login screen', () => {
     const sessionCall = fetchCall('/api/admin/session', 'POST')
     expect(sessionCall?.body).toBe(JSON.stringify({ secret: 'wrong-secret' }))
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+  })
+
+  it('reports the sign-in through the toast channel, which outlives the navigation', async () => {
+    const user = userEvent.setup()
+    fetchHandler = () =>
+      jsonResponse({ expiresAt: EXPIRES_AT }, 200, {
+        'set-cookie': `sp_session=${SESSION_TOKEN}; Path=/; HttpOnly`,
+      })
+    const { router } = await mountLogin({ withToaster: true })
+
+    await user.type(screen.getByLabelText('Organizer secret'), 'admin-secret')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/admin/events/demo-conf-2026')
+    })
+
+    // The form itself is gone by now; the outcome is still on screen, inside
+    // the notifications region the shell keeps mounted.
+    const region = await screen.findByRole('region', { name: /notifications/i })
+    expect(within(region).getByText('Signed in')).toBeInTheDocument()
+
+    // Exactly once: the toaster's region is already live, so a second
+    // announcer channel carrying the same sentence would speak it twice
+    // (DEC-014, DEC-019).
+    expect(screen.getAllByText('Signed in')).toHaveLength(1)
   })
 
   it('navigates to /admin/events/demo-conf-2026 on success and keeps the session token out of the DOM', async () => {

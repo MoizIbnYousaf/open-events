@@ -1,5 +1,6 @@
-import type { EventSlug, TaxonomyItem } from '../../domain'
-import { validateTaxonomyItems } from '../../domain'
+import type { EventSlug } from '../../domain/event'
+import { validateTaxonomyItems } from '../../domain/invariants/taxonomy'
+import type { TaxonomyItem } from '../../domain/taxonomy'
 import type { OrganizerActor } from '../actors'
 import type { ReplaceTaxonomyInput, TaxonomyListDto } from '../dtos/taxonomy.dto'
 import { toTaxonomyListDto } from '../dtos/taxonomy.dto'

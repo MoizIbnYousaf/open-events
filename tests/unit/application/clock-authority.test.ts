@@ -207,13 +207,13 @@ describe('server Clock authority', () => {
     const drafts = new InMemoryDraftRepository([createDraft()])
     const draftService = new DraftService(drafts, forms, versions, { now: () => CLOCK_A })
 
-    const draft = await builder.updateDraft(organizerActor, FORM_ID, {
+    const draft = await builder.updateDraft(organizerActor, EVENT_ID, FORM_ID, {
       pages: createContent().pages,
       elements: createContent().elements,
       conditionRules: createContent().conditionRules,
       routingRules: createContent().routingRules,
     })
-    const published = await builder.publish(organizerActor, FORM_ID)
+    const published = await builder.publish(organizerActor, EVENT_ID, FORM_ID)
     const savedDraft = await draftService.save(ownerActor, {
       id: DRAFT_ID,
       formId: FORM_ID,

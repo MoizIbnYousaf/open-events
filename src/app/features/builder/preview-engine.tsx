@@ -15,7 +15,10 @@ import {
 } from '../../../domain/invariants/submission'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
+import { StatusLive } from '../../../components/ui/status-live'
+import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import { autocompleteForElement } from '../../lib/autocomplete-purpose'
 
 interface PreviewEngineProps {
   readonly content: FormVersionContent
@@ -25,6 +28,9 @@ interface PreviewEngineProps {
 export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineProps) {
   const [answers, setAnswers] = useState<AnswerMap>({})
   const [issues, setIssues] = useState<readonly AnswerValidationIssue[]>([])
+  // A clean run used to change nothing on screen, so the organizer could not
+  // tell the check had happened at all.
+  const [passed, setPassed] = useState(false)
   const fieldRefs = useRef(new Map<ElementFieldKey, HTMLElement | null>())
 
   const visibleElements = useMemo(
@@ -58,12 +64,16 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
   }, [content])
 
   const setAnswer = (fieldKey: ElementFieldKey, value: AnswerValue | null) => {
+    setPassed(false)
     setAnswers((current) => ({ ...current, [fieldKey]: value }))
   }
 
-  const submit = () => {
+  // Synchronous, local, and deliberately so: the preview never talks to the
+  // server, it re-runs the same domain validation the real submit would.
+  const checkAnswers = () => {
     const next = validateAnswersAgainstVersion(content, answers)
     setIssues(next)
+    setPassed(next.length === 0)
     if (next.length > 0) {
       const first = next[0]
       if (first !== undefined) {
@@ -82,14 +92,19 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
       }
     }
 
+  // The engine already computed a field-precise issue for every problem; it
+  // used to render only "Please review the highlighted fields." and highlight
+  // nothing. Indexing by fieldKey is what lets each control carry its own text.
+  const issueByField = new Map(issues.map((issue) => [issue.fieldKey, issue.message]))
+
   return (
     <div className="grid gap-4">
       <form
         className="grid gap-4"
         noValidate
-        onSubmit={(event) => {
+        onSubmitCapture={(event) => {
           event.preventDefault()
-          submit()
+          checkAnswers()
         }}
       >
         {visibleElements.map((element) =>
@@ -103,12 +118,20 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
               element={element}
               answers={answers}
               required={isElementRequired(element, content.conditionRules, answers)}
+              error={issueByField.get(element.fieldKey)}
               registerFieldRef={registerFieldRef}
               onChange={(value) => setAnswer(element.fieldKey as ElementFieldKey, value)}
             />
           ),
         )}
         {issues.length > 0 ? <AlertLive>Please review the highlighted fields.</AlertLive> : null}
+        {/* Mounted with the form and empty until a check passes: a region
+            whose text changes, never one created together with its text — a
+            polite live region has to be in the accessibility tree before its
+            content arrives or it announces nothing (DEC-014). */}
+        <StatusLive aria-live="polite">
+          {passed ? 'No problems found in these answers.' : null}
+        </StatusLive>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="submit">Submit preview</Button>
           {routingLabel !== null ? (
@@ -124,6 +147,7 @@ interface PreviewFieldProps {
   readonly element: FormElement
   readonly answers: AnswerMap
   readonly required: boolean
+  readonly error: string | undefined
   readonly registerFieldRef: <T extends HTMLElement>(
     fieldKey: ElementFieldKey,
   ) => (node: T | null) => void
@@ -134,6 +158,7 @@ function PreviewField({
   element,
   answers,
   required,
+  error,
   registerFieldRef,
   onChange,
 }: PreviewFieldProps) {
@@ -142,33 +167,43 @@ function PreviewField({
   const label = element.label ?? fieldKey
   const value = answers[fieldKey]
   const id = `preview-field-${fieldKey}`
+  const errorId = `${id}-error`
+  const invalid = error !== undefined
   const baseFieldClass =
     'h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none disabled:opacity-50 md:text-sm'
+  const errorNode = invalid ? <FieldError id={errorId}>{error}</FieldError> : null
 
   if (element.questionType === 'long_text') {
     return (
-      <div className="grid gap-1.5">
-        <label htmlFor={id}>{label}</label>
+      <Field invalid={invalid}>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <textarea
           id={id}
+          aria-label={label}
           ref={registerFieldRef(fieldKey)}
           required={required}
           value={typeof value === 'string' ? value : ''}
+          aria-invalid={invalid ? true : undefined}
+          aria-describedby={invalid ? errorId : undefined}
           onChange={(event) => onChange(event.target.value)}
           className={`${baseFieldClass} min-h-24 resize-y`}
         />
-      </div>
+        {errorNode}
+      </Field>
     )
   }
   if (element.questionType === 'single_choice') {
     return (
-      <div className="grid gap-1.5">
-        <label htmlFor={id}>{label}</label>
+      <Field invalid={invalid}>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <select
           id={id}
+          aria-label={label}
           ref={registerFieldRef(fieldKey) as (node: HTMLSelectElement | null) => void}
           required={required}
           value={typeof value === 'string' ? value : ''}
+          aria-invalid={invalid ? true : undefined}
+          aria-describedby={invalid ? errorId : undefined}
           onChange={(event) => onChange(event.target.value)}
           className={baseFieldClass}
         >
@@ -179,35 +214,44 @@ function PreviewField({
             </option>
           ))}
         </select>
-      </div>
+        {errorNode}
+      </Field>
     )
   }
   if (element.questionType === 'multi_choice') {
+    const selectedOptions = new Set(Array.isArray(value) ? value : [])
     return (
-      <fieldset className="grid gap-1.5">
-        <legend className="text-sm font-medium">{label}</legend>
-        {element.options.map((option) => {
-          const selected = Array.isArray(value) && value.includes(option)
-          return (
-            <label key={option} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                required={required && element.options.length > 0 && !selected}
-                checked={selected}
-                onChange={(event) => {
-                  const current = Array.isArray(value) ? (value as string[]) : []
-                  onChange(
-                    event.target.checked
-                      ? [...current, option]
-                      : current.filter((item) => item !== option),
-                  )
-                }}
-              />
-              {option}
-            </label>
-          )
-        })}
-      </fieldset>
+      <Field invalid={invalid}>
+        <fieldset className="grid gap-1.5">
+          <legend className="text-sm font-medium">{label}</legend>
+          {element.options.map((option, index) => {
+            const selected = selectedOptions.has(option)
+            const optionId = `${id}-option-${index}`
+            return (
+              <label key={option} htmlFor={optionId} className="flex items-center gap-2 text-sm">
+                <input
+                  id={optionId}
+                  type="checkbox"
+                  required={required && element.options.length > 0 && !selected}
+                  checked={selected}
+                  aria-invalid={invalid ? true : undefined}
+                  aria-describedby={invalid ? errorId : undefined}
+                  onChange={(event) => {
+                    const current = Array.isArray(value) ? (value as string[]) : []
+                    onChange(
+                      event.target.checked
+                        ? [...current, option]
+                        : current.filter((item) => item !== option),
+                    )
+                  }}
+                />
+                {option}
+              </label>
+            )
+          })}
+        </fieldset>
+        {errorNode}
+      </Field>
     )
   }
   const inputType =
@@ -217,18 +261,20 @@ function PreviewField({
         ? 'email'
         : 'text'
   return (
-    <div className="grid gap-1.5">
-      <label htmlFor={id}>{label}</label>
+    <Field invalid={invalid}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         id={id}
         ref={registerFieldRef(fieldKey)}
         type={inputType}
         required={required}
+        autoComplete={autocompleteForElement(element)}
         value={typeof value === 'string' ? value : ''}
         onChange={(event) =>
           onChange(inputType === 'number' ? Number(event.target.value) : event.target.value)
         }
       />
-    </div>
+      {errorNode}
+    </Field>
   )
 }

@@ -7,7 +7,7 @@ import {
   toSubmitterActor,
   type OrganizerActor as OrganizerActorType,
   type SubmitterActor as SubmitterActorType,
-} from '../application'
+} from '../application/actors'
 
 import type { ServerDeps } from './container'
 import { depsFromContext } from './container'
@@ -56,6 +56,13 @@ export function serializeSessionCookie(
   if (secure) cookie += '; Secure'
   cookie += `; Max-Age=${Math.max(1, Math.floor(maxAgeSeconds))}`
   return cookie
+}
+
+/** Expires the shared session cookie immediately using the same security attributes. */
+export function serializeExpiredSessionCookie(secure: boolean): string {
+  let cookie = `${SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/`
+  if (secure) cookie += '; Secure'
+  return `${cookie}; Max-Age=0`
 }
 
 /** Cookie Max-Age derived from the session expiry and the server clock. */

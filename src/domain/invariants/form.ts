@@ -1,13 +1,7 @@
 import type { Cap, FormLimits } from '../form.ts'
 import { isValidUtcInstant } from './time.ts'
 
-export const FORM_LIMIT_ISSUE_CODES = [
-  'invalid_cap',
-  'invalid_utc_instant',
-  'invalid_date_range',
-] as const
-
-export type FormLimitIssueCode = (typeof FORM_LIMIT_ISSUE_CODES)[number]
+export type FormLimitIssueCode = 'invalid_cap' | 'invalid_utc_instant' | 'invalid_date_range'
 
 export interface FormLimitIssue {
   readonly code: FormLimitIssueCode
@@ -17,10 +11,6 @@ export interface FormLimitIssue {
 /** NULL = unlimited; non-null caps must be positive integers. */
 export function isPositiveCap(cap: Cap): boolean {
   return Number.isInteger(cap) && cap > 0
-}
-
-export function areFormLimitsValid(limits: FormLimits): boolean {
-  return validateFormLimits(limits).length === 0
 }
 
 export function validateFormLimits(limits: FormLimits): readonly FormLimitIssue[] {

@@ -1,8 +1,6 @@
 import type { TaxonomyItem, TaxonomyKind } from '../taxonomy.ts'
 
-export const TAXONOMY_ISSUE_CODES = ['empty_key', 'duplicate_key', 'invalid_position'] as const
-
-export type TaxonomyIssueCode = (typeof TAXONOMY_ISSUE_CODES)[number]
+export type TaxonomyIssueCode = 'empty_key' | 'duplicate_key' | 'invalid_position'
 
 export interface TaxonomyIssue {
   readonly code: TaxonomyIssueCode

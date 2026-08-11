@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { countGoldenRows } from './helpers/golden-rows'
+import { capturedMessages, countGoldenRows } from './helpers/golden-rows'
 
 const EMAIL = 'golden-speaker@example.test'
 const FORM_ID = 'f0000000-0000-4000-8000-000000000001'
@@ -35,7 +35,7 @@ const CONSOLE_NOISE_PATTERNS = [/^\[vite\]/, /Download the React DevTools/i]
 // response — never blanket-suppressed: extra or unassociated 404 console
 // messages remain evidence in consoleErrors.
 const DRAFT_404_CONSOLE_PATTERN =
-  /Failed to load resource: the server responded with a status of 404 \(Not Found\)/
+  /Failed to load resource: the server responded with a status of 404 \((?:Not Found)?\)/
 
 // Narrow 404-console consumption state machine: each expected draft-404
 // response adds one budget unit; a matching console message consumes at most
@@ -190,7 +190,7 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     await speakerPage.goto('/start')
     await expect(speakerPage.getByRole('heading', { level: 1, name: 'Start' })).toBeVisible()
     await speakerPage.getByLabel('Email').fill(EMAIL)
-    await speakerPage.getByRole('button', { name: 'Start' }).click()
+    await speakerPage.getByRole('button', { name: 'Request a link' }).click()
     await expect(speakerPage.getByText('Check your email')).toBeVisible()
 
     // 2. Organizer context: local-admin session + dev-captured link.
@@ -220,10 +220,15 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     // Dev-only captured-link read (plan exception list): positively asserted
     // here with the exact URL, method, and status 200 — the live evidence path
     // for the plan's dev-only captured-link exception.
-    const captured = await organizerPage.request.get(`/api/dev/captured?email=${EMAIL}`)
-    expect(captured.status()).toBe(200)
-    recordResponse(captured, 'GET')
-    const capturedBody = (await captured.json()) as Array<{ body: string }>
+    let capturedBody: readonly { readonly body: string }[]
+    if (process.env.LIVE_PRODUCTION === 'true') {
+      capturedBody = capturedMessages(EMAIL)
+    } else {
+      const captured = await organizerPage.request.get(`/api/dev/captured?email=${EMAIL}`)
+      expect(captured.status()).toBe(200)
+      recordResponse(captured, 'GET')
+      capturedBody = (await captured.json()) as Array<{ body: string }>
+    }
     const message = capturedBody[capturedBody.length - 1]
     expect(message, 'captured demo message exists').toBeDefined()
     const sessionPath = message?.body.split('Open your CFP session: ')[1]?.trim()
@@ -255,7 +260,7 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     expect(sessionCookie?.sameSite).toBe('Strict')
     expect(sessionCookie?.path).toBe('/')
     expect((sessionCookie?.expires ?? 0) > 0).toBe(true)
-    expect(sessionCookie?.secure).toBe(false)
+    expect(sessionCookie?.secure).toBe(process.env.LIVE_PRODUCTION === 'true')
     // Session isolation: the organizer jar holds its own sp_session value, never
     // the speaker's — both sessions share the cookie name, so the values must be
     // distinct.

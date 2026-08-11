@@ -22,6 +22,9 @@ function task(overrides: Partial<SpeakerTask> = {}): SpeakerTask {
     position: 0,
     createdAt: CREATED_AT,
     completedAt: null,
+    formId: null,
+    formVersionId: null,
+    response: null,
     ...overrides,
   }
 }

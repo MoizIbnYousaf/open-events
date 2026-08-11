@@ -4,4 +4,6 @@ import BuilderEditor from '../features/builder/BuilderEditor'
 
 import type {} from '../routeTree.gen'
 
-export const Route = createFileRoute('/admin_/forms/$formId')({ component: BuilderEditor })
+export const Route = createFileRoute('/admin_/events/$slug_/forms/$formId')({
+  component: BuilderEditor,
+})

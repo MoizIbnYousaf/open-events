@@ -11,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FormDefinitionDto } from '../../../src/application'
+import { ThemeProvider } from '../../../src/components/ui/theme-provider'
 import { DeniedState } from '../../../src/app/features/admin/AdminStates'
 import { Route as RootRoute } from '../../../src/app/routes/__root'
 import CfpSubmit from '../../../src/app/features/public/CfpSubmit'
@@ -154,9 +155,11 @@ describe('public form accessibility', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
     render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
     )
 
     await screen.findByText('SpeakerOps')
@@ -315,7 +318,7 @@ describe('public form accessibility', () => {
     const email = screen.getByLabelText(/email/i)
     await waitFor(() => expect(email).toHaveFocus())
     await user.tab()
-    expect(screen.getByRole('button', { name: /start/i })).toHaveFocus()
+    expect(screen.getByRole('button', { name: /request a link/i })).toHaveFocus()
     await user.tab()
     expect(document.activeElement).toBe(document.body)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

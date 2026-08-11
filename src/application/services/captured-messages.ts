@@ -1,5 +1,5 @@
-import type { CapturedMessage } from '../../domain'
-import { normalizeEmail } from '../../domain'
+import type { CapturedMessage } from '../../domain/confirmation'
+import { normalizeEmail } from '../../domain/invariants/email'
 import type { CapturedMessageRepository } from '../ports/captured-message-repository'
 
 /**

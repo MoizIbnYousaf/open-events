@@ -69,6 +69,27 @@ describe('origin allowlist and env helpers', () => {
     expect(isLocalDevMode(context({}))).toBe(false)
   })
 
+  it('separates an unset allowlist from an explicitly empty one in local dev mode', () => {
+    const local = { LOCAL_DEV_MODE: 'true' }
+
+    // Unset: the local dev fallback applies.
+    expect(getAllowedOrigins(context({ ...local }))).toEqual([
+      'http://localhost:8787',
+      'http://127.0.0.1:8787',
+    ])
+
+    // Explicitly empty: fail closed, no fallback, every cross-origin mutation
+    // rejected — an operator who blanks the value means "allow nothing".
+    expect(getAllowedOrigins(context({ ...local, ALLOWED_ORIGINS: '' }))).toEqual([])
+    expect(getAllowedOrigins(context({ ...local, ALLOWED_ORIGINS: '   ' }))).toEqual([])
+    expect(getAllowedOrigins(context({ ...local, ALLOWED_ORIGINS: ' , ' }))).toEqual([])
+
+    // Explicit list: exactly that list.
+    expect(getAllowedOrigins(context({ ...local, ALLOWED_ORIGINS: 'http://a, http://b' }))).toEqual(
+      ['http://a', 'http://b'],
+    )
+  })
+
   it('reads the local admin token with an empty default', () => {
     expect(localAdminToken(context({ LOCAL_ADMIN_TOKEN: 'x' }))).toBe('x')
     expect(localAdminToken(context({}))).toBe('')

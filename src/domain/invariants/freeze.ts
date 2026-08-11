@@ -1,15 +1,12 @@
 import type { CfpForm } from '../form.ts'
 import type { FormVersion } from '../form-version.ts'
 
-export const FREEZE_ISSUE_CODES = [
-  'version_number',
-  'published_without_hash',
-  'published_without_date',
-  'draft_with_published_at',
-  'published_version_mismatch',
-] as const
-
-export type FreezeIssueCode = (typeof FREEZE_ISSUE_CODES)[number]
+export type FreezeIssueCode =
+  | 'version_number'
+  | 'published_without_hash'
+  | 'published_without_date'
+  | 'draft_with_published_at'
+  | 'published_version_mismatch'
 
 export interface FreezeIssue {
   readonly code: FreezeIssueCode
@@ -84,12 +81,7 @@ export function validatePublishedVersionBinding(
   return issues
 }
 
-export const FORM_STATE_ISSUE_CODES = [
-  'published_without_version',
-  'draft_with_published_version',
-] as const
-
-export type FormStateIssueCode = (typeof FORM_STATE_ISSUE_CODES)[number]
+export type FormStateIssueCode = 'published_without_version' | 'draft_with_published_version'
 
 export interface FormStateIssue {
   readonly code: FormStateIssueCode

@@ -14,6 +14,7 @@ export {
   createTokenRepository,
 } from './repositories'
 export { createAgendaRepository } from './agenda-repository'
+export { createEvaluationRepository } from './evaluation-repository'
 export { createUploadedFileRepository } from './uploaded-file-repository'
 export type { AgendaRepository, AgendaSessionRecord } from './agenda-repository'
 export { createSpeakerTaskRepository } from './speaker-task-repository'
@@ -24,13 +25,12 @@ export { createSubmitUnitOfWork } from './submit-unit-of-work'
 export * from './schema'
 export {
   DEMO_CONF_2026_CONTENT_HASH,
+  DEMO_CONF_2026_CRITERION_ID,
   DEMO_CONF_2026_FORM_ID,
   DEMO_CONF_2026_ID,
   DEMO_CONF_2026_PUBLISHED_AT,
+  DEMO_CONF_2026_REVIEWER_ONE_ID,
+  DEMO_CONF_2026_REVIEWER_TWO_ID,
+  DEMO_CONF_2026_ROUND_ID,
   DEMO_CONF_2026_VERSION_ID,
-  demoConf2026Content,
-  demoConf2026Form,
-  demoConf2026PublishedVersion,
-  demoConf2026Seed,
-  demoConf2026Taxonomy,
 } from './seed'

@@ -18,6 +18,7 @@ import {
   ForbiddenState,
 } from '../../../src/app/features/admin/AdminStates'
 import { routeTree } from '../../../src/app/routeTree.gen'
+import { ThemeProvider } from '../../../src/components/ui/theme-provider'
 
 const EVENT_SLUG = 'demo-conf-2026'
 const FORM_ID = 'f0000000-0000-4000-8000-000000000001'
@@ -177,9 +178,11 @@ async function mountAt(path: string) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ThemeProvider>,
   )
   return { queryClient, router }
 }
@@ -246,13 +249,16 @@ beforeEach(() => {
     ) {
       return jsonResponse(SUBMISSION_DETAIL)
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       return jsonResponse(BUILDER_DRAFT_DTO)
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`) {
       return jsonResponse([])
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions/${VERSION_ID}`) {
+    if (
+      method === 'GET' &&
+      url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${VERSION_ID}`
+    ) {
       return jsonResponse(FORM_VERSION_DETAIL)
     }
     return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -292,8 +298,8 @@ describe('admin shell', () => {
     [`/admin/events/${EVENT_SLUG}/taxonomies`, 'Taxonomies'],
     [`/admin/events/${EVENT_SLUG}/submissions`, 'Submissions'],
     [`/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}`, 'My talk'],
-    [`/admin/forms/${FORM_ID}`, 'Form builder'],
-    [`/admin/forms/${FORM_ID}/versions/${VERSION_ID}`, 'Version 1'],
+    [`/admin/events/demo-conf-2026/forms/${FORM_ID}`, 'Form builder'],
+    [`/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${VERSION_ID}`, 'Version 1'],
   ] as const)('renders exactly one page-owned h1 on %s (never the brand)', async (path, title) => {
     await mountAt(path)
 
@@ -395,9 +401,11 @@ describe('admin shell', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
     render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
     )
 
     expect(await screen.findByText(title)).toBeInTheDocument()

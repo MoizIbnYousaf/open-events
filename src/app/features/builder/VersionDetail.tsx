@@ -10,9 +10,11 @@ import {
   ForbiddenState,
   LoadErrorState,
 } from '../admin/AdminStates'
+import AppShell from '../nav/AppShell'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Card, CardContent, CardHeader } from '../../../components/ui/card'
 import { Skeleton } from '../../../components/ui/skeleton'
+import { StatusLive } from '../../../components/ui/status-live'
 
 export default function VersionDetail() {
   return <VersionDetailScreen />
@@ -21,8 +23,9 @@ export default function VersionDetail() {
 function VersionDetailScreen() {
   const params = useParams({ strict: false })
   const formId = params.formId as string | undefined
+  const eventSlug = params.slug as string | undefined
   const versionId = params.versionId as string | undefined
-  const detailQuery = useFormVersionDetail(formId, versionId)
+  const detailQuery = useFormVersionDetail(eventSlug, formId, versionId)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -47,6 +50,7 @@ function VersionDetailScreen() {
     return (
       <LoadErrorState
         message={getApiErrorMessage(detailQuery.error, 'Unable to load the version')}
+        pending={detailQuery.isFetching}
         onRetry={() => void detailQuery.refetch()}
       />
     )
@@ -54,52 +58,60 @@ function VersionDetailScreen() {
 
   if (detailQuery.isPending || detailQuery.data === undefined) {
     return (
-      <Card aria-busy="true" aria-label="Loading version">
-        <CardContent className="grid gap-3">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-4 w-64" />
-        </CardContent>
-      </Card>
+      <AppShell slug={eventSlug ?? ''}>
+        <Card aria-busy="true" aria-label="Loading version">
+          <CardContent className="grid gap-3">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-4 w-64" />
+            <StatusLive aria-live="polite">Loading version…</StatusLive>
+          </CardContent>
+        </Card>
+      </AppShell>
     )
   }
 
   const detail = detailQuery.data
   return (
-    <div className="grid gap-4">
-      <Card>
-        <CardHeader>
-          <h1 className="font-heading text-base leading-snug font-medium">
-            Version {detail.version}
-          </h1>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <p className="text-sm text-muted-foreground">
-            Status: {detail.status === 'published' ? 'Published' : 'Draft'}
-          </p>
-          {detail.status === 'published' ? (
-            <AlertLive>This version is frozen and cannot be edited.</AlertLive>
-          ) : null}
-          {detail.pages.map((page) => (
-            <section key={page.id} className="grid gap-2">
-              <h2 className="text-base font-semibold">{page.title}</h2>
-              {detail.elements
-                .filter((element) => element.pageId === page.id)
-                .map((element) => (
-                  <p key={element.id} className="text-sm">
-                    {element.label ?? ''}
-                  </p>
-                ))}
-            </section>
-          ))}
-        </CardContent>
-      </Card>
-      <Link
-        to="/admin/forms/$formId"
-        params={{ formId: formId ?? '' }}
-        className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-      >
-        Back to builder
-      </Link>
-    </div>
+    <AppShell slug={eventSlug ?? ''}>
+      <div className="grid gap-4">
+        <Card>
+          <CardHeader>
+            <h1 className="font-heading text-base leading-snug font-medium">
+              Version {detail.version}
+            </h1>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <p className="text-sm text-muted-foreground">
+              Status: {detail.status === 'published' ? 'Published' : 'Draft'}
+            </p>
+            {detail.status === 'published' ? (
+              <AlertLive>This version is frozen and cannot be edited.</AlertLive>
+            ) : null}
+            {detail.pages.map((page) => (
+              <section key={page.id} className="grid gap-2">
+                <h2 className="text-base font-semibold">{page.title}</h2>
+                {detail.elements.map((element) =>
+                  element.pageId === page.id ? (
+                    <p key={element.id} className="text-sm">
+                      {element.label ?? ''}
+                    </p>
+                  ) : null,
+                )}
+              </section>
+            ))}
+          </CardContent>
+        </Card>
+        {/* Exact matching, or the builder path prefix-matches this version page
+          and the back link is announced as the current page. */}
+        <Link
+          to="/admin/events/$slug/forms/$formId"
+          params={{ slug: eventSlug ?? '', formId: formId ?? '' }}
+          activeOptions={{ exact: true }}
+          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+        >
+          Back to builder
+        </Link>
+      </div>
+    </AppShell>
   )
 }

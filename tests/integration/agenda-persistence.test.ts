@@ -5,6 +5,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import migration0006Sql from '../../migrations/0006_create_agenda_tables.sql?raw'
 import { DEMO_CONF_2026_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
 import { createAgendaRepository, type AgendaSessionRecord } from '../../src/db/agenda-repository'
+import { findAgendaConflicts, placeSessions } from '../../src/domain/agenda'
 import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
 
 const NOW = '2026-08-09T12:00:00.000Z'
@@ -225,6 +226,32 @@ describe('agenda persistence', () => {
     expect(
       (await repository.findBySubmission(DEMO_CONF_2026_ID, 'submission-1'))?.speakerIds,
     ).toEqual([])
+  })
+
+  it('stores an identical-slot room double booking so the conflict stays reportable', async () => {
+    const repository = createAgendaRepository(env.DB)
+    const booked = { roomId: ROOM_MAIN_HALL, assignment: 'scheduled' } as const
+    await repository.saveSession(session('submission-1', { ...booked, position: 0 }))
+    await repository.saveSession(session('submission-2', { ...booked, position: 1 }))
+
+    // The UNIQUE (event_id, room_id, day, start, end, position) key scopes
+    // uniqueness to the position, so one room can hold two sessions on one
+    // slot: the double booking is storable, and the domain reports it.
+    const stored = await repository.listByEvent(DEMO_CONF_2026_ID)
+    expect(stored.map((row) => row.submissionId)).toEqual(['submission-1', 'submission-2'])
+    const placements = placeSessions({
+      sessions: stored.map((row) => ({ ...row, speakerIds: row.speakerIds })),
+      rooms: [ROOM_MAIN_HALL],
+      tracks: [],
+    })
+    expect(findAgendaConflicts(placements)).toEqual([
+      { kind: 'room', first: 'submission-1', second: 'submission-2' },
+    ])
+
+    // The same room, slot AND position is the one combination it rejects.
+    await expect(
+      repository.saveSession(session('submission-3', { ...booked, position: 1 })),
+    ).rejects.toThrow()
   })
 
   it('listByEvent orders deterministically by day, start, position, room_id, submission_id', async () => {

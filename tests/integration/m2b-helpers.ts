@@ -6,12 +6,25 @@ import migration0002Sql from '../../migrations/0002_create_m2_tables.sql?raw'
 import migration0003Sql from '../../migrations/0003_add_m2b_lookup_indexes_integrity.sql?raw'
 import migration0004Sql from '../../migrations/0004_global_unique_entity_ids.sql?raw'
 import migration0005Sql from '../../migrations/0005_add_submitter_token_form.sql?raw'
+import migration0006Sql from '../../migrations/0006_create_agenda_tables.sql?raw'
+import migration0007Sql from '../../migrations/0007_create_speaker_task_tables.sql?raw'
+import migration0008Sql from '../../migrations/0008_create_uploaded_files_table.sql?raw'
+import migration0009Sql from '../../migrations/0009_add_captured_message_submission.sql?raw'
+import migration0010Sql from '../../migrations/0010_create_evaluation_tables.sql?raw'
 import seedSql from '../../src/db/seed.sql?raw'
 import type { CoSpeakerIntent, SubmitBatchInput } from '../../src/application'
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
 import type { ProposalSubmission } from '../../src/domain'
 import { FIXED_NOW, OWNER_CONTACT_ID } from '../unit/helpers/fixtures'
 
+/**
+ * The committed migration set, in the order `wrangler d1 migrations apply`
+ * runs it. Every migration belongs here: a baseline that skips numbers builds
+ * a database no deployment ever has, so a test can pass against a schema that
+ * cannot exist. Suites needing a migration also list it themselves — that is
+ * harmless, because `applyD1Migrations` skips a name already recorded in
+ * `d1_migrations`.
+ */
 export const MIGRATIONS: D1Migration[] = [
   { name: '0001_create_events_table.sql', queries: splitSqlStatements(migration0001Sql) },
   { name: '0002_create_m2_tables.sql', queries: splitSqlStatements(migration0002Sql) },
@@ -21,12 +34,28 @@ export const MIGRATIONS: D1Migration[] = [
   },
   { name: '0004_global_unique_entity_ids.sql', queries: splitSqlStatements(migration0004Sql) },
   { name: '0005_add_submitter_token_form.sql', queries: splitSqlStatements(migration0005Sql) },
+  { name: '0006_create_agenda_tables.sql', queries: splitSqlStatements(migration0006Sql) },
+  { name: '0007_create_speaker_task_tables.sql', queries: splitSqlStatements(migration0007Sql) },
+  { name: '0008_create_uploaded_files_table.sql', queries: splitSqlStatements(migration0008Sql) },
+  {
+    name: '0009_add_captured_message_submission.sql',
+    queries: splitSqlStatements(migration0009Sql),
+  },
+  { name: '0010_create_evaluation_tables.sql', queries: splitSqlStatements(migration0010Sql) },
 ]
 
-/** Applies both real migrations to the pool D1 database. */
+/** Applies the baseline migrations to the pool D1 database. */
 export async function applyMigrations(db: D1Database): Promise<void> {
   await applyD1Migrations(db, MIGRATIONS)
 }
+
+/**
+ * Contacts created by the DemoConf 2026 seed: the standing review committee
+ * (two reviewers), the organizer, and the two demo speakers the frozen scope
+ * names. Row-count assertions offset by this instead of hard-coding a total,
+ * so a later cast change stays a one-line edit.
+ */
+export const SEEDED_CONTACTS = 5
 
 /** Applies the real deterministic DemoConf 2026 seed script. */
 export async function seedDemoConf(db: D1Database): Promise<void> {
@@ -192,6 +221,7 @@ export function buildSubmitBatch(
       subject: 'Your submission was received',
       body: 'ok',
       createdAt: opts.messageCreatedAt ?? submittedAt,
+      kind: 'confirmation' as const,
     },
   }
 }

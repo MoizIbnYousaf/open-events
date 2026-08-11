@@ -7,7 +7,7 @@ function stableStringify(value: unknown): string {
   if (value !== null && typeof value === 'object') {
     const record = value as Record<string, unknown>
     const entries = Object.keys(record)
-      .sort()
+      .toSorted()
       .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
     return `{${entries.join(',')}}`
   }
@@ -27,12 +27,12 @@ function byPosition<T extends { readonly position: number; readonly id: string }
  * identical content always produces an identical string.
  */
 export function canonicalizeFormVersionContent(content: FormVersionContent): string {
-  const pages = [...content.pages].sort(byPosition)
-  const elements = [...content.elements].sort(
+  const pages = content.pages.toSorted(byPosition)
+  const elements = content.elements.toSorted(
     (a, b) => a.pageId.localeCompare(b.pageId) || byPosition(a, b),
   )
-  const conditionRules = [...content.conditionRules].sort(byPosition)
-  const routingRules = [...content.routingRules].sort(byPosition)
+  const conditionRules = content.conditionRules.toSorted(byPosition)
+  const routingRules = content.routingRules.toSorted(byPosition)
   return stableStringify({ pages, elements, conditionRules, routingRules })
 }
 

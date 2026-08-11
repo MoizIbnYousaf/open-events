@@ -129,11 +129,14 @@ function fetchCall(url: string, method: string): RequestInit | undefined {
   return call?.[1]
 }
 
-async function mountBuilder(initialEntry = `/admin/forms/${FORM_ID}?eventSlug=${EVENT_SLUG}`) {
+async function mountBuilder(
+  initialEntry = `/admin/events/${EVENT_SLUG}/forms/${FORM_ID}`,
+  routePath = '/admin/events/$slug/forms/$formId',
+) {
   const rootRoute = createRootRoute()
   const builderRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/admin/forms/$formId',
+    path: routePath,
     component: BuilderEditor,
   })
   const router = createRouter({
@@ -155,16 +158,16 @@ async function mountBuilder(initialEntry = `/admin/forms/${FORM_ID}?eventSlug=${
 beforeEach(() => {
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       return jsonResponse(DRAFT_DTO)
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`) {
       return jsonResponse([])
     }
     if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
       return jsonResponse(TAXONOMY_DTO)
     }
-    if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       const body = JSON.parse(String(init?.body)) as {
         conditionRules: unknown
         routingRules: unknown
@@ -210,7 +213,7 @@ describe('builder conditional visibility and routing rules', () => {
     await user.click(screen.getByRole('button', { name: 'Add group' }))
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    const put = fetchCall(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')
+    const put = fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
     const body = JSON.parse(String(put?.body)) as {
       conditionRules: readonly {
         readonly groups: readonly unknown[]
@@ -256,7 +259,9 @@ describe('builder conditional visibility and routing rules', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     await waitFor(() => expect(valueInput).toHaveFocus())
-    expect(fetchCall(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')).toBeUndefined()
+    expect(
+      fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT'),
+    ).toBeUndefined()
   })
 
   it('kind-aware routing target picker: assign_track/assign_tag/manual_review', async () => {
@@ -289,17 +294,19 @@ describe('builder conditional visibility and routing rules', () => {
     expect(tagOptions.some((option) => option.textContent === 'Talk')).toBe(false)
   })
 
-  it('deep link without eventSlug shows a taxonomy-unavailable alert, omits/disables target selection, and never fetches taxonomies', async () => {
-    await mountBuilder(`/admin/forms/${FORM_ID}`)
+  // O3: the event slug is a mandatory path segment, so a slugless mount can no
+  // longer address a form at all — every form-scoped fetch (draft, versions,
+  // taxonomies) stays disabled rather than firing unscoped requests.
+  it('a mount without an event slug fetches nothing form-scoped', async () => {
+    await mountBuilder(`/admin/forms/${FORM_ID}`, '/admin/forms/$formId')
 
     expect(fetchMock.mock.calls.some(([input]) => requestUrl(input).endsWith('/taxonomies'))).toBe(
       false,
     )
-
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/taxonomy/i)
-    const target = screen.queryByRole('combobox', { name: /target/i })
-    expect(target === null || target.hasAttribute('disabled')).toBe(true)
+    expect(fetchMock.mock.calls.some(([input]) => requestUrl(input).includes('/draft'))).toBe(false)
+    expect(fetchMock.mock.calls.some(([input]) => requestUrl(input).includes('/versions'))).toBe(
+      false,
+    )
   })
 
   it('renders no internal ids, contentHash, or raw server messages', async () => {

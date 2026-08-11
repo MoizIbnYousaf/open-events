@@ -4,14 +4,65 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Applies the stored theme before first paint so the page never flashes
+      // the wrong scheme. Silent catch: blocked storage throws, and the smoke
+      // test asserts a console with no errors.
+      ;(function () {
+        try {
+          var s = localStorage.getItem('speakerops.theme')
+          var c = s === 'light' || s === 'dark' || s === 'system' ? s : 'system'
+          var d =
+            c === 'dark' ||
+            (c === 'system' &&
+              typeof window.matchMedia === 'function' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          var r = document.documentElement
+          r.classList.toggle('dark', d)
+          r.style.colorScheme = d ? 'dark' : 'light'
+          r.setAttribute('data-theme', c)
+        } catch (e) {
+          /* storage unavailable; the provider applies the default after boot */
+        }
+      })()
+    </script>
+    <title>SpeakerOps — event programmes</title>
     <meta
       name="description"
-      content="SpeakerOps — event programmes: CFPs, evaluations, scheduling, and public schedules."
+      content="Run an event programme end to end: call for papers, evaluation, speaker onboarding, agenda, and a public schedule."
     />
-    <title>DemoConf 2026</title>
+    <meta name="robots" content="index,follow" />
+    <!-- Empty by design: only the Worker fills these in, and only on the two
+         genuinely public routes. A static canonical would declare all sixteen
+         SPA routes canonical to one URL. -->
+    <link rel="canonical" href="" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#252525" />
+    <meta property="og:site_name" content="SpeakerOps" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en" />
+    <meta property="og:title" content="SpeakerOps — event programmes" />
+    <meta
+      property="og:description"
+      content="Run an event programme end to end: call for papers, evaluation, speaker onboarding, agenda, and a public schedule."
+    />
+    <meta property="og:url" content="" />
+    <meta property="og:image" content="/og/speakerops.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SpeakerOps — event programme operations" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SpeakerOps — event programmes" />
+    <meta
+      name="twitter:description"
+      content="Run an event programme end to end: call for papers, evaluation, speaker onboarding, agenda, and a public schedule."
+    />
+    <meta name="twitter:image" content="/og/speakerops.png" />
+    <meta name="twitter:image:alt" content="SpeakerOps — event programme operations" />
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/app/main.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

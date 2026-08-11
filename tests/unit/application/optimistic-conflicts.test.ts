@@ -62,7 +62,7 @@ describe('optimistic concurrency outcomes', () => {
     const { service, unitOfWork, versions } = buildFormBuilderHarness()
 
     await expect(
-      service.updateDraft(organizerActor, FORM_ID, {
+      service.updateDraft(organizerActor, EVENT_ID, FORM_ID, {
         pages: [],
         elements: [],
         conditionRules: [],
@@ -78,7 +78,7 @@ describe('optimistic concurrency outcomes', () => {
     const draft = createVersion({ id: 'version-draft-1' })
     await versions.save(draft)
 
-    await expect(service.publish(organizerActor, FORM_ID)).rejects.toMatchObject({
+    await expect(service.publish(organizerActor, EVENT_ID, FORM_ID)).rejects.toMatchObject({
       code: 'conflict',
     })
     expect(unitOfWork.publishCalls).toHaveLength(1)

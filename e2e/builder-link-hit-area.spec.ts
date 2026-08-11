@@ -11,11 +11,11 @@ test('event-config builder link exposes a >= 24x24px hit area', async ({ page })
   const response = await page.goto('/admin/events/demo-conf-2026')
   expect(response?.status()).toBe(200)
 
-  const builderLink = page.getByRole('link', { name: 'cfp' })
+  const builderLink = page.getByRole('link', { name: 'cfp', exact: true })
   await expect(builderLink).toBeVisible()
   await expect(builderLink).toHaveAttribute(
     'href',
-    '/admin/forms/f0000000-0000-4000-8000-000000000001?eventSlug=demo-conf-2026',
+    '/admin/events/demo-conf-2026/forms/f0000000-0000-4000-8000-000000000001',
   )
 
   const box = await builderLink.boundingBox()

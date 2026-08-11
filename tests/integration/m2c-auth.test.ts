@@ -3,7 +3,13 @@ import { env, reset } from 'cloudflare:test'
 
 import { createSha256TokenHasher } from '../../src/application'
 import { applyMigrations, countRows, seedDemoConf } from './m2b-helpers'
-import { bindings, cookieHeader, loginOrganizer, submitterCookie } from './m2c-helpers'
+import {
+  ALLOWED_ORIGIN,
+  bindings,
+  cookieHeader,
+  loginOrganizer,
+  submitterCookie,
+} from './m2c-helpers'
 import app from '../../src/server'
 
 const hasher = createSha256TokenHasher()
@@ -273,6 +279,77 @@ describe('session cookie cases on an admin GET route', () => {
   it('rejects a submitter cookie on an organizer route with 403', async () => {
     const submitter = await submitterCookie(env.DB)
     expect((await adminGet(cookieHeader(submitter))).status).toBe(403)
+  })
+})
+
+describe('session logout', () => {
+  it('revokes the active session and expires its cookie', async () => {
+    const { token } = await loginOrganizer()
+    expect(token).toBeTruthy()
+
+    const response = await app.request(
+      '/api/session',
+      {
+        method: 'DELETE',
+        headers: {
+          cookie: cookieHeader(token ?? ''),
+          origin: ALLOWED_ORIGIN,
+        },
+      },
+      bindings(),
+    )
+
+    expect(response.status).toBe(204)
+    expect(await response.text()).toBe('')
+    expect(response.headers.get('set-cookie')).toContain('sp_session=')
+    expect(response.headers.get('set-cookie')).toContain('HttpOnly')
+    expect(response.headers.get('set-cookie')).toContain('SameSite=Strict')
+    expect(response.headers.get('set-cookie')).toContain('Path=/')
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+
+    const afterLogout = await app.request(
+      '/api/admin/events/demo-conf-2026',
+      { headers: { cookie: cookieHeader(token ?? '') } },
+      bindings(),
+    )
+    expect(afterLogout.status).toBe(401)
+  })
+
+  it('is idempotent when no session cookie is present', async () => {
+    const response = await app.request(
+      '/api/session',
+      { method: 'DELETE', headers: { origin: ALLOWED_ORIGIN } },
+      bindings(),
+    )
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+  })
+
+  it('rejects a cross-origin logout without revoking the session', async () => {
+    const { token } = await loginOrganizer()
+    expect(token).toBeTruthy()
+
+    const response = await app.request(
+      '/api/session',
+      {
+        method: 'DELETE',
+        headers: {
+          cookie: cookieHeader(token ?? ''),
+          origin: 'https://attacker.example',
+        },
+      },
+      bindings(),
+    )
+    expect(response.status).toBe(403)
+    expect(response.headers.get('set-cookie')).toBeNull()
+
+    const stillActive = await app.request(
+      '/api/admin/events/demo-conf-2026',
+      { headers: { cookie: cookieHeader(token ?? '') } },
+      bindings(),
+    )
+    expect(stillActive.status).toBe(200)
   })
 })
 

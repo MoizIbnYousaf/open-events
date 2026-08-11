@@ -9,6 +9,7 @@ import { getApiErrorCode } from '../../api/admin-events'
 import { ExpiredSessionState, ForbiddenState } from '../admin/AdminStates'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { StatusLive } from '../../../components/ui/status-live'
 import {
@@ -56,7 +57,7 @@ function defaultEditor(formId: string, formVersionId: string): PublicEditorState
 export default function CfpWizard({ form }: CfpWizardProps) {
   const queryClient = useQueryClient()
   const router = useRouter({ warn: false })
-  const steps = useMemo(() => [...form.pages].sort((a, b) => a.position - b.position), [form.pages])
+  const steps = useMemo(() => form.pages.toSorted((a, b) => a.position - b.position), [form.pages])
   const proposalPageIndex = useMemo(() => steps.findIndex((page) => page.kind === 'info'), [steps])
   const hasTitleQuestion = useMemo(
     () => form.elements.some((element) => element.fieldKey === TITLE_FIELD_KEY),
@@ -122,6 +123,7 @@ export default function CfpWizard({ form }: CfpWizardProps) {
   }, [stepElements, currentPage])
   const ariaControls = useMemo(() => {
     const map: Record<string, string | undefined> = {}
+    const stepElementsById = new Map(stepElements.map((element) => [element.id, element]))
     for (const element of stepElements) {
       if (element.fieldKey === null) continue
       const targets = new Set<string>()
@@ -131,7 +133,7 @@ export default function CfpWizard({ form }: CfpWizardProps) {
           group.conditions.some((condition) => condition.operandKey === element.fieldKey),
         )
         if (!controlsThisField) continue
-        const target = stepElements.find((candidate) => candidate.id === rule.elementId)
+        const target = stepElementsById.get(rule.elementId)
         if (target?.fieldKey !== null && target?.fieldKey !== undefined) {
           const targetId = domIds[target.fieldKey]
           if (targetId !== undefined) targets.add(targetId)
@@ -230,7 +232,6 @@ export default function CfpWizard({ form }: CfpWizardProps) {
         fieldRefs.current.get(firstRevealed)?.focus()
       }
     } else if (hiddenFields.length > 0) {
-      setAnnouncement(null)
       const trigger = lastChangedRef.current
       if (trigger !== null) {
         fieldRefs.current.get(trigger)?.focus()
@@ -349,8 +350,8 @@ export default function CfpWizard({ form }: CfpWizardProps) {
             onNext={handleNext}
           />
           {stepIndex === proposalPageIndex && !hasTitleQuestion ? (
-            <div className="grid gap-1.5">
-              <label htmlFor="cfp-proposal-title">Proposal title</label>
+            <Field invalid={errors.title !== undefined}>
+              <FieldLabel htmlFor="cfp-proposal-title">Proposal title</FieldLabel>
               <Input
                 id="cfp-proposal-title"
                 ref={titleInputRef}
@@ -366,11 +367,9 @@ export default function CfpWizard({ form }: CfpWizardProps) {
                 }
               />
               {errors.title !== undefined ? (
-                <p id="cfp-proposal-title-error" className="text-sm text-destructive">
-                  {errors.title}
-                </p>
+                <FieldError id="cfp-proposal-title-error">{errors.title}</FieldError>
               ) : null}
-            </div>
+            </Field>
           ) : null}
           <CfpStepRenderer
             page={currentPage}
@@ -399,7 +398,7 @@ export default function CfpWizard({ form }: CfpWizardProps) {
         </>
       ) : null}
       {confirmationActive ? null : announcement !== null ? (
-        <StatusLive>{announcement}</StatusLive>
+        <StatusLive aria-live="polite">{announcement}</StatusLive>
       ) : null}
     </div>
   )

@@ -4,7 +4,13 @@ import { env, reset } from 'cloudflare:test'
 import { createSessionUnitOfWork } from '../../src/db'
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_ID } from '../../src/db'
 import { NOW } from '../unit/helpers/fixtures'
-import { applyMigrations, countRows, expectRejects, seedDemoConf } from './m2b-helpers'
+import {
+  SEEDED_CONTACTS,
+  applyMigrations,
+  countRows,
+  expectRejects,
+  seedDemoConf,
+} from './m2b-helpers'
 
 const FUTURE = '2026-12-31T23:59:59.000Z'
 
@@ -51,11 +57,12 @@ describe('contact dedupe by normalized email', () => {
           subject: 's',
           body: 'b',
           createdAt: NOW,
+          kind: 'confirmation' as const,
         },
       }),
     ).rejects.toThrow(/same eventId/)
 
-    expect(await countRows(env.DB, 'contacts')).toBe(0)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS)
     expect(await countRows(env.DB, 'submitter_tokens')).toBe(0)
     expect(await countRows(env.DB, 'captured_messages')).toBe(0)
   })
@@ -70,6 +77,7 @@ describe('contact dedupe by normalized email', () => {
       subject: 'Your SpeakerOps CFP link',
       body: 'Open your CFP session',
       createdAt: NOW,
+      kind: 'confirmation' as const,
     })
 
     await Promise.all([
@@ -85,7 +93,7 @@ describe('contact dedupe by normalized email', () => {
       }),
     ])
 
-    expect(await countRows(env.DB, 'contacts')).toBe(1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + 1)
     const contact = await env.DB.prepare('SELECT id FROM contacts WHERE email = ?')
       .bind(email)
       .first()

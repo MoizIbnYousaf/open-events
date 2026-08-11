@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { and, asc, desc, eq, isNotNull } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 
 import type { CapturedMessageRepository } from '../application/ports/captured-message-repository'
@@ -137,6 +137,12 @@ export function createContactRepository(db: D1Database): ContactRepository {
       const row = rows[0]
       return row === undefined ? null : toContact(row)
     },
+    async updateProfile(id: string, fields: { name: string; bio: string | null }) {
+      await database
+        .update(contacts)
+        .set({ name: fields.name, bio: fields.bio })
+        .where(eq(contacts.id, id))
+    },
   }
 }
 
@@ -192,6 +198,12 @@ export function createSessionRepository(db: D1Database): SessionRepository {
       const row = rows[0]
       return row === undefined ? null : toSession(row)
     },
+    async consumeByHash(tokenHash, consumedAt) {
+      await database
+        .update(sessions)
+        .set({ consumedAt })
+        .where(and(eq(sessions.tokenHash, tokenHash), isNull(sessions.consumedAt)))
+    },
   }
 }
 
@@ -206,7 +218,7 @@ export function createCapturedMessageRepository(db: D1Database): CapturedMessage
         .orderBy(asc(capturedMessages.createdAt))
       return rows.map(toCapturedMessage)
     },
-    /** Append-only insert; the unique submission index rejects a second send. */
+    /** Append-only insert; the (submission, kind, recipient) unique index rejects a repeat. */
     async save(message) {
       await database.insert(capturedMessages).values({
         id: message.id,
@@ -215,14 +227,21 @@ export function createCapturedMessageRepository(db: D1Database): CapturedMessage
         subject: message.subject,
         body: message.body,
         createdAt: message.createdAt,
+        kind: message.kind,
         submissionId: message.submissionId ?? null,
       })
     },
-    async findBySubmissionId(submissionId: string) {
+    async findBySubmissionKindEmail(submissionId: string, kind, toEmail: string) {
       const rows = await database
         .select()
         .from(capturedMessages)
-        .where(eq(capturedMessages.submissionId, submissionId))
+        .where(
+          and(
+            eq(capturedMessages.submissionId, submissionId),
+            eq(capturedMessages.kind, kind),
+            eq(capturedMessages.toEmail, toEmail),
+          ),
+        )
         .limit(1)
       const row = rows[0]
       return row === undefined ? null : toCapturedMessage(row)

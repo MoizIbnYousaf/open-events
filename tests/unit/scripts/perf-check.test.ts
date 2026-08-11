@@ -21,6 +21,7 @@ const MANIFEST = {
       'assets/headshot-abc123.js',
       'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
       'assets/admin_.events._slug_.readiness-abc123.js',
+      'assets/admin_.events._slug_.evaluations-abc123.js',
     ],
   },
   'assets/start-abc123.js': { file: 'assets/start-abc123.js' },
@@ -47,6 +48,9 @@ const MANIFEST = {
   'assets/admin_.events._slug_.readiness-abc123.js': {
     file: 'assets/admin_.events._slug_.readiness-abc123.js',
   },
+  'assets/admin_.events._slug_.evaluations-abc123.js': {
+    file: 'assets/admin_.events._slug_.evaluations-abc123.js',
+  },
 } as const
 
 const EXPECTED_ROUTE_CHUNKS = {
@@ -60,6 +64,7 @@ const EXPECTED_ROUTE_CHUNKS = {
   '/evaluations': 'assets/evaluations-abc123.js',
   '/portal': 'assets/portal-abc123.js',
   '/admin/events/$slug/readiness': 'assets/admin_.events._slug_.readiness-abc123.js',
+  '/admin/events/$slug/evaluations': 'assets/admin_.events._slug_.evaluations-abc123.js',
   '/headshot': 'assets/headshot-abc123.js',
 } as const
 
@@ -113,6 +118,29 @@ describe('manifest-driven perf gate', () => {
       },
     }
     expect(() => resolveRouteChunks(unknownManifest)).toThrow()
+  })
+
+  it('recognizes canonical event-scoped form-builder route chunks', () => {
+    const eventScopedBuilder = {
+      ...MANIFEST,
+      'index.html': {
+        ...MANIFEST['index.html'],
+        dynamicImports: [
+          ...MANIFEST['index.html'].dynamicImports,
+          'src/app/routes/admin_.events.$slug_.forms.$formId.tsx?tsr-split=component',
+          'src/app/routes/admin_.events.$slug_.forms.$formId_.versions.$versionId.tsx?tsr-split=component',
+        ],
+      },
+      'src/app/routes/admin_.events.$slug_.forms.$formId.tsx?tsr-split=component': {
+        file: 'assets/admin_.events._slug_.forms._formId-abc123.js',
+      },
+      'src/app/routes/admin_.events.$slug_.forms.$formId_.versions.$versionId.tsx?tsr-split=component':
+        {
+          file: 'assets/admin_.events._slug_.forms._formId_.versions._versionId-abc123.js',
+        },
+    }
+
+    expect(resolveRouteChunks(eventScopedBuilder)).toEqual(EXPECTED_ROUTE_CHUNKS)
   })
 
   it('fails closed when an expected route chunk is missing from the manifest', () => {

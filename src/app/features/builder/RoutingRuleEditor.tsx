@@ -1,6 +1,6 @@
-import type { RoutingRule, RoutingActionKind } from '../../../domain'
-import { ROUTING_ACTIONS } from '../../../domain'
-import type { TaxonomyItemDto } from '../../../application'
+import { ROUTING_ACTIONS, type RoutingActionKind, type RoutingRule } from '../../../domain/rules'
+import type { TaxonomyItemDto } from '../../../application/dtos/taxonomy.dto'
+import { Field, FieldTriggerLabel } from '../../../components/ui/field'
 import {
   Select,
   SelectContent,
@@ -41,8 +41,8 @@ export default function RoutingRuleEditor({
           !taxonomyUnavailable
         return (
           <div key={rule.id} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
-            <div className="grid gap-1.5">
-              <span className="text-sm font-medium">Action kind</span>
+            <Field>
+              <FieldTriggerLabel id={`routing-action-${rule.id}`}>Action kind</FieldTriggerLabel>
               <Select
                 value={rule.actionKind}
                 onValueChange={(actionKind) =>
@@ -52,7 +52,7 @@ export default function RoutingRuleEditor({
                   })
                 }
               >
-                <SelectTrigger aria-label="Action kind">
+                <SelectTrigger aria-labelledby={`routing-action-${rule.id}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -63,7 +63,7 @@ export default function RoutingRuleEditor({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
             {needsTarget ? (
               <TaxonomyPicker
                 kind={rule.actionKind === 'assign_track' ? 'track' : 'tag'}

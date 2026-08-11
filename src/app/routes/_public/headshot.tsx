@@ -1,12 +1,30 @@
 import type { ComponentType } from 'react'
+import { useEffect } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 
-import HeadshotUploaderComponent from '../../features/public/HeadshotUploader'
+import HeadshotUploader from '../../features/public/HeadshotUploader'
 
 import type {} from '../../routeTree.gen'
 
+/**
+ * Standalone headshot page. The uploader is a composable section (it is also
+ * rendered inside /portal), so the page owns the single h1 here.
+ */
+function HeadshotRouteComponent() {
+  useEffect(() => {
+    document.title = 'Your headshot — SpeakerOps'
+  }, [])
+
+  return (
+    <div className="grid gap-4">
+      <h1 className="text-2xl font-semibold">Your headshot</h1>
+      <HeadshotUploader />
+    </div>
+  )
+}
+
 const headshotRoute = createFileRoute('/_public/headshot')({
-  component: HeadshotUploaderComponent,
+  component: HeadshotRouteComponent,
 })
 
 // The generated route tree normally injects `path` via update(); the

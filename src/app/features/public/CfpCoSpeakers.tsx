@@ -1,9 +1,13 @@
 import { useId, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { MAX_CO_SPEAKERS, normalizeEmail } from '../../../domain'
+import { MAX_CO_SPEAKERS } from '../../../domain/contact'
+import { normalizeEmail } from '../../../domain/invariants/email'
+import { isValidEmailAddress } from '../../../domain/invariants/email'
+import { announce } from '../../lib/announcer'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
+import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import {
   publicDraftQueryKeys,
   usePublicEditor,
@@ -19,11 +23,17 @@ interface CfpCoSpeakersProps {
 const inputClass =
   'h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none disabled:opacity-50 md:text-sm'
 
+const DUPLICATE_MESSAGE = 'This email is already listed as a co-speaker.'
+const INVALID_EMAIL_MESSAGE = 'Enter a valid email address for this co-speaker.'
+
 export default function CfpCoSpeakers({ formId, formVersionId }: CfpCoSpeakersProps) {
   const queryClient = useQueryClient()
   const editorQuery = usePublicEditor(formId, formVersionId)
   const coSpeakers = editorQuery.data?.coSpeakers ?? []
-  const [duplicateAlert, setDuplicateAlert] = useState(false)
+  // Row-indexed email problem. The duplicate condition used to surface only as
+  // an unattached form-level alert, so a screen-reader user was told something
+  // was wrong without being told which row.
+  const [emailErrors, setEmailErrors] = useState<Readonly<Record<number, string>>>({})
   const baseId = useId()
 
   const setEditor = (updater: (current: PublicEditorState) => PublicEditorState) => {
@@ -36,7 +46,7 @@ export default function CfpCoSpeakers({ formId, formVersionId }: CfpCoSpeakersPr
   }
 
   const updateRow = (index: number, patch: Partial<CoSpeakerDraft>) => {
-    setDuplicateAlert(false)
+    setEmailErrors({})
     setEditor((current) => ({
       ...current,
       coSpeakers: current.coSpeakers.map((row, rowIndex) =>
@@ -59,7 +69,16 @@ export default function CfpCoSpeakers({ formId, formVersionId }: CfpCoSpeakersPr
             .some((row) => normalizeEmail(row.email) === normalized)
           next[lastIndex] = { ...last, email: normalized }
           if (earlier) {
-            setDuplicateAlert(true)
+            // The summary AlertLive below carries this same sentence and is
+            // the one live region for it (DEC-014).
+            setEmailErrors({ [lastIndex]: DUPLICATE_MESSAGE })
+            setEditor((current) => ({ ...current, coSpeakers: next, dirty: true }))
+            return
+          }
+          // Reuse the domain invariant so the client and the API can never
+          // disagree about what a valid co-speaker address is.
+          if (!isValidEmailAddress(normalized)) {
+            setEmailErrors({ [lastIndex]: INVALID_EMAIL_MESSAGE })
             setEditor((current) => ({ ...current, coSpeakers: next, dirty: true }))
             return
           }
@@ -67,19 +86,22 @@ export default function CfpCoSpeakers({ formId, formVersionId }: CfpCoSpeakersPr
       }
     }
     if (next.length >= MAX_CO_SPEAKERS) return
-    next.push({ firstName: '', lastName: '', email: '' })
-    setDuplicateAlert(false)
+    next.push({ clientId: crypto.randomUUID(), firstName: '', lastName: '', email: '' })
+    announce(`Co-speaker ${next.length} of ${MAX_CO_SPEAKERS} added`)
+    setEmailErrors({})
     setEditor((current) => ({ ...current, coSpeakers: next, dirty: true }))
   }
 
   const handleRemove = (index: number) => {
-    setDuplicateAlert(false)
+    setEmailErrors({})
     setEditor((current) => ({
       ...current,
       coSpeakers: current.coSpeakers.filter((_, rowIndex) => rowIndex !== index),
       dirty: true,
     }))
   }
+
+  const summary = Object.values(emailErrors)[0]
 
   return (
     <section aria-label="Co-speakers" className="grid gap-3">
@@ -90,46 +112,63 @@ export default function CfpCoSpeakers({ formId, formVersionId }: CfpCoSpeakersPr
         </p>
       </div>
       {coSpeakers.map((row, index) => (
-        <div key={index} className="grid gap-3 rounded-lg border border-border p-3">
+        <div key={row.clientId} className="grid gap-3 rounded-lg border border-border p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium">Co-speaker {index + 1}</p>
             <Button type="button" variant="outline" size="sm" onClick={() => handleRemove(index)}>
               Remove co-speaker {index + 1}
             </Button>
           </div>
+          {/* A named section keeps each co-speaker's contact card distinct.
+              The purpose tokens remain truthful to the data being collected,
+              while the per-row section prevents one suggested contact from
+              filling every repeated row. */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="grid gap-1.5">
-              <label htmlFor={`${baseId}-${index}-first`}>First name</label>
+            <Field>
+              <FieldLabel htmlFor={`${baseId}-${index}-first`}>First name</FieldLabel>
               <input
                 id={`${baseId}-${index}-first`}
+                aria-label={`Co-speaker ${index + 1} first name`}
                 className={inputClass}
+                autoComplete={`section-cospeaker-${index + 1} given-name`}
                 value={row.firstName}
                 onChange={(event) => updateRow(index, { firstName: event.target.value })}
               />
-            </div>
-            <div className="grid gap-1.5">
-              <label htmlFor={`${baseId}-${index}-last`}>Last name</label>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${baseId}-${index}-last`}>Last name</FieldLabel>
               <input
                 id={`${baseId}-${index}-last`}
+                aria-label={`Co-speaker ${index + 1} last name`}
                 className={inputClass}
+                autoComplete={`section-cospeaker-${index + 1} family-name`}
                 value={row.lastName}
                 onChange={(event) => updateRow(index, { lastName: event.target.value })}
               />
-            </div>
-            <div className="grid gap-1.5">
-              <label htmlFor={`${baseId}-${index}-email`}>Email</label>
+            </Field>
+            <Field invalid={emailErrors[index] !== undefined}>
+              <FieldLabel htmlFor={`${baseId}-${index}-email`}>Email</FieldLabel>
               <input
                 id={`${baseId}-${index}-email`}
+                aria-label={`Co-speaker ${index + 1} email`}
                 className={inputClass}
                 type="email"
+                autoComplete={`section-cospeaker-${index + 1} email`}
                 value={row.email}
+                aria-invalid={emailErrors[index] !== undefined ? true : undefined}
+                aria-describedby={
+                  emailErrors[index] !== undefined ? `${baseId}-${index}-email-error` : undefined
+                }
                 onChange={(event) => updateRow(index, { email: event.target.value })}
               />
-            </div>
+              {emailErrors[index] !== undefined ? (
+                <FieldError id={`${baseId}-${index}-email-error`}>{emailErrors[index]}</FieldError>
+              ) : null}
+            </Field>
           </div>
         </div>
       ))}
-      {duplicateAlert ? <AlertLive>This email is already listed as a co-speaker.</AlertLive> : null}
+      {summary !== undefined ? <AlertLive>{summary}</AlertLive> : null}
       {coSpeakers.length < MAX_CO_SPEAKERS ? (
         <div>
           <Button type="button" onClick={handleAdd}>

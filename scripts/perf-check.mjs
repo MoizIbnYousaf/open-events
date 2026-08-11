@@ -12,6 +12,7 @@ const BUDGETS = {
   '/admin/events/$slug/submissions': 30 * 1024,
   '/admin/events/$slug/submissions/$submissionId': 40 * 1024,
   '/admin/events/$slug/agenda': 40_000,
+  '/admin/events/$slug/evaluations': 40_000,
   '/schedule/:eventSlug': 80_000,
   '/evaluations': 80_000,
   '/portal': 20 * 1024,
@@ -45,10 +46,10 @@ const KNOWN_ROUTE_BASENAMES = new Set([
   'admin_.events._slug',
   'admin_.events.$slug_.taxonomies.tsx',
   'admin_.events._slug_.taxonomies',
-  'admin_.forms.$formId.tsx',
-  'admin_.forms._formId',
-  'admin_.forms.$formId_.versions.$versionId.tsx',
-  'admin_.forms._formId_.versions._versionId',
+  'admin_.events.$slug_.forms.$formId.tsx',
+  'admin_.events._slug_.forms._formId',
+  'admin_.events.$slug_.forms.$formId_.versions.$versionId.tsx',
+  'admin_.events._slug_.forms._formId_.versions._versionId',
 ])
 
 const ROUTE_CHUNK_PATTERNS = [
@@ -68,6 +69,10 @@ const ROUTE_CHUNK_PATTERNS = [
   {
     route: '/admin/events/$slug/agenda',
     pattern: /^admin_\.events\._slug_\.agenda(-[A-Za-z0-9_-]+)?(\.js)?$/,
+  },
+  {
+    route: '/admin/events/$slug/evaluations',
+    pattern: /^admin_\.events\._slug_\.evaluations(-[A-Za-z0-9_-]+)?(\.js)?$/,
   },
   {
     route: '/schedule/:eventSlug',

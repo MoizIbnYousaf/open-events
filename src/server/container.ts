@@ -1,47 +1,52 @@
 import type { D1Database } from '@cloudflare/workers-types'
 
 import {
-  CapturedMessageService,
-  CommunicationsService,
-  DraftService,
-  EventConfigService,
-  FormBuilderService,
-  GetEvent,
-  OnboardingService,
-  HeadshotService,
-  SessionService,
-  SubmitService,
-  TaxonomyService,
   createSha256TokenHasher,
   createUuidTokenGenerator,
-  type Clock,
-  type EventRepository,
-  type FormRepository,
-  type SubmissionRepository,
-  type TaxonomyRepository,
-} from '../application'
+} from '../application/security/webcrypto'
+import { AgendaService } from '../application/services/agenda'
+import { CapturedMessageService } from '../application/services/captured-messages'
+import { CommunicationsService } from '../application/services/communications'
+import { DocumentService } from '../application/services/documents'
+import { DraftService } from '../application/services/drafts'
+import { EvaluationService } from '../application/services/evaluations'
+import { EventConfigService } from '../application/services/event-config'
+import { FormBuilderService } from '../application/services/form-builder'
+import { GetEvent } from '../application/services/get-event'
+import { HeadshotService } from '../application/services/headshots'
+import { OnboardingService } from '../application/services/onboarding'
+import { ProfileService } from '../application/services/profile'
+import { SessionService } from '../application/services/session'
+import { SubmitService } from '../application/services/submit'
+import { TaxonomyService } from '../application/services/taxonomy'
+import type { AgendaRepository } from '../application/ports/agenda-repository'
+import type { Clock } from '../application/ports/clock'
+import type { EventRepository } from '../application/ports/event-repository'
+import type { FormRepository } from '../application/ports/form-repository'
+import type { SubmissionRepository } from '../application/ports/submission-repository'
+import type { TaxonomyRepository } from '../application/ports/taxonomy-repository'
+import { createAcceptUnitOfWork } from '../db/accept-unit-of-work'
+import { createAgendaRepository } from '../db/agenda-repository'
+import { createEvaluationRepository } from '../db/evaluation-repository'
+import { createFormBuilderUnitOfWork } from '../db/form-builder-unit-of-work'
 import {
-  createAcceptUnitOfWork,
-  createAgendaRepository,
   createCapturedMessageRepository,
   createContactRepository,
   createDraftRepository,
   createEventConfigRepository,
   createEventRepository,
-  createFormBuilderUnitOfWork,
   createFormContentRepository,
   createFormRepository,
   createFormVersionRepository,
   createSessionRepository,
-  createSessionUnitOfWork,
-  createSpeakerTaskRepository,
   createSubmissionRepository,
-  createSubmitUnitOfWork,
   createTaxonomyRepository,
   createTokenRepository,
-  createUploadedFileRepository,
-} from '../db'
-import type { AgendaRepository } from '../db'
+} from '../db/repositories'
+import { createSessionUnitOfWork } from '../db/session-unit-of-work'
+import { createSpeakerTaskRepository } from '../db/speaker-task-repository'
+import { createSubmitUnitOfWork } from '../db/submit-unit-of-work'
+import { createUploadedFileRepository } from '../db/uploaded-file-repository'
 
 import type { ServerContext } from './env'
 import { getDatabaseBinding, getFilesBinding } from './env'
@@ -54,6 +59,7 @@ export interface ServerDeps {
   readonly forms: FormRepository
   readonly getEvent: GetEvent
   readonly agenda: AgendaRepository
+  readonly agendaBoard: AgendaService
   readonly submissions: SubmissionRepository
   readonly taxonomies: TaxonomyRepository
   readonly session: SessionService
@@ -63,9 +69,13 @@ export interface ServerDeps {
   readonly drafts: DraftService
   readonly submit: SubmitService
   readonly onboarding: OnboardingService
+  readonly profile: ProfileService
+  readonly evaluations: EvaluationService
   readonly capturedMessages: CapturedMessageService
   /** Null when the Worker has no R2 uploads binding. */
   readonly headshots: HeadshotService | null
+  /** Null when the Worker has no R2 uploads binding. */
+  readonly documents: DocumentService | null
 
   readonly communications: CommunicationsService
 }
@@ -78,13 +88,22 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
   const versions = createFormVersionRepository(db)
   const content = createFormContentRepository(db)
   const contacts = createContactRepository(db)
+  const agenda = createAgendaRepository(db)
 
   return {
     clock,
     events,
     forms,
     getEvent: new GetEvent(events),
-    agenda: createAgendaRepository(db),
+    agenda,
+    agendaBoard: new AgendaService(
+      events,
+      agenda,
+      createSubmissionRepository(db),
+      createTaxonomyRepository(db),
+      createSpeakerTaskRepository(db),
+      clock,
+    ),
     submissions: createSubmissionRepository(db),
     taxonomies: createTaxonomyRepository(db),
     session: new SessionService(
@@ -120,13 +139,34 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
       createSubmitUnitOfWork(db),
       clock,
     ),
+    profile: new ProfileService(contacts),
     onboarding: new OnboardingService(
       createSubmissionRepository(db),
+      events,
       createSpeakerTaskRepository(db),
       createAcceptUnitOfWork(db),
       clock,
+      forms,
+      versions,
+      content,
+      contacts,
+      createUploadedFileRepository(db),
+    ),
+    evaluations: new EvaluationService(
+      createSubmissionRepository(db),
+      contacts,
+      createEvaluationRepository(db),
+      clock,
     ),
     capturedMessages: new CapturedMessageService(createCapturedMessageRepository(db)),
+    documents:
+      files === null
+        ? null
+        : new DocumentService(
+            createUploadedFileRepository(db),
+            createR2ObjectStorage(files),
+            clock,
+          ),
     headshots:
       files === null
         ? null
@@ -141,6 +181,7 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
       events,
       contacts,
       createCapturedMessageRepository(db),
+      createSpeakerTaskRepository(db),
       clock,
     ),
   }

@@ -16,8 +16,27 @@ if (!existsSync(licensePath)) {
   errors.push('LICENSE missing (Apache-2.0 must be distributed)')
 } else {
   const license = readFileSync(licensePath, 'utf8')
-  if (!license.includes('Apache License') || !license.includes('Version 2.0')) {
-    errors.push('LICENSE does not contain the Apache License 2.0 text')
+  const requiredLicenseSections = [
+    'Apache License',
+    'Version 2.0, January 2004',
+    '1. Definitions.',
+    '9. Accepting Warranty or Additional Liability.',
+    'END OF TERMS AND CONDITIONS',
+    'APPENDIX: How to apply the Apache License to your work.',
+    'Copyright 2026 SpeakerOps contributors',
+  ]
+  for (const section of requiredLicenseSections) {
+    if (!license.includes(section)) errors.push(`LICENSE section missing: ${section}`)
+  }
+}
+
+const packagePath = resolve(root, 'package.json')
+if (!existsSync(packagePath)) {
+  errors.push('package.json missing')
+} else {
+  const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'))
+  if (packageJson.license !== 'Apache-2.0') {
+    errors.push('package.json license must be Apache-2.0')
   }
 }
 

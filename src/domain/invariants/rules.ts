@@ -9,30 +9,27 @@ import type { ConditionOperator, ConditionValue, ElementCondition, RuleId } from
 import type { QuestionType } from '../form-version.ts'
 import type { TaxonomyKey, TaxonomyKind } from '../taxonomy.ts'
 
-export const RULE_ISSUE_CODES = [
-  'missing_target_element',
-  'missing_operand_field',
-  'invalid_operand_kind',
-  'invalid_operand_value',
-  'missing_operand_value',
-  'unexpected_operand_value',
-  'negative_position',
-  'duplicate_position',
-  'missing_page_reference',
-  'duplicate_field_key',
-  'missing_routing_target',
-  'unknown_routing_target',
-  'incompatible_routing_target',
-  'unexpected_routing_target',
-  'dependency_cycle',
-  'invalid_group_index',
-  'duplicate_group_index',
-  'unordered_groups',
-  'empty_condition_group',
-  'empty_condition_groups',
-] as const
-
-export type RuleIssueCode = (typeof RULE_ISSUE_CODES)[number]
+export type RuleIssueCode =
+  | 'missing_target_element'
+  | 'missing_operand_field'
+  | 'invalid_operand_kind'
+  | 'invalid_operand_value'
+  | 'missing_operand_value'
+  | 'unexpected_operand_value'
+  | 'negative_position'
+  | 'duplicate_position'
+  | 'missing_page_reference'
+  | 'duplicate_field_key'
+  | 'missing_routing_target'
+  | 'unknown_routing_target'
+  | 'incompatible_routing_target'
+  | 'unexpected_routing_target'
+  | 'dependency_cycle'
+  | 'invalid_group_index'
+  | 'duplicate_group_index'
+  | 'unordered_groups'
+  | 'empty_condition_group'
+  | 'empty_condition_groups'
 
 export interface RuleValidationIssue {
   readonly code: RuleIssueCode

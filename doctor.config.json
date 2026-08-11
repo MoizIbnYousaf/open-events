@@ -1,0 +1,34 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "overrides": [
+      {
+        "files": [
+          "src/app/routes/_public.tsx",
+          "src/app/routes/admin_.events.$slug.tsx",
+          "src/app/routes/admin_.events.$slug_.evaluations.tsx",
+          "src/app/routes/admin_.events.$slug_.submissions.tsx",
+          "src/app/routes/admin_.events.$slug_.submissions_.$submissionId.tsx",
+          "src/app/routes/admin_.events.$slug_.taxonomies.tsx"
+        ],
+        "rules": ["deslop/unused-file"]
+      },
+      {
+        "files": ["src/db/schema.ts"],
+        "rules": ["deslop/unused-export"]
+      },
+      {
+        "files": ["src/app/queries/public-headshot.ts"],
+        "rules": ["react-doctor/no-create-object-url-without-revoke"]
+      },
+      {
+        "files": [
+          "src/app/features/admin/AgendaAdminPage.tsx",
+          "src/app/features/builder/BuilderEditor.tsx",
+          "src/app/features/public/CfpWizard.tsx"
+        ],
+        "rules": ["react-doctor/no-giant-component"]
+      }
+    ]
+  }
+}

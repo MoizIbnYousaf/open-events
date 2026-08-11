@@ -1,5 +1,8 @@
+import { useId } from 'react'
+
 import type { TaxonomyItemDto } from '../../../application'
 import type { TaxonomyKey, TaxonomyKind } from '../../../domain'
+import { Field, FieldTriggerLabel } from '../../../components/ui/field'
 import {
   Select,
   SelectContent,
@@ -15,15 +18,20 @@ interface TaxonomyPickerProps {
   readonly onChange: (value: TaxonomyKey | null) => void
 }
 
+/**
+ * One routing rule's target picker. The label id is generated per instance:
+ * this component is rendered once per routing rule, and a hardcoded id
+ * previously made every trigger's aria-labelledby resolve to the first rule's
+ * label, so rules 2..n were effectively unlabelled.
+ */
 export default function TaxonomyPicker({ kind, items, value, onChange }: TaxonomyPickerProps) {
   const options = items.filter((item) => item.kind === kind)
+  const labelId = useId()
   return (
-    <div className="grid gap-1.5">
-      <span id="routing-target-label" className="text-sm font-medium">
-        Target
-      </span>
+    <Field>
+      <FieldTriggerLabel id={labelId}>Target</FieldTriggerLabel>
       <Select value={value ?? ''} onValueChange={(next) => onChange(next === '' ? null : next)}>
-        <SelectTrigger aria-labelledby="routing-target-label">
+        <SelectTrigger aria-labelledby={labelId}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -34,6 +42,6 @@ export default function TaxonomyPicker({ kind, items, value, onChange }: Taxonom
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </Field>
   )
 }

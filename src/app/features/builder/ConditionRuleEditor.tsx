@@ -2,13 +2,12 @@ import type {
   ConditionEffect,
   ConditionOperator,
   ElementCondition,
-  ElementFieldKey,
   ElementRule,
-  FormElement,
-  QuestionType,
-} from '../../../domain'
-import { CONDITION_EFFECTS } from '../../../domain'
+} from '../../../domain/rules'
+import { CONDITION_EFFECTS } from '../../../domain/rules'
+import type { ElementFieldKey, FormElement, QuestionType } from '../../../domain/form-version'
 import { Button } from '../../../components/ui/button'
+import { Field, FieldError, FieldLabel, FieldTriggerLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import {
   Select,
@@ -23,6 +22,11 @@ import { conditionValueKey, operatorOptionsFor } from './builder-model'
 interface ConditionRuleEditorProps {
   readonly rules: readonly ElementRule[]
   readonly elements: readonly FormElement[]
+  /**
+   * conditionValueKey() of the condition the last save attempt rejected, so the
+   * precise row — not just a form-level sentence — carries the message.
+   */
+  readonly invalidConditionKey: string | null
   readonly registerValueRef: (key: string) => (node: HTMLInputElement | null) => void
   readonly onUpdateRule: (ruleId: string, patch: Partial<ElementRule>) => void
 }
@@ -30,6 +34,7 @@ interface ConditionRuleEditorProps {
 export default function ConditionRuleEditor({
   rules,
   elements,
+  invalidConditionKey,
   registerValueRef,
   onUpdateRule,
 }: ConditionRuleEditorProps) {
@@ -106,15 +111,15 @@ export default function ConditionRuleEditor({
       {rules.map((rule) => (
         <div key={rule.id} className="grid gap-3 rounded-lg border p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="grid gap-1.5">
-              <span className="text-sm font-medium">Effect</span>
+            <Field>
+              <FieldTriggerLabel id={`condition-effect-${rule.id}`}>Effect</FieldTriggerLabel>
               <Select
                 value={rule.effect}
                 onValueChange={(effect) =>
                   onUpdateRule(rule.id, { effect: effect as ConditionEffect })
                 }
               >
-                <SelectTrigger aria-label="Effect">
+                <SelectTrigger aria-labelledby={`condition-effect-${rule.id}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -125,7 +130,7 @@ export default function ConditionRuleEditor({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -149,54 +154,66 @@ export default function ConditionRuleEditor({
               {group.conditions.map((condition, conditionIndex) => {
                 const questionType = questionTypeFor(condition.operandKey)
                 const valueId = conditionValueKey(rule.id, groupIndex, conditionIndex)
+                const valueInvalid = invalidConditionKey === valueId
                 return (
                   <div key={valueId} className="grid gap-2 sm:grid-cols-3">
-                    <Select
-                      value={condition.operandKey}
-                      onValueChange={(operandKey) => {
-                        const nextOperator = operatorOptionsFor(
-                          questionTypeFor(operandKey as ElementFieldKey),
-                        ).includes(condition.operator)
-                          ? condition.operator
-                          : 'eq'
-                        updateCondition(rule.id, groupIndex, conditionIndex, {
-                          operandKey: operandKey as ElementFieldKey,
-                          operator: nextOperator as ConditionOperator,
-                        })
-                      }}
-                    >
-                      <SelectTrigger aria-label="Operand">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {operandOptions.map((element) => (
-                          <SelectItem key={element.id} value={element.fieldKey ?? ''}>
-                            {element.label ?? element.fieldKey}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={condition.operator}
-                      onValueChange={(operator) =>
-                        updateCondition(rule.id, groupIndex, conditionIndex, {
-                          operator: operator as ConditionOperator,
-                        })
-                      }
-                    >
-                      <SelectTrigger aria-label="Operator">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {operatorOptionsFor(questionType).map((operator) => (
-                          <SelectItem key={operator} value={operator}>
-                            {operator}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <div className="grid gap-1.5">
-                      <label htmlFor={`condition-value-${valueId}`}>Value</label>
+                    <Field>
+                      <FieldTriggerLabel id={`condition-operand-${valueId}`}>
+                        Operand
+                      </FieldTriggerLabel>
+                      <Select
+                        value={condition.operandKey}
+                        onValueChange={(operandKey) => {
+                          const allowedOperators = new Set(
+                            operatorOptionsFor(questionTypeFor(operandKey as ElementFieldKey)),
+                          )
+                          const nextOperator = allowedOperators.has(condition.operator)
+                            ? condition.operator
+                            : 'eq'
+                          updateCondition(rule.id, groupIndex, conditionIndex, {
+                            operandKey: operandKey as ElementFieldKey,
+                            operator: nextOperator as ConditionOperator,
+                          })
+                        }}
+                      >
+                        <SelectTrigger aria-labelledby={`condition-operand-${valueId}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {operandOptions.map((element) => (
+                            <SelectItem key={element.id} value={element.fieldKey ?? ''}>
+                              {element.label ?? element.fieldKey}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldTriggerLabel id={`condition-operator-${valueId}`}>
+                        Operator
+                      </FieldTriggerLabel>
+                      <Select
+                        value={condition.operator}
+                        onValueChange={(operator) =>
+                          updateCondition(rule.id, groupIndex, conditionIndex, {
+                            operator: operator as ConditionOperator,
+                          })
+                        }
+                      >
+                        <SelectTrigger aria-labelledby={`condition-operator-${valueId}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {operatorOptionsFor(questionType).map((operator) => (
+                            <SelectItem key={operator} value={operator}>
+                              {operator}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field invalid={valueInvalid}>
+                      <FieldLabel htmlFor={`condition-value-${valueId}`}>Value</FieldLabel>
                       <Input
                         id={`condition-value-${valueId}`}
                         ref={registerValueRef(valueId)}
@@ -214,7 +231,12 @@ export default function ConditionRuleEditor({
                           })
                         }
                       />
-                    </div>
+                      {valueInvalid ? (
+                        <FieldError id={`condition-value-${valueId}-error`}>
+                          This condition needs a value
+                        </FieldError>
+                      ) : null}
+                    </Field>
                   </div>
                 )
               })}

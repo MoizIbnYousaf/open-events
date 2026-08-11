@@ -19,6 +19,7 @@ import {
   buildSubmitBatch,
   countRows,
   expectRejects,
+  SEEDED_CONTACTS,
   seedDemoConf,
 } from './m2b-helpers'
 
@@ -76,7 +77,7 @@ describe('originDraftId idempotent retry', () => {
     expect(await countRows(env.DB, 'submission_contributors')).toBe(3)
     expect(await countRows(env.DB, 'captured_messages')).toBe(1)
     expect(await countRows(env.DB, 'confirmation_records')).toBe(1)
-    expect(await countRows(env.DB, 'contacts')).toBe(3)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + 3)
     expect(await countRows(env.DB, 'proposal_drafts')).toBe(0)
   })
 
@@ -158,7 +159,7 @@ describe('originDraftId idempotent retry', () => {
     expect(foreignOwner.outcome).toBe('existing-idempotent')
 
     expect(await countRows(env.DB, 'proposal_submissions')).toBe(1)
-    expect(await countRows(env.DB, 'contacts')).toBe(1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + 1)
     expect(await countRows(env.DB, 'captured_messages')).toBe(1)
   })
 
@@ -179,7 +180,7 @@ describe('originDraftId idempotent retry', () => {
     expect(await countRows(env.DB, 'proposal_submissions')).toBe(0)
     expect(await countRows(env.DB, 'captured_messages')).toBe(0)
     expect(await countRows(env.DB, 'confirmation_records')).toBe(0)
-    expect(await countRows(env.DB, 'contacts')).toBe(1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + 1)
     expect(await countRows(env.DB, 'proposal_drafts')).toBe(1)
   })
 
@@ -194,7 +195,7 @@ describe('originDraftId idempotent retry', () => {
       service.submit(actor(), buildInput({ coSpeakers: tooMany })),
     ).rejects.toMatchObject({ code: 'validation_failed' })
 
-    expect(await countRows(env.DB, 'contacts')).toBe(1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + 1)
     expect(await countRows(env.DB, 'proposal_submissions')).toBe(0)
     expect(await countRows(env.DB, 'captured_messages')).toBe(0)
     expect(await countRows(env.DB, 'confirmation_records')).toBe(0)
@@ -212,7 +213,7 @@ describe('originDraftId idempotent retry', () => {
 
     expect(detail.status).toBe('pending')
     expect(detail.contributors).toHaveLength(MAX_CO_SPEAKERS + 1)
-    expect(await countRows(env.DB, 'contacts')).toBe(MAX_CO_SPEAKERS + 1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + MAX_CO_SPEAKERS + 1)
     expect(await countRows(env.DB, 'submission_contributors')).toBe(MAX_CO_SPEAKERS + 1)
   })
 
@@ -227,7 +228,7 @@ describe('originDraftId idempotent retry', () => {
       `A submission may include at most ${MAX_CO_SPEAKERS} co-speakers`,
     )
 
-    expect(await countRows(env.DB, 'contacts')).toBe(1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + 1)
     expect(await countRows(env.DB, 'proposal_submissions')).toBe(0)
     expect(await countRows(env.DB, 'submission_contributors')).toBe(0)
     expect(await countRows(env.DB, 'captured_messages')).toBe(0)
@@ -247,7 +248,7 @@ describe('originDraftId idempotent retry', () => {
     const result = await unitOfWork.execute(buildSubmitBatch({ coSpeakers: exact }))
 
     expect(result.outcome).toBe('inserted')
-    expect(await countRows(env.DB, 'contacts')).toBe(MAX_CO_SPEAKERS + 1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + MAX_CO_SPEAKERS + 1)
     expect(await countRows(env.DB, 'proposal_submissions')).toBe(1)
     expect(await countRows(env.DB, 'submission_contributors')).toBe(MAX_CO_SPEAKERS + 1)
     expect(await countRows(env.DB, 'captured_messages')).toBe(1)

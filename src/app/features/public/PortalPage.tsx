@@ -6,7 +6,9 @@ import { Card, CardContent } from '../../../components/ui/card'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import { useOwnSubmissions, type PortalSubmission } from '../../queries/portal'
+import DocumentUploader from './DocumentUploader'
 import HeadshotUploader from './HeadshotUploader'
+import ProfileEditor from './ProfileEditor'
 import TasksPanel from './TasksPanel'
 
 interface PortalPageProps {
@@ -40,7 +42,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
         <h1 className="text-2xl font-semibold">{HEADING}</h1>
         <Card>
           <CardContent>
-            <StatusLive>Taking you to the sign-in step…</StatusLive>
+            <StatusLive aria-live="polite">Taking you to the sign-in step…</StatusLive>
           </CardContent>
         </Card>
       </div>
@@ -57,11 +59,12 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
             <Button
               type="button"
               className="min-h-6"
+              pending={query.isFetching}
               onClick={() => {
                 void query.refetch()
               }}
             >
-              Try again
+              {query.isFetching ? 'Trying again…' : 'Try again'}
             </Button>
           </CardContent>
         </Card>
@@ -76,51 +79,84 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
         <Card>
           <CardContent className="grid gap-3">
             <Skeleton className="h-10 w-full" />
-            <StatusLive>Loading your submissions…</StatusLive>
+            <StatusLive aria-live="polite">Loading your submissions…</StatusLive>
           </CardContent>
         </Card>
       </div>
     )
   }
 
-  if (data.length === 0) {
-    return (
-      <div className="grid gap-4">
-        <h1 className="text-2xl font-semibold">{HEADING}</h1>
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              No submissions yet. Once you submit a proposal it appears here.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
+  // Owning a submission is NOT the condition for onboarding: acceptance
+  // materialises a checklist for every contributor, so a co-speaker signs in
+  // with an empty own-list and still has tasks and a headshot to upload. The
+  // checklist and the uploader therefore sit outside the empty branch.
   return (
     <div className="grid gap-4">
       <h1 className="text-2xl font-semibold">{HEADING}</h1>
-      <ul aria-label={HEADING} className="grid gap-3">
-        {data.map((submission) => (
-          <li key={submission.id}>
-            <Card>
-              <CardContent className="grid gap-1">
-                <span className="font-medium">{submission.title}</span>
-                <span className="text-sm text-muted-foreground">
-                  Status: {statusLabel(submission)}
-                </span>
-              </CardContent>
-            </Card>
-          </li>
-        ))}
-      </ul>
+      {data.length === 0 ? (
+        <Card>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              No submissions yet. Proposals you submit appear here; any onboarding tasks assigned to
+              you are listed below.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <ul aria-label={HEADING} className="grid gap-3">
+          {data.map((submission) => (
+            <li key={submission.id}>
+              <Card>
+                <CardContent className="grid justify-items-start gap-1">
+                  <span className="font-medium">{submission.title}</span>
+                  <span className="text-sm text-muted-foreground">
+                    Status: {statusLabel(submission)}
+                  </span>
+                  <InviteLink submission={submission} />
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
       <TasksPanel />
+      <ProfileEditor />
       <HeadshotUploader />
+      <DocumentUploader />
     </div>
   )
 }
 
+/**
+ * The invite download for an accepted submission. The route answers 409 for an
+ * event whose dates are not configured, and a `download` anchor would write
+ * that JSON error to disk as the .ics — so an unavailable invite is stated in
+ * words instead of being offered as a broken link.
+ */
+function InviteLink({ submission }: { readonly submission: PortalSubmission }) {
+  if (!submission.accepted) return null
+  if (!submission.inviteAvailable) {
+    return (
+      <span className="text-sm text-muted-foreground">
+        The calendar invite becomes available once the organizer sets the event dates.
+      </span>
+    )
+  }
+  return (
+    <a
+      className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+      href={`/api/public/invite/${encodeURIComponent(submission.id)}.ics`}
+      download
+    >
+      Download the calendar invite
+    </a>
+  )
+}
+
+/**
+ * The persisted status is pinned to 'pending' for a submission's whole life;
+ * the acceptance record is the decision, so it is what the speaker reads here.
+ */
 function statusLabel(submission: PortalSubmission): string {
-  return submission.status.replaceAll('-', ' ')
+  return submission.accepted ? 'Accepted' : 'Pending review'
 }

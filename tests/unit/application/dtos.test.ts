@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   toFormDefinitionDto,
   toFormSummaryDto,
+  toOwnSubmissionListItemDto,
   toSubmissionListItemDto,
   toFormVersionDetailDto,
 } from '../../../src/application'
@@ -138,5 +139,54 @@ describe('toSubmissionListItemDto', () => {
     expect(dto.primarySpeaker).toMatchObject({ role: 'primary', email: 'speaker-a@example.test' })
     expect(dto.coSpeakerCount).toBe(1)
     expect(dto.routing).toEqual({ actionKind: 'assign_track', actionTarget: 'workshop' })
+  })
+})
+
+describe('toOwnSubmissionListItemDto', () => {
+  const organizerRow = () =>
+    toSubmissionListItemDto(
+      createSubmission(),
+      createForm({ status: 'published', publishedVersionId: 'version-1' }),
+      createVersion({ status: 'published' }),
+      [
+        {
+          contactId: 'contact-primary',
+          name: 'Speaker A',
+          email: 'speaker-a@example.test',
+          role: 'primary',
+          position: 0,
+        },
+      ],
+    )
+
+  // Routing is the organizer's triage decision (including manual_review and the
+  // internal taxonomy keys). The speaker's own row is a public read, so the
+  // decision must not travel with it.
+  it('drops the organizer-only routing outcome from the speaker payload', () => {
+    const row = organizerRow()
+    expect(row.routing).not.toBeNull()
+
+    const own = toOwnSubmissionListItemDto(row, true, true)
+
+    expect(own).not.toHaveProperty('routing')
+    expect(own.id).toBe(row.id)
+    expect(own.primarySpeaker).toEqual(row.primarySpeaker)
+  })
+
+  it('carries acceptance and calendar-invite availability as separate facts', () => {
+    const row = organizerRow()
+
+    expect(toOwnSubmissionListItemDto(row, true, true)).toMatchObject({
+      accepted: true,
+      inviteAvailable: true,
+    })
+    expect(toOwnSubmissionListItemDto(row, true, false)).toMatchObject({
+      accepted: true,
+      inviteAvailable: false,
+    })
+    expect(toOwnSubmissionListItemDto(row, false, false)).toMatchObject({
+      accepted: false,
+      inviteAvailable: false,
+    })
   })
 })

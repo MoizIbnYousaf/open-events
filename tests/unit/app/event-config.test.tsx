@@ -115,7 +115,7 @@ async function mountConfig() {
   })
   const builderStubRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/admin/forms/$formId',
+    path: '/admin/events/$slug/forms/$formId',
     component: () => <div data-testid="builder-stub">Builder</div>,
   })
   const router = createRouter({
@@ -389,7 +389,7 @@ describe('event config screen', () => {
     const builderLink = await screen.findByRole('link', { name: 'cfp' })
     expect(builderLink).toHaveAttribute(
       'href',
-      '/admin/forms/f0000000-0000-4000-8000-000000000001?eventSlug=demo-conf-2026',
+      '/admin/events/demo-conf-2026/forms/f0000000-0000-4000-8000-000000000001',
     )
     expect(builderLink.textContent).not.toContain(BUILDER_FORM_ID)
     expect(document.body.textContent).not.toContain(BUILDER_FORM_ID)
@@ -446,7 +446,9 @@ describe('event config screen', () => {
     await waitFor(() => {
       expect(fetchCall('/api/admin/events/demo-conf-2026/forms', 'GET')).toBeDefined()
     })
-    const empty = await screen.findByRole('status')
+    // Scoped by name: the surface now also announces its loading state, so an
+    // unscoped status query would resolve whichever region exists first.
+    const empty = await screen.findByRole('status', { name: 'No forms' })
     expect(empty).toHaveTextContent(/no forms/i)
   })
 
@@ -510,12 +512,14 @@ describe('event config screen', () => {
     await user.click(builderLink)
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe(`/admin/forms/${BUILDER_FORM_ID}`)
+      expect(router.state.location.pathname).toBe(
+        `/admin/events/demo-conf-2026/forms/${BUILDER_FORM_ID}`,
+      )
     })
     await waitFor(() => {
-      expect(router.state.location.search).toEqual({ eventSlug: 'demo-conf-2026' })
+      expect(router.state.location.search).toEqual({})
     })
-    expect(router.state.location.searchStr).toContain('eventSlug=demo-conf-2026')
+    expect(router.state.location.searchStr).toBe('')
     expect(window.location.href).toBe(locationBefore)
   })
 

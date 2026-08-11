@@ -257,7 +257,9 @@ describe('taxonomy editor screen', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toBeInTheDocument()
     expect(alert.textContent?.toLowerCase()).not.toMatch(/csrf|origin/i)
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    // The save region stays mounted and silent — a refused save must not leave
+    // anything claiming the taxonomies were stored.
+    expect(screen.getByRole('status')).toHaveTextContent('')
   })
 
   it('redirects to /admin when the session expires during save', async () => {

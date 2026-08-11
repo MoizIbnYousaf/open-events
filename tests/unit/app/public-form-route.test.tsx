@@ -252,7 +252,9 @@ describe('public form routes', () => {
     expect(loading).toBeInTheDocument()
     resolveDefinition?.(jsonResponse(PUBLISHED_FORM))
     expect(await screen.findByRole('button', { name: /next/i })).toBeInTheDocument()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    // The loading sentence is gone; the save bar's own region stays mounted
+    // and silent, waiting for a message it can announce from inside the tree.
+    for (const region of screen.queryAllByRole('status')) expect(region).toHaveTextContent('')
     expect(screen.getByRole('listitem', { name: /welcome/i })).toHaveAttribute('aria-current')
   })
 

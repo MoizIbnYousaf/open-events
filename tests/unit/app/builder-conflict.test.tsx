@@ -173,13 +173,13 @@ async function mountBuilder() {
   const rootRoute = createRootRoute()
   const builderRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/admin/forms/$formId',
+    path: '/admin/events/$slug/forms/$formId',
     component: BuilderEditor,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([builderRoute]),
     history: createMemoryHistory({
-      initialEntries: [`/admin/forms/${FORM_ID}?eventSlug=${EVENT_SLUG}`],
+      initialEntries: [`/admin/events/${EVENT_SLUG}/forms/${FORM_ID}`],
     }),
   })
   await router.load()
@@ -200,16 +200,16 @@ async function mountBuilder() {
 beforeEach(() => {
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       return jsonResponse(DRAFT_DTO)
     }
-    if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+    if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`) {
       return jsonResponse([])
     }
     if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
       return jsonResponse(TAXONOMY_DTO)
     }
-    if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+    if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
       const body = JSON.parse(String(init?.body)) as DraftPayload
       return jsonResponse(reissueContent(body))
     }
@@ -241,7 +241,7 @@ describe('builder draft conflict handling and payload contract', () => {
     await mountBuilder()
 
     await user.click(await screen.findByRole('button', { name: /save/i }))
-    const put = fetchCall(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')
+    const put = fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
     const body = JSON.parse(String(put?.body)) as {
       pages: readonly { id: string }[]
       elements: readonly { id: string; pageId: string }[]
@@ -270,7 +270,7 @@ describe('builder draft conflict handling and payload contract', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Saved')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    const putBodies = fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')
+    const putBodies = fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
     expect(putBodies).toHaveLength(2)
     const secondPut = putBodies[1]
     const serialized = String(secondPut?.body)
@@ -292,16 +292,19 @@ describe('builder draft conflict handling and payload contract', () => {
     const user = userEvent.setup()
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse([])
       }
       if (method === 'GET' && url.endsWith('/taxonomies')) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -322,7 +325,7 @@ describe('builder draft conflict handling and payload contract', () => {
     expect(screen.getAllByLabelText('Label')[0]).toHaveValue('Edited title')
     const putCalls = fetchMock.mock.calls.filter(([input, init]) => {
       return (
-        requestUrl(input) === `/api/admin/forms/${FORM_ID}/draft` &&
+        requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft` &&
         (init?.method ?? 'GET') === 'PUT'
       )
     })
@@ -333,16 +336,19 @@ describe('builder draft conflict handling and payload contract', () => {
     const user = userEvent.setup()
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse([])
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -362,7 +368,7 @@ describe('builder draft conflict handling and payload contract', () => {
 
     await user.click(screen.getByRole('button', { name: /retry after reload/i }))
 
-    const putBodies = fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')
+    const putBodies = fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
     expect(putBodies).toHaveLength(2)
     const retriedBody = JSON.parse(String(putBodies[1]?.body)) as {
       elements: readonly { label: string | null }[]
@@ -377,7 +383,7 @@ describe('builder draft conflict handling and payload contract', () => {
     let resolveRefetch: ((response: Response) => void) | undefined
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         draftGets += 1
         if (draftGets > 1) {
           return new Promise<Response>((resolve) => {
@@ -386,13 +392,16 @@ describe('builder draft conflict handling and payload contract', () => {
         }
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse([])
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -409,15 +418,22 @@ describe('builder draft conflict handling and payload contract', () => {
     try {
       fireEvent.click(screen.getByRole('button', { name: /retry after reload/i }))
       await vi.runAllTimersAsync()
-      expect(fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')).toHaveLength(1)
+      expect(
+        fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT'),
+      ).toHaveLength(1)
 
       resolveRefetch?.(jsonResponse(DRAFT_DTO))
       for (let i = 0; i < 20; i += 1) {
         await vi.advanceTimersByTimeAsync(0)
-        if (fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT').length === 2) break
+        if (
+          fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT').length === 2
+        )
+          break
       }
-      expect(fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')).toHaveLength(2)
-      const putBodies = fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')
+      expect(
+        fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT'),
+      ).toHaveLength(2)
+      const putBodies = fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
       const retriedBody = JSON.parse(String(putBodies[1]?.body)) as {
         elements: readonly { label: string | null }[]
       }
@@ -433,20 +449,23 @@ describe('builder draft conflict handling and payload contract', () => {
     let draftGets = 0
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         draftGets += 1
         if (draftGets > 1) {
           return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
         }
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse([])
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -461,7 +480,9 @@ describe('builder draft conflict handling and payload contract', () => {
 
     await user.click(screen.getByRole('button', { name: /retry after reload/i }))
 
-    expect(fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')).toHaveLength(1)
+    expect(
+      fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT'),
+    ).toHaveLength(1)
     const conflictAlert = await screen.findByRole('alert')
     expect(conflictAlert).toHaveTextContent(
       'The draft changed elsewhere — reload to see the latest',
@@ -480,7 +501,7 @@ describe('builder draft conflict handling and payload contract', () => {
       const draftGetCalls = () =>
         fetchMock.mock.calls.filter(([input, init]) => {
           return (
-            requestUrl(input) === `/api/admin/forms/${FORM_ID}/draft` &&
+            requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft` &&
             (init?.method ?? 'GET') === 'GET'
           )
         })
@@ -488,13 +509,19 @@ describe('builder draft conflict handling and payload contract', () => {
         fetchMock.mock.calls.filter(([input, init]) => {
           const method = init?.method ?? 'GET'
           if (scope === 'save') {
-            return requestUrl(input) === `/api/admin/forms/${FORM_ID}/draft` && method === 'PUT'
+            return (
+              requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft` &&
+              method === 'PUT'
+            )
           }
-          return requestUrl(input) === `/api/admin/forms/${FORM_ID}/publish` && method === 'POST'
+          return (
+            requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish` &&
+            method === 'POST'
+          )
         })
       fetchHandler = (url, init) => {
         const method = init?.method ?? 'GET'
-        if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+        if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
           draftGets += 1
           if (draftGets > 1) {
             return new Promise<Response>((resolve) => {
@@ -503,19 +530,25 @@ describe('builder draft conflict handling and payload contract', () => {
           }
           return jsonResponse(DRAFT_DTO)
         }
-        if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+        if (
+          method === 'GET' &&
+          url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+        ) {
           return jsonResponse([])
         }
         if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
           return jsonResponse(TAXONOMY_DTO)
         }
-        if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+        if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
           return jsonResponse(
             { error: { code: 'conflict', message: 'Modified concurrently' } },
             409,
           )
         }
-        if (method === 'POST' && url === `/api/admin/forms/${FORM_ID}/publish`) {
+        if (
+          method === 'POST' &&
+          url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/publish`
+        ) {
           return jsonResponse(
             { error: { code: 'conflict', message: 'Modified concurrently' } },
             409,
@@ -558,7 +591,9 @@ describe('builder draft conflict handling and payload contract', () => {
         expect(retryMutationCalls()).toHaveLength(2)
         if (scope === 'save') {
           const retriedBody = JSON.parse(
-            String(fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')[1]?.body),
+            String(
+              fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')[1]?.body,
+            ),
           ) as {
             elements: readonly { label: string | null }[]
           }
@@ -575,16 +610,19 @@ describe('builder draft conflict handling and payload contract', () => {
     const user = userEvent.setup()
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse([])
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -612,10 +650,13 @@ describe('builder draft conflict handling and payload contract', () => {
     for (const state of states) {
       fetchHandler = (url, init) => {
         const method = init?.method ?? 'GET'
-        if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+        if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
           return jsonResponse({ error: { code: state.code, message: state.heading } }, state.status)
         }
-        if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+        if (
+          method === 'GET' &&
+          url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+        ) {
           return jsonResponse([])
         }
         if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
@@ -643,16 +684,19 @@ describe('builder draft conflict handling and payload contract', () => {
     let resolveSave: ((response: Response) => void) | undefined
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse([])
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return new Promise<Response>((resolve) => {
           resolveSave = resolve
         })
@@ -691,16 +735,16 @@ describe('builder draft conflict handling and payload contract', () => {
     const FORM_B = 'f0000000-0000-4000-8000-0000000000bb'
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_B}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_B}/draft`) {
         return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
       }
       if (
         method === 'GET' &&
-        (url === `/api/admin/forms/${FORM_ID}/versions` ||
-          url === `/api/admin/forms/${FORM_B}/versions`)
+        (url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions` ||
+          url === `/api/admin/events/demo-conf-2026/forms/${FORM_B}/versions`)
       ) {
         return jsonResponse([])
       }
@@ -712,12 +756,15 @@ describe('builder draft conflict handling and payload contract', () => {
     const { router } = await mountBuilder()
 
     expect(await screen.findByDisplayValue('Title')).toBeInTheDocument()
-    await router.navigate({ to: '/admin/forms/$formId', params: { formId: FORM_B } })
+    await router.navigate({
+      to: '/admin/events/$slug/forms/$formId',
+      params: { slug: EVENT_SLUG, formId: FORM_B },
+    })
 
     expect(await screen.findByText('Something went wrong')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
     expect(screen.queryByDisplayValue('Title')).not.toBeInTheDocument()
-    expect(fetchCall(`/api/admin/forms/${FORM_B}/draft`, 'GET')).toBeDefined()
+    expect(fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_B}/draft`, 'GET')).toBeDefined()
   })
 
   it('does not clear dirty edits when background draft data arrives', async () => {
@@ -730,11 +777,14 @@ describe('builder draft conflict handling and payload contract', () => {
     }
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         draftGets += 1
         return jsonResponse(draftGets > 1 ? freshDraft : DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse([])
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
@@ -754,7 +804,7 @@ describe('builder draft conflict handling and payload contract', () => {
     expect(
       fetchMock.mock.calls.filter(([input, init]) => {
         return (
-          requestUrl(input) === `/api/admin/forms/${FORM_ID}/draft` &&
+          requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft` &&
           (init?.method ?? 'GET') === 'GET'
         )
       }),
@@ -770,20 +820,23 @@ describe('builder draft conflict handling and payload contract', () => {
     let draftGets = 0
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         draftGets += 1
         if (draftGets > 1) {
           return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
         }
         return jsonResponse(DRAFT_DTO)
       }
-      if (method === 'GET' && url === `/api/admin/forms/${FORM_ID}/versions`) {
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
         return jsonResponse([])
       }
       if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
         return jsonResponse(TAXONOMY_DTO)
       }
-      if (method === 'PUT' && url === `/api/admin/forms/${FORM_ID}/draft`) {
+      if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
         return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -798,12 +851,14 @@ describe('builder draft conflict handling and payload contract', () => {
 
     await user.click(screen.getByRole('button', { name: /reload latest/i }))
 
-    expect(fetchCalls(`/api/admin/forms/${FORM_ID}/draft`, 'PUT')).toHaveLength(1)
+    expect(
+      fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT'),
+    ).toHaveLength(1)
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.filter(([input, init]) => {
           return (
-            requestUrl(input) === `/api/admin/forms/${FORM_ID}/draft` &&
+            requestUrl(input) === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft` &&
             (init?.method ?? 'GET') === 'GET'
           )
         }),

@@ -22,4 +22,6 @@ export interface Contact {
   readonly email: string
   readonly name: string
   readonly createdAt: UtcInstant
+  /** Speaker-authored bio (REQ-006); absent or null until the speaker writes one. */
+  readonly bio?: string | null
 }

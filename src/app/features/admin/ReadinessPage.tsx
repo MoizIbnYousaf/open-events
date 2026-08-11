@@ -43,7 +43,7 @@ export default function ReadinessPage({ eventSlug }: ReadinessPageProps) {
           <CardContent className="grid gap-3">
             <Skeleton className="h-6 w-48" />
             <Skeleton className="h-4 w-full" />
-            <StatusLive>Loading readiness…</StatusLive>
+            <StatusLive aria-live="polite">Loading readiness…</StatusLive>
           </CardContent>
         </Card>
       </section>
@@ -57,15 +57,19 @@ export default function ReadinessPage({ eventSlug }: ReadinessPageProps) {
         <Card>
           <CardContent className="grid gap-3">
             <AlertLive>Unable to load readiness.</AlertLive>
-            <Button variant="outline" onClick={() => void query.refetch()}>
-              Try again
+            <Button
+              variant="outline"
+              pending={query.isFetching}
+              onClick={() => void query.refetch()}
+            >
+              {query.isFetching ? 'Trying again…' : 'Try again'}
             </Button>
           </CardContent>
         </Card>
       ) : query.data.length === 0 ? (
         <Card>
           <CardContent>
-            <StatusLive>No submissions to track yet.</StatusLive>
+            <StatusLive aria-live="polite">No submissions to track yet.</StatusLive>
           </CardContent>
         </Card>
       ) : (
@@ -76,18 +80,18 @@ export default function ReadinessPage({ eventSlug }: ReadinessPageProps) {
               <thead>
                 <tr>
                   <th scope="col">Session</th>
-                  <th scope="col">Speaker</th>
                   <th scope="col">Outstanding</th>
                   <th scope="col">Complete</th>
+                  <th scope="col">Ready</th>
                 </tr>
               </thead>
               <tbody>
                 {query.data.map((row) => (
                   <tr key={row.submissionId}>
                     <td>{row.title}</td>
-                    <td>{row.speakerEmail}</td>
                     <td>{`${row.outstandingCount} outstanding`}</td>
-                    <td>{`${row.completeCount} complete`}</td>
+                    <td>{`${row.completedTasks} complete`}</td>
+                    <td>{row.ready ? 'Ready' : 'Not ready'}</td>
                   </tr>
                 ))}
               </tbody>

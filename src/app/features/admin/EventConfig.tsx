@@ -1,13 +1,15 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { Controller, useForm, type FieldPath } from 'react-hook-form'
 import { z } from 'zod'
 
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
+import { announce } from '../../lib/announcer'
 import { useEventConfig, useFormsList, useUpdateEventConfig } from '../../queries/admin-events'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Field, FieldError, FieldLabel, FieldTriggerLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import {
   Select,
@@ -18,9 +20,13 @@ import {
 } from '../../../components/ui/select'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
-import type { AdminEventConfigDto, UpdateEventConfigInput } from '../../../application'
-import { EVENT_STATUSES } from '../../../domain'
+import type {
+  AdminEventConfigDto,
+  UpdateEventConfigInput,
+} from '../../../application/dtos/event-config.dto'
+import { EVENT_STATUSES } from '../../../domain/event'
 
+import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState, LoadErrorState } from './AdminStates'
 
 const eventConfigSchema = z
@@ -119,6 +125,7 @@ function EventConfigScreen() {
     return (
       <LoadErrorState
         message={getApiErrorMessage(configQuery.error, 'Unable to load the event')}
+        pending={configQuery.isFetching}
         onRetry={() => void configQuery.refetch()}
       />
     )
@@ -131,22 +138,26 @@ function EventConfigScreen() {
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-4 w-64" />
           <Skeleton className="h-4 w-64" />
+          <StatusLive aria-live="polite">Loading event settings…</StatusLive>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <div className="grid gap-4">
-      <EventConfigForm
-        key={configQuery.data.id}
-        dto={configQuery.data}
-        save={save}
-        slug={slug ?? ''}
-        navigateToLogin={() => void navigate({ to: '/admin' })}
-      />
-      <FormsList query={formsQuery} slug={slug ?? ''} />
-    </div>
+    <AppShell slug={slug ?? ''}>
+      <div className="grid gap-4">
+        <EventConfigForm
+          key={configQuery.data.id}
+          dto={configQuery.data}
+          save={save}
+          slug={slug ?? ''}
+          navigateToLogin={() => void navigate({ to: '/admin' })}
+        />
+        <FormsList query={formsQuery} slug={slug ?? ''} />
+        <PublicLinks query={formsQuery} slug={slug ?? ''} />
+      </div>
+    </AppShell>
   )
 }
 
@@ -166,6 +177,7 @@ function FormsList({
         <CardContent className="grid gap-3">
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-4 w-64" />
+          <StatusLive aria-live="polite">Loading forms…</StatusLive>
         </CardContent>
       </Card>
     )
@@ -179,8 +191,13 @@ function FormsList({
         <CardContent className="grid gap-3">
           <AlertLive>Unable to load forms.</AlertLive>
           <div>
-            <Button type="button" variant="outline" onClick={() => void query.refetch()}>
-              Retry
+            <Button
+              type="button"
+              variant="outline"
+              pending={query.isFetching}
+              onClick={() => void query.refetch()}
+            >
+              {query.isFetching ? 'Trying again…' : 'Retry'}
             </Button>
           </div>
         </CardContent>
@@ -195,7 +212,9 @@ function FormsList({
           <CardTitle>Forms</CardTitle>
         </CardHeader>
         <CardContent>
-          <StatusLive>No forms yet.</StatusLive>
+          <StatusLive aria-live="polite" aria-label="No forms">
+            No forms yet.
+          </StatusLive>
         </CardContent>
       </Card>
     )
@@ -210,15 +229,62 @@ function FormsList({
           {forms.map((form) => (
             <li key={form.formId}>
               <Link
-                to="/admin/forms/$formId"
-                params={{ formId: form.formId }}
-                search={{ eventSlug: slug }}
+                to="/admin/events/$slug/forms/$formId"
+                params={{ slug, formId: form.formId }}
                 className="inline-flex min-h-6 min-w-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
               >
                 {form.slug}
               </Link>
             </li>
           ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * The shareable public URLs for this event, rendered only once a form is
+ * actually published — an organizer should never be handed a link that 404s.
+ * Without this card the public CFP and schedule had no inbound link anywhere in
+ * the product and could only be reached by typing a URL.
+ */
+function PublicLinks({
+  query,
+  slug,
+}: {
+  readonly query: ReturnType<typeof useFormsList>
+  readonly slug: string
+}) {
+  const published = (query.data ?? []).filter((form) => form.publishedVersionId !== null)
+  if (published.length === 0) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Public links</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-2">
+          {published.map((form) => (
+            <li key={form.formId}>
+              <Link
+                to="/cfp/$eventSlug/$formSlug"
+                params={{ eventSlug: slug, formSlug: form.slug }}
+                className="inline-flex min-h-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Call for papers — {form.slug}
+              </Link>
+            </li>
+          ))}
+          <li>
+            <Link
+              to="/schedule/$eventSlug"
+              params={{ eventSlug: slug }}
+              className="inline-flex min-h-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Public schedule
+            </Link>
+          </li>
         </ul>
       </CardContent>
     </Card>
@@ -277,18 +343,39 @@ function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormPr
       onSuccess: (server) => {
         reset(toFormValues(server))
         setSavedMessage('Saved')
+        announce('Event settings saved')
       },
       onError: (error) => {
         const code = getApiErrorCode(error)
         if (code === 'forbidden') setSaveState({ kind: 'forbidden' })
         else if (code === 'not_found') setSaveState({ kind: 'denied' })
-        else setSaveState({ kind: 'error', message: getApiErrorMessage(error, 'Unable to save') })
+        else
+          setSaveState({
+            kind: 'error',
+            message: getApiErrorMessage(error, 'Unable to save the event settings'),
+          })
+        // No announce(): the summary alert below renders this same message and
+        // is already an assertive live region (DEC-014).
         if (code === 'unauthorized') {
           window.setTimeout(() => navigateToLogin(), 100)
         }
       },
     })
   }
+
+  // Exactly one role=alert per form: the submit-level summary. Per-field text
+  // is a FieldError referenced by the control's aria-describedby, so a screen
+  // reader hears the problem once, on the field it belongs to.
+  const summaryMessage =
+    saveState !== null
+      ? saveState.kind === 'forbidden'
+        ? 'Access forbidden.'
+        : saveState.kind === 'denied'
+          ? 'Not found.'
+          : saveState.message
+      : Object.keys(errors).length > 0
+        ? 'Please fix the highlighted fields.'
+        : null
 
   return (
     <Card>
@@ -297,22 +384,33 @@ function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormPr
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
-          <Field label="Name" htmlFor="config-name" error={errors.name?.message}>
-            <Input
-              id="config-name"
-              aria-invalid={errors.name !== undefined ? true : undefined}
-              {...register('name')}
-            />
+          {/*
+            Name / Website / Organizer contact / Venue describe the EVENT and
+            are published on the public programme, so organization / url /
+            email / street-address would be false input-purpose declarations
+            (WCAG 1.3.5 covers the user's own data) and would invite the
+            browser to inject the operator's employer, homepage, personal email
+            and home address into fields whose values are published.
+            react-hook-form's register() already ships name="name" on the first
+            of them, which is one of the strongest full-name heuristics there
+            is, so autoComplete="off" is a bug fix, not a suppression.
+          */}
+          <Field invalid={errors.name !== undefined}>
+            <FieldLabel htmlFor="config-name">Name</FieldLabel>
+            <Input id="config-name" autoComplete="off" {...register('name')} />
+            {errors.name !== undefined ? (
+              <FieldError id="config-name-error">{errors.name.message}</FieldError>
+            ) : null}
           </Field>
-          <Field label="Timezone" htmlFor="config-timezone" error={errors.timezone?.message}>
-            <Input
-              id="config-timezone"
-              aria-invalid={errors.timezone !== undefined ? true : undefined}
-              {...register('timezone')}
-            />
+          <Field invalid={errors.timezone !== undefined}>
+            <FieldLabel htmlFor="config-timezone">Timezone</FieldLabel>
+            <Input id="config-timezone" {...register('timezone')} />
+            {errors.timezone !== undefined ? (
+              <FieldError id="config-timezone-error">{errors.timezone.message}</FieldError>
+            ) : null}
           </Field>
-          <div className="grid gap-1.5">
-            <span id="config-status-label">Status</span>
+          <Field>
+            <FieldTriggerLabel id="config-status-label">Status</FieldTriggerLabel>
             <Controller
               control={control}
               name="status"
@@ -331,75 +429,66 @@ function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormPr
                 </Select>
               )}
             />
-          </div>
-          <Field label="Website" htmlFor="config-website" error={errors.websiteUrl?.message}>
-            <Input
-              id="config-website"
-              aria-invalid={errors.websiteUrl !== undefined ? true : undefined}
-              {...register('websiteUrl')}
-            />
           </Field>
-          <Field
-            label="Organizer contact"
-            htmlFor="config-contact"
-            error={errors.organizerContact?.message}
-          >
-            <Input
-              id="config-contact"
-              aria-invalid={errors.organizerContact !== undefined ? true : undefined}
-              {...register('organizerContact')}
-            />
+          <Field invalid={errors.websiteUrl !== undefined}>
+            <FieldLabel htmlFor="config-website">Website</FieldLabel>
+            <Input id="config-website" autoComplete="off" {...register('websiteUrl')} />
+            {errors.websiteUrl !== undefined ? (
+              <FieldError id="config-website-error">{errors.websiteUrl.message}</FieldError>
+            ) : null}
           </Field>
-          <Field label="Venue" htmlFor="config-venue" error={errors.venue?.message}>
-            <Input
-              id="config-venue"
-              aria-invalid={errors.venue !== undefined ? true : undefined}
-              {...register('venue')}
-            />
+          <Field invalid={errors.organizerContact !== undefined}>
+            <FieldLabel htmlFor="config-contact">Organizer contact</FieldLabel>
+            <Input id="config-contact" autoComplete="off" {...register('organizerContact')} />
+            {errors.organizerContact !== undefined ? (
+              <FieldError id="config-contact-error">{errors.organizerContact.message}</FieldError>
+            ) : null}
           </Field>
-          <Field label="Event type" htmlFor="config-type" error={errors.eventType?.message}>
-            <Input
-              id="config-type"
-              aria-invalid={errors.eventType !== undefined ? true : undefined}
-              {...register('eventType')}
-            />
+          <Field invalid={errors.venue !== undefined}>
+            <FieldLabel htmlFor="config-venue">Venue</FieldLabel>
+            <Input id="config-venue" autoComplete="off" {...register('venue')} />
+            {errors.venue !== undefined ? (
+              <FieldError id="config-venue-error">{errors.venue.message}</FieldError>
+            ) : null}
+          </Field>
+          <Field invalid={errors.eventType !== undefined}>
+            <FieldLabel htmlFor="config-type">Event type</FieldLabel>
+            <Input id="config-type" {...register('eventType')} />
+            {errors.eventType !== undefined ? (
+              <FieldError id="config-type-error">{errors.eventType.message}</FieldError>
+            ) : null}
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Starts at" htmlFor="config-starts" error={errors.startsAt?.message}>
-              <Input
-                id="config-starts"
-                type="datetime-local"
-                aria-invalid={errors.startsAt !== undefined ? true : undefined}
-                {...register('startsAt')}
-              />
+            <Field invalid={errors.startsAt !== undefined}>
+              <FieldLabel htmlFor="config-starts">Starts at</FieldLabel>
+              <Input id="config-starts" type="datetime-local" {...register('startsAt')} />
+              {errors.startsAt !== undefined ? (
+                <FieldError id="config-starts-error">{errors.startsAt.message}</FieldError>
+              ) : null}
             </Field>
-            <Field label="Ends at" htmlFor="config-ends" error={errors.endsAt?.message}>
-              <Input
-                id="config-ends"
-                type="datetime-local"
-                aria-invalid={errors.endsAt !== undefined ? true : undefined}
-                {...register('endsAt')}
-              />
+            <Field invalid={errors.endsAt !== undefined}>
+              <FieldLabel htmlFor="config-ends">Ends at</FieldLabel>
+              <Input id="config-ends" type="datetime-local" {...register('endsAt')} />
+              {errors.endsAt !== undefined ? (
+                <FieldError id="config-ends-error">{errors.endsAt.message}</FieldError>
+              ) : null}
             </Field>
           </div>
-          {saveState !== null ? (
-            saveState.kind === 'forbidden' ? (
-              <AlertLive>Access forbidden.</AlertLive>
-            ) : saveState.kind === 'denied' ? (
-              <AlertLive>Not found.</AlertLive>
-            ) : (
-              <AlertLive>{saveState.message}</AlertLive>
-            )
-          ) : null}
+          {summaryMessage !== null ? <AlertLive>{summaryMessage}</AlertLive> : null}
           <div className="flex items-center justify-between gap-3">
-            <Button
-              type="submit"
-              disabled={save.isPending}
-              aria-label={save.isPending ? 'Saving…' : 'Save'}
-            >
+            {/* The visible label is the accessible name; a duplicate
+                aria-label only risks the two drifting apart. */}
+            <Button type="submit" pending={save.isPending}>
               {save.isPending ? 'Saving…' : 'Save'}
             </Button>
-            {savedMessage !== null ? <StatusLive>{savedMessage}</StatusLive> : null}
+            {/* One stable region for both outcomes, mounted before either has
+                anything to say: a live region created together with its text
+                is not in the accessibility tree when the text arrives, so it
+                announces nothing. The saved chip is cleared at submit, so the
+                in-flight message never overwrites a live one. */}
+            <StatusLive aria-live="polite">
+              {save.isPending ? 'Saving the event settings…' : savedMessage}
+            </StatusLive>
           </div>
           <Link
             to="/admin/events/$slug/taxonomies"
@@ -407,6 +496,20 @@ function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormPr
             className="text-sm font-medium text-primary underline-offset-4 hover:underline"
           >
             Manage taxonomies
+          </Link>
+          <Link
+            to="/admin/events/$slug/readiness"
+            params={{ slug }}
+            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Speaker readiness
+          </Link>
+          <Link
+            to="/admin/events/$slug/evaluations"
+            params={{ slug }}
+            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Manage review committee
           </Link>
         </form>
       </CardContent>
@@ -448,24 +551,4 @@ function buildPatch(
         : { startsAt: startsAt ?? '', endsAt: endsAt ?? '' }
   }
   return patch
-}
-
-function Field({
-  label,
-  htmlFor,
-  error,
-  children,
-}: {
-  readonly label: string
-  readonly htmlFor: string
-  readonly error: string | undefined
-  readonly children: ReactNode
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <label htmlFor={htmlFor}>{label}</label>
-      {children}
-      {error !== undefined ? <AlertLive>{error}</AlertLive> : null}
-    </div>
-  )
 }

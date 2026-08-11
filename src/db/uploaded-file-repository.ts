@@ -16,6 +16,7 @@ interface RawUploadedFileRow {
   readonly size_bytes: number
   readonly created_at: string
   readonly updated_at: string
+  readonly file_name: string | null
 }
 
 function mapRow(row: RawUploadedFileRow): UploadedFileRecord {
@@ -29,11 +30,12 @@ function mapRow(row: RawUploadedFileRow): UploadedFileRecord {
     sizeBytes: row.size_bytes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    fileName: row.file_name,
   }
 }
 
 const SELECT_OWN = `SELECT id, event_id, owner_contact_id, kind, storage_key, content_type,
-                           size_bytes, created_at, updated_at
+                           size_bytes, created_at, updated_at, file_name
                     FROM uploaded_files
                     WHERE event_id = ? AND owner_contact_id = ? AND kind = ?`
 
@@ -66,8 +68,8 @@ export function createUploadedFileRepository(db: D1Database): UploadedFileReposi
           .prepare(
             `INSERT INTO uploaded_files
                (id, event_id, owner_contact_id, kind, storage_key, content_type,
-                size_bytes, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                size_bytes, created_at, updated_at, file_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             record.id,
@@ -79,6 +81,7 @@ export function createUploadedFileRepository(db: D1Database): UploadedFileReposi
             record.sizeBytes,
             record.createdAt,
             record.updatedAt,
+            record.fileName ?? null,
           ),
       ])
       return previous === null ? null : mapRow(previous)

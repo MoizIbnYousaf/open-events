@@ -1,14 +1,16 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+
+import { useServerMutation } from '../../../adapters/tanstack-react-query'
 
 import { submitCfp } from '../api/public'
-import type { SubmitInput } from '../../application'
-import { normalizeEmail } from '../../domain'
+import type { SubmitInput } from '../../application/dtos/submission.dto'
+import { normalizeEmail } from '../../domain/invariants/email'
 import { publicDraftQueryKeys, type PublicEditorState } from './public-drafts'
 
 /** Submit the saved draft once; success clears the editor draft/co-speakers. */
 export function useSubmitCfp() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useServerMutation({
     mutationFn: () => {
       const editor = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
       if (editor === undefined) {
@@ -22,12 +24,19 @@ export function useSubmitCfp() {
         formVersionId: editor.formVersionId,
         title: editor.title,
         answers: editor.answers,
-        coSpeakers: editor.coSpeakers
-          .map((row) => ({
-            name: [row.firstName.trim(), row.lastName.trim()].filter(Boolean).join(' '),
-            email: normalizeEmail(row.email),
-          }))
-          .filter((row) => row.email !== ''),
+        coSpeakers: editor.coSpeakers.reduce<Array<{ name: string; email: string }>>(
+          (rows, row) => {
+            const email = normalizeEmail(row.email)
+            if (email !== '') {
+              rows.push({
+                name: [row.firstName.trim(), row.lastName.trim()].filter(Boolean).join(' '),
+                email,
+              })
+            }
+            return rows
+          },
+          [],
+        ),
       }
       return submitCfp(input)
     },

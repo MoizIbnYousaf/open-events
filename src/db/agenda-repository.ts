@@ -1,23 +1,13 @@
 import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types'
 
+import type { AgendaRepository, AgendaSessionRecord } from '../application'
 import type { AgendaSessionAssignment, AgendaSessionStatus } from '../domain/agenda'
 
-/** Persisted agenda session row (camelCase mirror of `agenda_sessions`). */
-export interface AgendaSessionRecord {
-  readonly eventId: string
-  readonly submissionId: string
-  readonly trackId: string | null
-  readonly roomId: string | null
-  readonly day: string
-  readonly start: string
-  readonly end: string
-  readonly position: number | null
-  readonly status: AgendaSessionStatus
-  readonly assignment: AgendaSessionAssignment
-  readonly speakerIds: readonly string[]
-  readonly createdAt: string
-  readonly updatedAt: string
-}
+/**
+ * The port and its record shape, re-exported beside the adapter that fulfils
+ * them: `AgendaSessionRecord` is the camelCase mirror of `agenda_sessions`.
+ */
+export type { AgendaRepository, AgendaSessionRecord }
 
 interface RawAgendaSessionRow {
   readonly event_id: string
@@ -63,14 +53,7 @@ function mapSessionRow(
 const SESSION_COLUMNS = `event_id, submission_id, track_id, room_id, day, start, end,
                 position, status, assignment, created_at, updated_at`
 
-/** Persistence operations the agenda domain/application needs (D1 adapter). */
-export interface AgendaRepository {
-  listByEvent(eventId: string): Promise<readonly AgendaSessionRecord[]>
-  findBySubmission(eventId: string, submissionId: string): Promise<AgendaSessionRecord | null>
-  /** Atomic upsert of the session row plus a full replace of its speakers. */
-  saveSession(session: AgendaSessionRecord): Promise<void>
-}
-
+/** D1 adapter for the `AgendaRepository` port. */
 export function createAgendaRepository(db: D1Database): AgendaRepository {
   const listByEvent = async (eventId: string): Promise<readonly AgendaSessionRecord[]> => {
     const sessionResult = await db

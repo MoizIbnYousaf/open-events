@@ -92,7 +92,7 @@ describe('FormBuilderService atomic unit-of-work', () => {
   it('saves the draft version and content in one port call with a null expected stamp', async () => {
     const { service, unitOfWork, versions, content } = buildHarness()
 
-    const detail = await service.updateDraft(organizerActor, FORM_ID, draftInput())
+    const detail = await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
 
     expect(unitOfWork.saveDraftCalls).toHaveLength(1)
     const call = unitOfWork.saveDraftCalls[0]
@@ -112,11 +112,11 @@ describe('FormBuilderService atomic unit-of-work', () => {
 
   it('passes the expected draft stamp when saving an existing draft', async () => {
     const { service, unitOfWork, versions } = buildHarness()
-    const first = await service.updateDraft(organizerActor, FORM_ID, draftInput())
+    const first = await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
     await versions.save(createVersion({ id: first.versionId, version: 1, updatedAt: FIXED_NOW }))
     unitOfWork.saveDraftCalls.length = 0
 
-    await service.updateDraft(organizerActor, FORM_ID, draftInput())
+    await service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
 
     expect(unitOfWork.saveDraftCalls).toHaveLength(1)
     expect(unitOfWork.saveDraftCalls[0]?.expected?.id).toBe(first.versionId)
@@ -127,7 +127,9 @@ describe('FormBuilderService atomic unit-of-work', () => {
     const { service, unitOfWork } = buildHarness()
     unitOfWork.saveDraftResult = { outcome: 'conflict' }
 
-    await expect(service.updateDraft(organizerActor, FORM_ID, draftInput())).rejects.toMatchObject({
+    await expect(
+      service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput()),
+    ).rejects.toMatchObject({
       code: 'conflict',
     })
     expect(unitOfWork.saveDraftCalls).toHaveLength(1)
@@ -147,7 +149,9 @@ describe('FormBuilderService atomic unit-of-work', () => {
       ],
     }
 
-    await expect(service.updateDraft(organizerActor, FORM_ID, badInput)).rejects.toMatchObject({
+    await expect(
+      service.updateDraft(organizerActor, EVENT_ID, FORM_ID, badInput),
+    ).rejects.toMatchObject({
       code: 'validation_failed',
     })
     expect(unitOfWork.saveDraftCalls).toEqual([])
@@ -159,7 +163,7 @@ describe('FormBuilderService atomic unit-of-work', () => {
     await versions.save(draft)
     await content.saveForVersion(EVENT_ID, draft.id, createContent())
 
-    await service.publish(organizerActor, FORM_ID)
+    await service.publish(organizerActor, EVENT_ID, FORM_ID)
 
     expect(unitOfWork.publishCalls).toHaveLength(1)
     const call = unitOfWork.publishCalls[0]
@@ -180,7 +184,7 @@ describe('FormBuilderService atomic unit-of-work', () => {
     await content.saveForVersion(EVENT_ID, draft.id, createContent())
     unitOfWork.publishResult = { outcome: 'conflict' }
 
-    await expect(service.publish(organizerActor, FORM_ID)).rejects.toMatchObject({
+    await expect(service.publish(organizerActor, EVENT_ID, FORM_ID)).rejects.toMatchObject({
       code: 'conflict',
     })
     expect(unitOfWork.publishCalls).toHaveLength(1)
@@ -188,7 +192,7 @@ describe('FormBuilderService atomic unit-of-work', () => {
 
   it('does not call the publish port for invalid rules or a missing draft', async () => {
     const invalid = buildHarness()
-    const draft = await invalid.service.updateDraft(organizerActor, FORM_ID, draftInput())
+    const draft = await invalid.service.updateDraft(organizerActor, EVENT_ID, FORM_ID, draftInput())
     await invalid.versions.save(createVersion({ id: draft.versionId }))
     const badContent = createContent({
       routingRules: [
@@ -201,13 +205,13 @@ describe('FormBuilderService atomic unit-of-work', () => {
     })
     await invalid.content.saveForVersion(EVENT_ID, draft.versionId, badContent)
 
-    await expect(invalid.service.publish(organizerActor, FORM_ID)).rejects.toMatchObject({
+    await expect(invalid.service.publish(organizerActor, EVENT_ID, FORM_ID)).rejects.toMatchObject({
       code: 'validation_failed',
     })
     expect(invalid.unitOfWork.publishCalls).toEqual([])
 
     const empty = buildHarness()
-    await expect(empty.service.publish(organizerActor, FORM_ID)).rejects.toMatchObject({
+    await expect(empty.service.publish(organizerActor, EVENT_ID, FORM_ID)).rejects.toMatchObject({
       code: 'conflict',
     })
     expect(empty.unitOfWork.publishCalls).toEqual([])

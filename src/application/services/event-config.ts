@@ -1,5 +1,5 @@
-import type { Event, EventSlug } from '../../domain'
-import { validateEventConfig } from '../../domain'
+import type { Event, EventSlug } from '../../domain/event'
+import { validateEventConfig } from '../../domain/invariants/event'
 import type { OrganizerActor } from '../actors'
 import type { AdminEventConfigDto, UpdateEventConfigInput } from '../dtos/event-config.dto'
 import { toAdminEventConfigDto } from '../dtos/event-config.dto'

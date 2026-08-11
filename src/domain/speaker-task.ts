@@ -1,5 +1,8 @@
+import type { AnswerMap } from './answers.ts'
 import type { ContactId } from './contact.ts'
 import type { EventId, UtcInstant } from './event.ts'
+import type { FormId } from './form.ts'
+import type { VersionId } from './form-version.ts'
 import type { SubmissionId } from './submission.ts'
 
 export type SpeakerTaskId = string
@@ -16,7 +19,14 @@ export const SPEAKER_TASK_KINDS = [
   'submit_headshot',
 ] as const
 
-export type SpeakerTaskKind = (typeof SPEAKER_TASK_KINDS)[number]
+/**
+ * `SPEAKER_TASK_KINDS` above is the fixed acceptance checklist. A
+ * `complete_form` task is created only by explicit organizer assignment and
+ * always references a real published form version.
+ */
+export const ALL_SPEAKER_TASK_KINDS = [...SPEAKER_TASK_KINDS, 'complete_form'] as const
+
+export type SpeakerTaskKind = (typeof ALL_SPEAKER_TASK_KINDS)[number]
 
 export const SPEAKER_TASK_STATUSES = ['pending', 'completed'] as const
 
@@ -37,6 +47,12 @@ export interface SpeakerTask {
   readonly position: number
   readonly createdAt: UtcInstant
   readonly completedAt: UtcInstant | null
+  /** Set exactly when `kind` is `'complete_form'`: the assigned form. */
+  readonly formId: FormId | null
+  /** The published version the response is validated against, pinned at assignment. */
+  readonly formVersionId: VersionId | null
+  /** Validated answers, set exactly when a form task is completed. */
+  readonly response: AnswerMap | null
 }
 
 /** Acceptance record for a submission; its existence IS the accepted state. */
@@ -66,8 +82,15 @@ export function isSubmissionReady(tasks: readonly SpeakerTask[]): boolean {
   return tasks.every((task) => task.status === 'completed')
 }
 
-/** Marks a task completed; completing an already-completed task is a no-op. */
-export function completeSpeakerTask(task: SpeakerTask, completedAt: UtcInstant): SpeakerTask {
+/**
+ * Marks a task completed; completing an already-completed task is a no-op that
+ * keeps the first `completedAt` and `response`.
+ */
+export function completeSpeakerTask(
+  task: SpeakerTask,
+  completedAt: UtcInstant,
+  response: AnswerMap | null = null,
+): SpeakerTask {
   if (task.status === 'completed') return task
-  return { ...task, status: 'completed', completedAt }
+  return { ...task, status: 'completed', completedAt, response }
 }

@@ -1,4 +1,5 @@
 import type { FormElement } from '../../../domain'
+import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 
 interface ElementEditorProps {
@@ -18,18 +19,18 @@ export default function ElementEditor({
   const keyId = `element-key-${element.id}`
   return (
     <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
-      <div className="grid gap-1.5">
-        <label htmlFor={labelId}>Label</label>
+      <Field invalid={invalid}>
+        <FieldLabel htmlFor={labelId}>Label</FieldLabel>
         <Input
           id={labelId}
           ref={labelRef}
           value={element.label ?? ''}
-          aria-invalid={invalid || undefined}
           onChange={(event) => onUpdate({ label: event.target.value })}
         />
-      </div>
-      <div className="grid gap-1.5">
-        <label htmlFor={keyId}>Field key</label>
+        {invalid ? <FieldError id={`${labelId}-error`}>Label is required</FieldError> : null}
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={keyId}>Field key</FieldLabel>
         <Input
           id={keyId}
           value={element.fieldKey ?? ''}
@@ -37,7 +38,7 @@ export default function ElementEditor({
             onUpdate({ fieldKey: event.target.value === '' ? null : event.target.value })
           }
         />
-      </div>
+      </Field>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"

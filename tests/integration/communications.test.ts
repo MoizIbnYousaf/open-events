@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyD1Migrations, env, reset, type D1Migration } from 'cloudflare:test'
 import type { D1Database } from '@cloudflare/workers-types'
 
+import migration0006Sql from '../../migrations/0006_create_agenda_tables.sql?raw'
+import migration0007Sql from '../../migrations/0007_create_speaker_task_tables.sql?raw'
+import migration0011Sql from '../../migrations/0011_add_form_tasks.sql?raw'
+import migration0012Sql from '../../migrations/0012_add_message_kinds.sql?raw'
 import migration0009Sql from '../../migrations/0009_add_captured_message_submission.sql?raw'
 import app from '../../src/server'
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
@@ -16,10 +20,30 @@ import {
   submitterCookie,
 } from './m2c-helpers'
 
+// 0007 creates submission_acceptances: the acceptance record is the
+// precondition of every acceptance message, so this suite runs against the
+// same schema the real product does.
 const COMMUNICATION_MIGRATIONS: D1Migration[] = [
+  {
+    // 0006 creates agenda_sessions, which acceptance writes in the same batch.
+    name: '0006_create_agenda_tables.sql',
+    queries: splitSqlStatements(migration0006Sql),
+  },
+  {
+    name: '0007_create_speaker_task_tables.sql',
+    queries: splitSqlStatements(migration0007Sql),
+  },
   {
     name: '0009_add_captured_message_submission.sql',
     queries: splitSqlStatements(migration0009Sql),
+  },
+  {
+    name: '0011_add_form_tasks.sql',
+    queries: splitSqlStatements(migration0011Sql),
+  },
+  {
+    name: '0012_add_message_kinds.sql',
+    queries: splitSqlStatements(migration0012Sql),
   },
 ]
 
@@ -103,11 +127,28 @@ async function organizerRequest(method: string, path: string, token: string) {
   )
 }
 
-async function setup(): Promise<{ organizer: string; submitter: string; submissionId: string }> {
+/**
+ * A submission that has actually been accepted. Acceptance is a separate real
+ * organizer action, so every acceptance-message case starts from the state the
+ * product can genuinely be in when the message goes out.
+ */
+async function setup({ accept = true }: { accept?: boolean } = {}): Promise<{
+  organizer: string
+  submitter: string
+  submissionId: string
+}> {
   const submitter = await submitterCookie(env.DB)
   const submissionId = await createSubmission(submitter, 'Rust, C++; a workshop')
   const { token } = await loginOrganizer()
   if (token === null) throw new Error('organizer login set no cookie')
+  if (accept) {
+    const accepted = await organizerRequest(
+      'POST',
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/accept`,
+      token,
+    )
+    if (accepted.status !== 200) throw new Error(`accept failed with ${accepted.status}`)
+  }
   return { organizer: token, submitter, submissionId }
 }
 
@@ -117,7 +158,7 @@ describe('acceptance preview', () => {
 
     const response = await organizerRequest(
       'GET',
-      `/api/admin/submissions/${submissionId}/acceptance-preview`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-preview`,
       organizer,
     )
 
@@ -126,6 +167,7 @@ describe('acceptance preview', () => {
       subject: string
       body: string
       toEmail: string
+      accepted: boolean
       alreadySent: boolean
     }
     expect(preview.subject).toContain('Rust, C++; a workshop')
@@ -134,14 +176,29 @@ describe('acceptance preview', () => {
     expect(preview.body).not.toContain('{{')
     expect(preview.toEmail).toBe('speaker-a@example.test')
     expect(preview.alreadySent).toBe(false)
+    expect(preview.accepted).toBe(true)
+    expect(preview.body).not.toMatch(/attach/i)
     expect(DEMO_CONF_2026_FORM_ID.length).toBeGreaterThan(0)
+  })
+
+  it('reports that a submission with no acceptance record is not accepted', async () => {
+    const { organizer, submissionId } = await setup({ accept: false })
+
+    const response = await organizerRequest(
+      'GET',
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-preview`,
+      organizer,
+    )
+
+    expect(response.status).toBe(200)
+    expect(((await response.json()) as { accepted: boolean }).accepted).toBe(false)
   })
 
   it('rejects an anonymous read with the error envelope', async () => {
     const { submissionId } = await setup()
 
     const response = await app.request(
-      `/api/admin/submissions/${submissionId}/acceptance-preview`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-preview`,
       undefined,
       bindings(),
     )
@@ -157,7 +214,7 @@ describe('acceptance preview', () => {
 
     const response = await organizerRequest(
       'GET',
-      '/api/admin/submissions/does-not-exist/acceptance-preview',
+      '/api/admin/events/demo-conf-2026/submissions/does-not-exist/acceptance-preview',
       organizer,
     )
 
@@ -167,20 +224,24 @@ describe('acceptance preview', () => {
 })
 
 describe('acceptance send idempotency and history immutability', () => {
+  // O2 updated this contract: acceptance-send answers one stored row per
+  // resolved recipient. This journey has no co-speakers, so the audience is
+  // exactly the owner and the once-only rule still means one stored row.
   it('writes exactly one immutable captured message across repeated sends', async () => {
     const { organizer, submissionId } = await setup()
 
     const first = await organizerRequest(
       'POST',
-      `/api/admin/submissions/${submissionId}/acceptance-send`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-send`,
       organizer,
     )
     expect(first.status).toBe(200)
-    const firstBody = (await first.json()) as CapturedMessageBody
+    const firstBody = (await first.json()) as CapturedMessageBody[]
+    expect(firstBody).toHaveLength(1)
 
     const second = await organizerRequest(
       'POST',
-      `/api/admin/submissions/${submissionId}/acceptance-send`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-send`,
       organizer,
     )
     expect(second.status).toBe(200)
@@ -188,13 +249,13 @@ describe('acceptance send idempotency and history immutability', () => {
 
     const history = await organizerRequest(
       'GET',
-      `/api/admin/submissions/${submissionId}/messages`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/messages`,
       organizer,
     )
     expect(history.status).toBe(200)
     const rows = (await history.json()) as CapturedMessageBody[]
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toEqual(firstBody)
+    expect(rows[0]).toEqual(firstBody[0])
 
     const stored = await env.DB.prepare(
       'SELECT COUNT(*) AS total FROM captured_messages WHERE submission_id = ?',
@@ -209,12 +270,12 @@ describe('acceptance send idempotency and history immutability', () => {
 
     await organizerRequest(
       'POST',
-      `/api/admin/submissions/${submissionId}/acceptance-send`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-send`,
       organizer,
     )
     const preview = await organizerRequest(
       'GET',
-      `/api/admin/submissions/${submissionId}/acceptance-preview`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-preview`,
       organizer,
     )
 
@@ -225,7 +286,7 @@ describe('acceptance send idempotency and history immutability', () => {
     const { organizer, submissionId } = await setup()
 
     const response = await app.request(
-      `/api/admin/submissions/${submissionId}/acceptance-send`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-send`,
       { method: 'POST', headers: { cookie: cookieHeader(organizer) } },
       bindings(),
     )
@@ -234,12 +295,31 @@ describe('acceptance send idempotency and history immutability', () => {
     expect(await response.json()).toEqual({ error: { code: 'forbidden', message: 'Forbidden' } })
   })
 
+  it('refuses to send an acceptance for a submission that was never accepted', async () => {
+    const { organizer, submissionId } = await setup({ accept: false })
+
+    const response = await organizerRequest(
+      'POST',
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/acceptance-send`,
+      organizer,
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({ error: { code: 'conflict', message: 'Conflict' } })
+    const stored = await env.DB.prepare(
+      'SELECT COUNT(*) AS total FROM captured_messages WHERE submission_id = ?',
+    )
+      .bind(submissionId)
+      .first<{ total: number }>()
+    expect(stored?.total).toBe(0)
+  })
+
   it('returns an empty history before any send', async () => {
     const { organizer, submissionId } = await setup()
 
     const response = await organizerRequest(
       'GET',
-      `/api/admin/submissions/${submissionId}/messages`,
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/messages`,
       organizer,
     )
 

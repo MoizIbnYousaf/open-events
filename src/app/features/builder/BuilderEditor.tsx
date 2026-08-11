@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link, useBlocker, useNavigate, useParams, useSearch } from '@tanstack/react-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useBlocker, useNavigate, useParams } from '@tanstack/react-router'
+
+import AppShell from '../nav/AppShell'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 import type { SaveFormDraftInput } from '../../../application'
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
@@ -12,6 +15,7 @@ import {
   useUpdateFormDraft,
 } from '../../queries/admin-forms'
 import { useTaxonomies } from '../../queries/admin-events'
+import { announce } from '../../lib/announcer'
 import type { ElementRule, FormElement, RoutingRule } from '../../../domain'
 import {
   DeniedState,
@@ -40,6 +44,7 @@ import {
   toSaveInput,
   validateBuilderContent,
   type BuilderDraft,
+  type BuilderValidationIssue,
 } from './builder-model'
 import ConditionRuleEditor from './ConditionRuleEditor'
 import PageList from './PageList'
@@ -54,9 +59,10 @@ export default function BuilderEditor() {
 function BuilderEditorByForm() {
   const params = useParams({ strict: false })
   const formId = params.formId as string | undefined
+  const eventSlug = params.slug as string | undefined
   // Keying the screen by formId resets all form-scoped local state on a route
   // form-id change, so a new form can never inherit prior-form content.
-  return <BuilderEditorScreen key={formId ?? 'no-form'} formId={formId} />
+  return <BuilderEditorScreen key={formId ?? 'no-form'} formId={formId} eventSlug={eventSlug} />
 }
 
 type SaveErrorState =
@@ -65,29 +71,52 @@ type SaveErrorState =
   | { readonly kind: 'expired' }
   | { readonly kind: 'error'; readonly message: string }
 
-function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }) {
-  const search = useSearch({ strict: false }) as { eventSlug?: string }
-  const eventSlug = search.eventSlug
+function BuilderEditorScreen({
+  formId,
+  eventSlug,
+}: {
+  readonly formId: string | undefined
+  readonly eventSlug: string | undefined
+}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const draftQuery = useFormDraft(formId)
-  const versionsQuery = useFormVersions(formId)
+  const draftQuery = useFormDraft(eventSlug, formId)
+  const versionsQuery = useFormVersions(eventSlug, formId)
   const taxonomiesQuery = useTaxonomies(eventSlug)
-  const save = useUpdateFormDraft(formId ?? '')
-  const publish = usePublishForm(formId ?? '')
+  const save = useUpdateFormDraft(eventSlug ?? '', formId ?? '')
+  const publish = usePublishForm(eventSlug ?? '', formId ?? '')
 
-  const [draft, setDraft] = useState<BuilderDraft | null>(null)
+  const queryDraft = useMemo(
+    () => (draftQuery.data === undefined ? null : dtoToBuilderDraft(draftQuery.data)),
+    [draftQuery.data],
+  )
+  const [draftOverride, setDraftOverride] = useState<BuilderDraft | null>(null)
+  const draft = draftOverride ?? queryDraft
+  const setDraft = useCallback(
+    (next: BuilderDraft | null | ((current: BuilderDraft | null) => BuilderDraft | null)) => {
+      setDraftOverride((current) =>
+        typeof next === 'function' ? next(current ?? queryDraft) : next,
+      )
+    },
+    [queryDraft],
+  )
   const [dirty, setDirty] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [validationMessage, setValidationMessage] = useState<string | null>(null)
+  // Retained (not discarded) so the precise field carries the message: the
+  // summary sentence alone highlighted nothing, because invalidElementId was a
+  // hardcoded null and the condition rows rendered no error node at all.
+  const [validationIssue, setValidationIssue] = useState<BuilderValidationIssue | null>(null)
   const [saveError, setSaveError] = useState<SaveErrorState | null>(null)
   const [conflictScope, setConflictScope] = useState<'save' | 'publish' | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [retryPending, setRetryPending] = useState(false)
+  const [reloadPending, setReloadPending] = useState(false)
   const dirtyRef = useRef(false)
   const retryInFlightRef = useRef(false)
+  const reloadInFlightRef = useRef(false)
   const previewButtonRef = useRef<HTMLButtonElement | null>(null)
   const labelRefs = useRef(new Map<string, HTMLInputElement | null>())
   const valueRefs = useRef(new Map<string, HTMLInputElement | null>())
@@ -96,16 +125,6 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
   useEffect(() => {
     document.title = 'Form builder — SpeakerOps'
   }, [])
-
-  useEffect(() => {
-    if (draftQuery.data === undefined) return
-    // Background draft data must never clobber in-flight edits; explicit user
-    // transitions (save rebind, reload latest, retry, publish fork) apply data
-    // directly and clear dirty themselves.
-    if (dirtyRef.current) return
-    setDraft(dtoToBuilderDraft(draftQuery.data))
-    setDirty(false)
-  }, [draftQuery.data])
 
   useEffect(() => {
     if (!dirty) return
@@ -200,6 +219,8 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
     setDraft(result.draft)
     setDirty(true)
     dirtyRef.current = true
+    // The status region below already carries this sentence; announcing it as
+    // well would speak the move twice (DEC-014).
     setStatusMessage(`Moved to position ${result.pageIndex}`)
   }
 
@@ -211,6 +232,7 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
     const issue = validateBuilderContent(draft.content)
     if (issue !== null) {
       setValidationMessage('Please fix the highlighted fields.')
+      setValidationIssue(issue)
       if (issue.kind === 'label') {
         labelRefs.current.get(issue.elementId)?.focus()
       } else {
@@ -221,6 +243,7 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
       return
     }
     setValidationMessage(null)
+    setValidationIssue(null)
     performSave(toSaveInput(draft))
   }
 
@@ -235,6 +258,7 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
         setDirty(false)
         dirtyRef.current = false
         setStatusMessage('Saved')
+        announce('Form draft saved')
         void queryClient.invalidateQueries({
           queryKey: adminFormQueryKeys.versions(formId),
         })
@@ -256,6 +280,10 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
       onSuccess: async () => {
         setPublishOpen(false)
         setStatusMessage('Published')
+        // A toast: publishing is a terminal act and the organizer leaves for
+        // the version page or the public form straight after. The "Published"
+        // chip and the version list are still the durable record (DEC-019).
+        toast.success(`Version ${draft?.meta.version ?? ''} published`.trim())
         setDirty(false)
         dirtyRef.current = false
         await Promise.all([
@@ -297,15 +325,25 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
   }
 
   const reloadLatest = async () => {
-    const result = await draftQuery.refetch()
-    if (result.isError || result.data === undefined) {
-      return
+    // Synchronous reentrancy guard, matching retryAfterReload: closes the
+    // same-tick double-click gap before any state update can render.
+    if (reloadInFlightRef.current) return
+    reloadInFlightRef.current = true
+    setReloadPending(true)
+    try {
+      const result = await draftQuery.refetch()
+      if (result.isError || result.data === undefined) {
+        return
+      }
+      attemptedSaveRef.current = null
+      setConflictScope(null)
+      setDraft(dtoToBuilderDraft(result.data))
+      setDirty(false)
+      dirtyRef.current = false
+    } finally {
+      reloadInFlightRef.current = false
+      setReloadPending(false)
     }
-    attemptedSaveRef.current = null
-    setConflictScope(null)
-    setDraft(dtoToBuilderDraft(result.data))
-    setDirty(false)
-    dirtyRef.current = false
   }
 
   const discardChanges = () => {
@@ -370,6 +408,7 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
     return (
       <LoadErrorState
         message={getApiErrorMessage(draftQuery.error, 'Unable to load the draft')}
+        pending={draftQuery.isFetching}
         onRetry={() => void draftQuery.refetch()}
       />
     )
@@ -377,13 +416,16 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
 
   if (draft === null) {
     return (
-      <Card aria-busy="true" aria-label="Loading form builder">
-        <CardContent className="grid gap-3">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-4 w-64" />
-          <Skeleton className="h-4 w-64" />
-        </CardContent>
-      </Card>
+      <AppShell slug={eventSlug ?? ''}>
+        <Card aria-busy="true" aria-label="Loading form builder">
+          <CardContent className="grid gap-3">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-4 w-64" />
+            <Skeleton className="h-4 w-64" />
+            <StatusLive aria-live="polite">Loading the form builder…</StatusLive>
+          </CardContent>
+        </Card>
+      </AppShell>
     )
   }
 
@@ -392,167 +434,188 @@ function BuilderEditorScreen({ formId }: { readonly formId: string | undefined }
     eventSlug === undefined || (taxonomiesQuery.isError && !taxonomiesQuery.isPending)
 
   return (
-    <div className="grid gap-4">
-      <Card>
-        <CardHeader>
-          <h1 className="font-heading text-base leading-snug font-medium">Form builder</h1>
-        </CardHeader>
-        <CardContent className="grid gap-6">
-          <PageList
-            pages={draft.content.pages}
-            elements={draft.content.elements}
-            invalidElementId={null}
-            onUpdateElement={updateElement}
-            onMoveElement={moveElement}
-            registerLabelRef={registerLabelRef}
-          />
-          <ConditionRuleEditor
-            rules={draft.content.conditionRules}
-            elements={draft.content.elements}
-            registerValueRef={registerValueRef}
-            onUpdateRule={updateConditionRule}
-          />
-          <RoutingRuleEditor
-            rules={draft.content.routingRules}
-            taxonomyItems={taxonomyItems}
-            taxonomyUnavailable={taxonomyUnavailable}
-            onUpdateRule={updateRoutingRule}
-          />
-          {taxonomyUnavailable ? (
-            <AlertLive>
-              Taxonomy unavailable — open the builder from an event page to choose routing targets.
-            </AlertLive>
-          ) : null}
-          {validationMessage !== null ? <AlertLive>{validationMessage}</AlertLive> : null}
-          {saveError !== null ? (
-            saveError.kind === 'forbidden' ? (
-              <AlertLive>Access forbidden.</AlertLive>
-            ) : saveError.kind === 'denied' ? (
-              <AlertLive>Not found.</AlertLive>
-            ) : saveError.kind === 'expired' ? (
-              <AlertLive>Your session has expired. Sign in again to continue.</AlertLive>
-            ) : (
-              <AlertLive>{saveError.message}</AlertLive>
-            )
-          ) : null}
-          {conflictScope !== null ? (
-            <div className="grid gap-2 rounded-lg border border-destructive p-3">
-              <AlertLive>The draft changed elsewhere — reload to see the latest</AlertLive>
+    <AppShell slug={eventSlug ?? ''}>
+      <div className="grid gap-4">
+        <Card>
+          <CardHeader>
+            <h1 className="font-heading text-base leading-snug font-medium">Form builder</h1>
+          </CardHeader>
+          <CardContent className="grid gap-6">
+            <PageList
+              pages={draft.content.pages}
+              elements={draft.content.elements}
+              invalidElementId={
+                validationIssue?.kind === 'label' ? validationIssue.elementId : null
+              }
+              onUpdateElement={updateElement}
+              onMoveElement={moveElement}
+              registerLabelRef={registerLabelRef}
+            />
+            <ConditionRuleEditor
+              rules={draft.content.conditionRules}
+              elements={draft.content.elements}
+              invalidConditionKey={
+                validationIssue?.kind === 'condition-value'
+                  ? conditionValueKey(
+                      validationIssue.ruleId,
+                      validationIssue.groupIndex,
+                      validationIssue.conditionIndex,
+                    )
+                  : null
+              }
+              registerValueRef={registerValueRef}
+              onUpdateRule={updateConditionRule}
+            />
+            <RoutingRuleEditor
+              rules={draft.content.routingRules}
+              taxonomyItems={taxonomyItems}
+              taxonomyUnavailable={taxonomyUnavailable}
+              onUpdateRule={updateRoutingRule}
+            />
+            {taxonomyUnavailable ? (
+              <AlertLive>
+                Taxonomy unavailable — open the builder from an event page to choose routing
+                targets.
+              </AlertLive>
+            ) : null}
+            {validationMessage !== null ? <AlertLive>{validationMessage}</AlertLive> : null}
+            {saveError !== null ? (
+              saveError.kind === 'forbidden' ? (
+                <AlertLive>Access forbidden.</AlertLive>
+              ) : saveError.kind === 'denied' ? (
+                <AlertLive>Not found.</AlertLive>
+              ) : saveError.kind === 'expired' ? (
+                <AlertLive>Your session has expired. Sign in again to continue.</AlertLive>
+              ) : (
+                <AlertLive>{saveError.message}</AlertLive>
+              )
+            ) : null}
+            {conflictScope !== null ? (
+              <div className="grid gap-2 rounded-lg border border-destructive p-3">
+                <AlertLive>The draft changed elsewhere — reload to see the latest</AlertLive>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    pending={reloadPending}
+                    onClick={() => void reloadLatest()}
+                  >
+                    {reloadPending ? 'Reloading…' : 'Reload latest'}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={discardChanges}>
+                    Discard my changes
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    pending={retryPending}
+                    onClick={() => void retryAfterReload()}
+                  >
+                    {retryPending ? 'Trying again…' : 'Retry after reload'}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  onClick={() => void reloadLatest()}
+                  ref={previewButtonRef}
+                  onClick={() => setPreviewOpen(true)}
                 >
-                  Reload latest
+                  Preview
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={discardChanges}>
-                  Discard my changes
+                <Button type="button" variant="outline" onClick={() => setPublishOpen(true)}>
+                  Publish
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={retryPending}
-                  onClick={() => void retryAfterReload()}
-                >
-                  Retry after reload
+                <Button type="button" pending={save.isPending} onClick={saveDraft}>
+                  {save.isPending ? 'Saving…' : 'Save'}
                 </Button>
               </div>
+              {/* One stable region for both, mounted before either has anything
+                to say: a live region created together with its text is not in
+                the accessibility tree when the text arrives, so it announces
+                nothing. The in-flight message replaces the status chip on the
+                way out and gives it back on settle. */}
+              <StatusLive aria-live="polite">
+                {save.isPending ? 'Saving the form draft…' : statusMessage}
+              </StatusLive>
             </div>
-          ) : null}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                ref={previewButtonRef}
-                onClick={() => setPreviewOpen(true)}
-              >
-                Preview
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setPublishOpen(true)}>
-                Publish
-              </Button>
-              <Button
-                type="button"
-                disabled={save.isPending}
-                aria-label={save.isPending ? 'Saving…' : 'Save'}
-                onClick={saveDraft}
-              >
-                {save.isPending ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
-            {statusMessage !== null ? <StatusLive>{statusMessage}</StatusLive> : null}
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Versions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {versionsQuery.data !== undefined && versionsQuery.data.length > 0 ? (
-            <ul className="grid gap-2">
-              {versionsQuery.data.map((version) => (
-                <li key={version.id} className="flex items-center justify-between gap-3">
-                  <Link
-                    to="/admin/forms/$formId/versions/$versionId"
-                    params={{ formId: formId ?? '', versionId: version.id }}
-                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                  >
-                    Version {version.version}
-                  </Link>
-                  <span className="text-sm text-muted-foreground">
-                    {version.status === 'published' ? 'Published' : 'Draft'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">No versions yet.</p>
-          )}
-        </CardContent>
-      </Card>
-      <PreviewDialog
-        open={previewOpen}
-        draft={draft}
-        taxonomyItems={taxonomyItems}
-        onClose={closePreview}
-      />
-      <PublishConfirmDialog
-        open={publishOpen}
-        version={draft.meta.version}
-        pending={publish.isPending}
-        onConfirm={confirmPublish}
-        onCancel={() => setPublishOpen(false)}
-      />
-      {blocker.status === 'blocked' ? (
-        <Dialog
-          open
-          onOpenChange={(next) => {
-            if (!next) blocker.reset()
-          }}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Unsaved changes</DialogTitle>
-              <DialogDescription>
-                Your changes have not been saved. Leave this page and discard them?
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => blocker.reset()}>
-                Stay
-              </Button>
-              <Button type="button" onClick={() => blocker.proceed()}>
-                Leave
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      ) : null}
-    </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Versions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {versionsQuery.data !== undefined && versionsQuery.data.length > 0 ? (
+              <ul className="grid gap-2">
+                {versionsQuery.data.map((version) => (
+                  <li key={version.id} className="flex items-center justify-between gap-3">
+                    <Link
+                      to="/admin/events/$slug/forms/$formId/versions/$versionId"
+                      params={{
+                        slug: eventSlug ?? '',
+                        formId: formId ?? '',
+                        versionId: version.id,
+                      }}
+                      className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      Version {version.version}
+                    </Link>
+                    <span className="text-sm text-muted-foreground">
+                      {version.status === 'published' ? 'Published' : 'Draft'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">No versions yet.</p>
+            )}
+          </CardContent>
+        </Card>
+        <PreviewDialog
+          open={previewOpen}
+          draft={draft}
+          taxonomyItems={taxonomyItems}
+          onClose={closePreview}
+        />
+        <PublishConfirmDialog
+          open={publishOpen}
+          version={draft.meta.version}
+          pending={publish.isPending}
+          onConfirm={confirmPublish}
+          onCancel={() => setPublishOpen(false)}
+        />
+        {blocker.status === 'blocked' ? (
+          <Dialog
+            open
+            onOpenChange={(next) => {
+              if (!next) blocker.reset()
+            }}
+          >
+            <DialogContent showCloseButton={false}>
+              <DialogHeader>
+                <DialogTitle>Unsaved changes</DialogTitle>
+                <DialogDescription>
+                  Your changes have not been saved. Leave this page and discard them?
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => blocker.reset()}>
+                  Stay
+                </Button>
+                <Button type="button" onClick={() => blocker.proceed()}>
+                  Leave
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        ) : null}
+      </div>
+    </AppShell>
   )
 }

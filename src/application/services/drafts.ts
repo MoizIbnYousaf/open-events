@@ -117,11 +117,12 @@ export class DraftService {
    */
   async getActiveDraft(actor: SubmitterActor, formId: FormId): Promise<DraftDto | null> {
     const drafts = await this.#drafts.listByOwner(actor.eventId, actor.contactId)
-    const candidates: ProposalDraft[] = []
-    for (const draft of drafts) {
-      const version = await this.#versions.findById(draft.formVersionId)
-      if (version !== null && version.formId === formId) candidates.push(draft)
-    }
+    const versions = await Promise.all(
+      drafts.map((draft) => this.#versions.findById(draft.formVersionId)),
+    )
+    const candidates: ProposalDraft[] = drafts.filter(
+      (_, index) => versions[index]?.formId === formId,
+    )
     if (candidates.length === 0) return null
     candidates.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))
     const active = candidates[0]

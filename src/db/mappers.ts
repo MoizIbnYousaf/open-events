@@ -25,7 +25,7 @@ import type {
   SubmitterToken,
   TaxonomyItem,
 } from '../domain'
-import { validateSessionIdentity } from '../domain'
+import { validateSessionIdentity } from '../domain/auth'
 import type {
   CapturedMessageRow,
   CfpConditionRuleRow,
@@ -77,6 +77,7 @@ export function toContact(row: ContactRow): Contact {
     email: row.email,
     name: row.name,
     createdAt: row.createdAt,
+    bio: row.bio,
   }
 }
 
@@ -142,6 +143,7 @@ export function toCapturedMessage(row: CapturedMessageRow): CapturedMessage {
     subject: row.subject,
     body: row.body,
     createdAt: row.createdAt,
+    kind: row.kind,
     submissionId: row.submissionId,
   }
 }

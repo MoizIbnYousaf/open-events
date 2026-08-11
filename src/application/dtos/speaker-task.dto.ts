@@ -1,14 +1,17 @@
-import type {
-  ContactId,
-  EventId,
-  SpeakerTask,
-  SpeakerTaskId,
-  SpeakerTaskKind,
-  SpeakerTaskStatus,
-  SubmissionId,
-  UtcInstant,
-} from '../../domain'
-import { computeReadinessTotals, isSubmissionReady } from '../../domain'
+import type { AnswerMap } from '../../domain/answers'
+import type { ContactId } from '../../domain/contact'
+import type { EventId, UtcInstant } from '../../domain/event'
+import type { FormId } from '../../domain/form'
+import type { VersionId } from '../../domain/form-version'
+import {
+  computeReadinessTotals,
+  isSubmissionReady,
+  type SpeakerTask,
+  type SpeakerTaskId,
+  type SpeakerTaskKind,
+  type SpeakerTaskStatus,
+} from '../../domain/speaker-task'
+import type { SubmissionId } from '../../domain/submission'
 
 /** One onboarding task as seen by its owning speaker or by the organizer. */
 export interface SpeakerTaskDto {
@@ -22,6 +25,27 @@ export interface SpeakerTaskDto {
   readonly position: number
   readonly createdAt: UtcInstant
   readonly completedAt: UtcInstant | null
+  readonly formId: FormId | null
+  readonly formVersionId: VersionId | null
+  readonly response: AnswerMap | null
+  /** How completion is evidenced; derived from the kind, labeled honestly. */
+  readonly evidence: SpeakerTaskEvidence
+}
+
+/** What proves a task done: persisted evidence, or explicit self-attestation. */
+export type SpeakerTaskEvidence = 'form_response' | 'bio' | 'headshot' | 'self_attestation'
+
+export function speakerTaskEvidence(kind: SpeakerTaskKind): SpeakerTaskEvidence {
+  switch (kind) {
+    case 'complete_form':
+      return 'form_response'
+    case 'submit_bio':
+      return 'bio'
+    case 'submit_headshot':
+      return 'headshot'
+    case 'confirm_participation':
+      return 'self_attestation'
+  }
 }
 
 export interface AcceptedSubmissionDto {
@@ -63,6 +87,10 @@ export function toSpeakerTaskDto(task: SpeakerTask, submissionTitle: string): Sp
     position: task.position,
     createdAt: task.createdAt,
     completedAt: task.completedAt,
+    formId: task.formId,
+    formVersionId: task.formVersionId,
+    response: task.response,
+    evidence: speakerTaskEvidence(task.kind),
   }
 }
 

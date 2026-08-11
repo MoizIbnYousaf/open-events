@@ -297,6 +297,7 @@ describe('in-memory SubmitUnitOfWork co-speaker cap', () => {
         subject: 's',
         body: 'b',
         createdAt: FIXED_NOW,
+        kind: 'confirmation' as const,
       },
     }
 

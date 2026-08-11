@@ -1,4 +1,5 @@
 import type {
+  ContactId,
   EventId,
   SpeakerTask,
   SubmissionAcceptance,
@@ -6,11 +7,25 @@ import type {
   UtcInstant,
 } from '../../domain'
 
+/**
+ * The agenda session acceptance materialises: an `unassigned` draft carrying
+ * the placeholder slot and every contributor. Track, room and position stay
+ * unset — the organizer supplies them when placing the session.
+ */
+export interface AcceptSessionDraft {
+  /** `YYYY-MM-DD`. */
+  readonly day: string
+  readonly start: UtcInstant
+  readonly end: UtcInstant
+  readonly speakerContactIds: readonly ContactId[]
+}
+
 export interface AcceptBatchInput {
   readonly eventId: EventId
   readonly submissionId: SubmissionId
   readonly acceptedAt: UtcInstant
   readonly tasks: readonly SpeakerTask[]
+  readonly session: AcceptSessionDraft
 }
 
 /**
@@ -25,8 +40,9 @@ export interface AcceptBatchResult {
 }
 
 /**
- * Atomic acceptance: the acceptance row and the whole onboarding checklist
- * land together or not at all. Integrity failures reject and write nothing.
+ * Atomic acceptance: the acceptance row, the whole onboarding checklist and
+ * the submission's agenda session land together or not at all. Integrity
+ * failures reject and write nothing.
  */
 export interface AcceptUnitOfWork {
   execute(input: AcceptBatchInput): Promise<AcceptBatchResult>

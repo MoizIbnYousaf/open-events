@@ -9,7 +9,13 @@ import {
 import { DEMO_CONF_2026_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
 import type { CfpForm, FormVersion } from '../../src/domain'
 import { NOW } from '../unit/helpers/fixtures'
-import { applyMigrations, buildSubmitBatch, countRows, seedDemoConf } from './m2b-helpers'
+import {
+  SEEDED_CONTACTS,
+  applyMigrations,
+  buildSubmitBatch,
+  countRows,
+  seedDemoConf,
+} from './m2b-helpers'
 
 const FUTURE = '2026-12-31T23:59:59.000Z'
 
@@ -50,7 +56,7 @@ describe('submit unit-of-work atomic rollback', () => {
     expect(await countRows(env.DB, 'submission_contributors')).toBe(0)
     expect(await countRows(env.DB, 'captured_messages')).toBe(0)
     expect(await countRows(env.DB, 'confirmation_records')).toBe(0)
-    expect(await countRows(env.DB, 'contacts')).toBe(1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + 1)
     expect(await countRows(env.DB, 'proposal_drafts')).toBe(1)
   })
 })

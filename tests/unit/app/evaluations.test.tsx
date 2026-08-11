@@ -4,6 +4,16 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// The page recovers an expired session by navigating, exactly as the committed
+// CFP surfaces do. Only `useRouter` is stubbed so the real `createFileRoute`
+// used by the route-contract cases below keeps working.
+const { navigateSpy } = vi.hoisted(() => ({ navigateSpy: vi.fn() }))
+
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
+  return { ...actual, useRouter: () => ({ navigate: navigateSpy }) }
+})
+
 import {
   getPublicEvaluations,
   submitEvaluation,
@@ -34,9 +44,28 @@ const EVALUATIONS_URL = '/api/public/evaluations'
 const EVALUATION_ROW = {
   submissionId: 'submission-1',
   sessionTitle: 'My talk',
+  roundId: 'round-1',
+  roundNumber: 1,
+  roundName: 'Round 1',
+  roundStatus: 'open',
   rating: 5,
   comments: 'Great session',
   updatedAt: '2026-05-13T12:00:00.000Z',
+  previousRounds: [],
+} as const
+
+/** An assigned submission the evaluator has not scored yet. */
+const UNSCORED_ROW = {
+  submissionId: 'submission-1',
+  sessionTitle: 'My talk',
+  roundId: 'round-1',
+  roundNumber: 1,
+  roundName: 'Round 1',
+  roundStatus: 'open',
+  rating: null,
+  comments: null,
+  updatedAt: null,
+  previousRounds: [],
 } as const
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -121,6 +150,8 @@ async function mountPage(state: EvaluationsState) {
 }
 
 beforeEach(() => {
+  navigateSpy.mockClear()
+  window.sessionStorage.clear()
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
     if (method === 'GET' && url === EVALUATIONS_URL) {
@@ -178,7 +209,9 @@ describe('evaluations UI', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Evaluations' }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    // Mounted and silent, not gone: the region the submit outcome will land in
+    // has to be in the accessibility tree before its text arrives.
+    expect(screen.getByRole('status')).toHaveTextContent('')
   })
 
   it('fetches exactly GET /api/public/evaluations with no unrelated calls', async () => {
@@ -217,6 +250,46 @@ describe('evaluations UI', () => {
     expect(document.body.textContent ?? '').not.toContain('boom raw server copy')
   })
 
+  it('offers a working retry from the error state instead of a dead end', async () => {
+    const user = userEvent.setup()
+    let fail = true
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) {
+        if (fail) {
+          fail = false
+          return jsonResponse({ error: { code: 'internal', message: 'boom raw server copy' } }, 500)
+        }
+        return jsonResponse([EVALUATION_ROW])
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await screen.findByRole('alert')
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByText(EVALUATION_ROW.sessionTitle)).toBeInTheDocument()
+  })
+
+  it('states plainly that evaluations are not open when the API answers 404', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) {
+        return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    // A 404 is not a failure and must not be shouted as one: there is nothing
+    // to retry, so there is no retry control to press either.
+    expect(await screen.findByText('Evaluations are not open yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
   it('renders the empty state with the page h1 and No evaluations yet', async () => {
     await mountPage('empty')
 
@@ -251,6 +324,38 @@ describe('evaluations UI', () => {
     await user.type(comments, 'Optional note')
   })
 
+  it('refuses to submit a rating the evaluator never chose', async () => {
+    const user = userEvent.setup()
+    let postCalls = 0
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) return jsonResponse([UNSCORED_ROW])
+      if (method === 'POST' && url === EVALUATIONS_URL) {
+        postCalls += 1
+        return jsonResponse(EVALUATION_ROW)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await screen.findByRole('heading', { level: 1, name: 'Evaluations' })
+    await user.click(screen.getByRole('button', { name: /submit/i }))
+
+    // A one-star review is a verdict, so it has to be chosen rather than
+    // arrived at by pressing Submit on an untouched control.
+    expect(postCalls).toBe(0)
+    const rating = screen.getByLabelText(/rating/i)
+    expect(rating).toHaveAttribute('aria-invalid', 'true')
+    const describedBy = rating.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(document.getElementById(describedBy ?? '')).toHaveTextContent(/a rating is required/i)
+  })
+
+  // This case submits without touching the rating control on purpose. The row
+  // it renders is one the evaluator has already scored, so the control is
+  // seeded from their own stored rating rather than from a default — pressing
+  // Submit re-sends a verdict they chose earlier. The unscored row above is
+  // what pins that an unchosen rating cannot be submitted at all.
   it('submits exactly one POST, refetches the list, retains focus, and keeps raw copy out of failures', async () => {
     const user = userEvent.setup()
     let getCalls = 0
@@ -283,6 +388,149 @@ describe('evaluations UI', () => {
     await user.click(submit)
     expect(await screen.findByRole('alert')).toHaveTextContent(/unable to submit/i)
     expect(document.body.textContent ?? '').not.toContain('boom raw server copy')
+  })
+
+  it('shows an unscored assignment as not yet scored rather than a rating of zero', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) return jsonResponse([UNSCORED_ROW])
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await screen.findByRole('heading', { level: 1, name: 'Evaluations' })
+    expect(await screen.findByText(/not yet scored/i)).toBeInTheDocument()
+    const rendered = document.body.textContent ?? ''
+    expect(rendered).not.toContain('Rating: 0')
+    expect(rendered).not.toContain('Updated: ')
+    expect(screen.getByLabelText(/rating/i)).toHaveValue('')
+  })
+
+  it('keeps the written justification on the wire when only the rating changes', async () => {
+    const user = userEvent.setup()
+    let postedBody: unknown = null
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) return jsonResponse([EVALUATION_ROW])
+      if (method === 'POST' && url === EVALUATIONS_URL) {
+        postedBody = JSON.parse(String(init?.body))
+        return jsonResponse(EVALUATION_ROW)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    // The evaluator sees what they wrote, so a rating-only edit cannot silently
+    // discard it.
+    expect(await screen.findByLabelText(/comments/i)).toHaveValue('Great session')
+
+    await user.selectOptions(screen.getByLabelText(/rating/i), '3')
+    await user.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(postedBody).toEqual({
+      submissionId: 'submission-1',
+      rating: 3,
+      comments: 'Great session',
+    })
+  })
+
+  it('maps a 401 on submit to the expired-session state, not a generic alert', async () => {
+    const user = userEvent.setup()
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) return jsonResponse([EVALUATION_ROW])
+      if (method === 'POST' && url === EVALUATIONS_URL) {
+        return jsonResponse(
+          { error: { code: 'unauthorized', message: 'Session revoked raw copy' } },
+          401,
+        )
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /submit/i }))
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Session expired' }),
+    ).toBeInTheDocument()
+    expect(document.body.textContent ?? '').not.toContain('Session revoked raw copy')
+  })
+
+  it('keeps the entered rating and comment across a 401 on submit', async () => {
+    const user = userEvent.setup()
+    let unauthorized = false
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) return jsonResponse([UNSCORED_ROW])
+      if (method === 'POST' && url === EVALUATIONS_URL) {
+        unauthorized = true
+        return jsonResponse(
+          { error: { code: 'unauthorized', message: 'Session revoked raw copy' } },
+          401,
+        )
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await user.selectOptions(await screen.findByLabelText(/rating/i), '4')
+    await user.type(screen.getByLabelText(/comments/i), 'Worth keeping')
+    await user.click(screen.getByRole('button', { name: /submit/i }))
+
+    await screen.findByRole('heading', { level: 1, name: 'Session expired' })
+    expect(unauthorized).toBe(true)
+
+    // The evaluator signs in again and returns to a still-unscored row: the
+    // work they typed has to come back with them, not be retyped from memory.
+    cleanup()
+    await renderPage()
+
+    expect(await screen.findByLabelText(/rating/i)).toHaveValue('4')
+    expect(screen.getByLabelText(/comments/i)).toHaveValue('Worth keeping')
+  })
+
+  it('recovers the session from the expired-session control instead of doing nothing', async () => {
+    const user = userEvent.setup()
+    await mountPage('expired')
+
+    const again = await screen.findByRole('button', { name: /sign in again/i })
+    await user.click(again)
+
+    expect(navigateSpy).toHaveBeenCalledWith({ to: '/start' })
+  })
+
+  it('names the round the evaluator is scoring and what they said in earlier ones', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) {
+        return jsonResponse([
+          {
+            ...UNSCORED_ROW,
+            roundId: 'round-2',
+            roundNumber: 2,
+            roundName: 'Round 2',
+            previousRounds: [
+              {
+                roundNumber: 1,
+                roundName: 'Round 1',
+                rating: 5,
+                comments: 'Round one view',
+                updatedAt: '2026-05-13T12:00:00.000Z',
+              },
+            ],
+          },
+        ])
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await screen.findByRole('heading', { level: 1, name: 'Evaluations' })
+    expect(await screen.findByText(/round 2/i)).toBeInTheDocument()
+    const rendered = document.body.textContent ?? ''
+    expect(rendered).toContain('Round 1')
+    expect(rendered).toContain('Round one view')
   })
 
   it('uses the committed query key for usePublicEvaluations', async () => {

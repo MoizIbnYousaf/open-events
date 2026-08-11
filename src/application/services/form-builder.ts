@@ -1,23 +1,17 @@
+import type { EventId, EventSlug } from '../../domain/event'
+import type { CfpForm, FormId, FormSlug } from '../../domain/form'
 import type {
-  CfpForm,
-  ElementRule,
-  EventId,
-  EventSlug,
   FormElement,
-  FormId,
   FormPage,
-  FormSlug,
   FormVersion,
   FormVersionContent,
-  RoutingRule,
   VersionId,
-} from '../../domain'
-import {
-  computeFormVersionContentHash,
-  nextVersionNumber,
-  validateVersionFreeze,
-  validateVersionRules,
-} from '../../domain'
+} from '../../domain/form-version'
+import { nextVersionNumber } from '../../domain/form-version'
+import { computeFormVersionContentHash } from '../../domain/invariants/content-hash'
+import { validateVersionFreeze } from '../../domain/invariants/freeze'
+import { validateVersionRules } from '../../domain/invariants/rules'
+import type { ElementRule, RoutingRule } from '../../domain/rules'
 import type { OrganizerActor } from '../actors'
 import type {
   FormDefinitionDto,
@@ -68,7 +62,12 @@ export class FormBuilderService {
     this.#clock = clock
   }
 
-  async getDraft(_actor: OrganizerActor, formId: FormId): Promise<FormVersionDetailDto | null> {
+  async getDraft(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    formId: FormId,
+  ): Promise<FormVersionDetailDto | null> {
+    await this.#requireForm(formId, eventId)
     const version = await this.#versions.findLatestDraftByForm(formId)
     if (version === null) return null
     const content = await this.#content.loadByVersion(version.eventId, version.id)
@@ -77,8 +76,10 @@ export class FormBuilderService {
 
   async listVersions(
     _actor: OrganizerActor,
+    eventId: EventId,
     formId: FormId,
   ): Promise<readonly FormVersionSummaryDto[]> {
+    await this.#requireForm(formId, eventId)
     const versions = await this.#versions.listByForm(formId)
     return versions.map(toFormVersionSummaryDto)
   }
@@ -92,9 +93,11 @@ export class FormBuilderService {
   /** Immutable detail of any version that belongs to the form (safe null on mismatch). */
   async getVersionDetail(
     _actor: OrganizerActor,
+    eventId: EventId,
     formId: FormId,
     versionId: VersionId,
   ): Promise<FormVersionDetailDto | null> {
+    await this.#requireForm(formId, eventId)
     const version = await this.#versions.findById(versionId)
     if (version === null || version.formId !== formId) return null
     const content = await this.#content.loadByVersion(version.eventId, version.id)
@@ -110,11 +113,14 @@ export class FormBuilderService {
    */
   async updateDraft(
     _actor: OrganizerActor,
+    eventId: EventId,
     formId: FormId,
     input: SaveFormDraftInput,
   ): Promise<FormVersionDetailDto> {
-    const form = await this.#requireForm(formId)
-    const allVersions = await this.#versions.listByForm(formId)
+    const [form, allVersions] = await Promise.all([
+      this.#requireForm(formId, eventId),
+      this.#versions.listByForm(formId),
+    ])
     const expected = latestDraftVersion(allVersions)
     const now = this.#clock.now()
     const version: FormVersion =
@@ -146,9 +152,15 @@ export class FormBuilderService {
   }
 
   /** Publish = validate, freeze (content hash + published_at), and bind the form. */
-  async publish(_actor: OrganizerActor, formId: FormId): Promise<FormVersionDetailDto> {
-    const form = await this.#requireForm(formId)
-    const expected = await this.#versions.findLatestDraftByForm(formId)
+  async publish(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    formId: FormId,
+  ): Promise<FormVersionDetailDto> {
+    const [form, expected] = await Promise.all([
+      this.#requireForm(formId, eventId),
+      this.#versions.findLatestDraftByForm(formId),
+    ])
     if (expected === null) {
       throw new ApplicationError('conflict', `Form '${formId}' has no draft version to publish`)
     }
@@ -231,9 +243,10 @@ export class FormBuilderService {
     return new Map(items.map((item) => [item.key, item.kind]))
   }
 
-  async #requireForm(formId: FormId): Promise<CfpForm> {
+  async #requireForm(formId: FormId, eventId: EventId): Promise<CfpForm> {
     const form = await this.#forms.findById(formId)
-    if (form === null) {
+    if (form === null || form.eventId !== eventId) {
+      // Cross-event and absent are deliberately the same safe answer.
       throw new ApplicationError('not_found', `Form '${formId}' not found`)
     }
     return form

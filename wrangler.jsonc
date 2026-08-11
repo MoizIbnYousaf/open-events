@@ -8,6 +8,8 @@
     "run_worker_first": ["/api/*"],
   },
   "vars": {
+    "ALLOWED_ORIGINS": "https://speakerops.speakerops.workers.dev",
+    "LOCAL_DEV_MODE": "false",
     "ORGANIZER_SESSION_TTL_MS": "7200000",
     "SUBMITTER_SESSION_TTL_MS": "1800000",
     "SUBMITTER_TOKEN_TTL_MS": "86400000",
@@ -15,15 +17,15 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "speakerops-m1-local",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_name": "speakerops-production",
+      "database_id": "f533e516-efa9-48df-9c83-8342b397c6ca",
       "migrations_dir": "./migrations",
     },
   ],
   "r2_buckets": [
     {
       "binding": "FILES",
-      "bucket_name": "speakerops-m1-local-files",
+      "bucket_name": "speakerops-production-files",
     },
   ],
 }

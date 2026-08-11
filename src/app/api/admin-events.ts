@@ -34,14 +34,14 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
     credentials: 'include',
     headers: { 'content-type': 'application/json', ...init.headers },
   })
-  const body: unknown = await response.json().catch(() => null)
   if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null)
     if (isApiErrorBody(body)) {
       throw new ApiClientError(body.error.code, body.error.message, response.status)
     }
     throw new ApiClientError('internal', 'Request failed', response.status)
   }
-  return body as T
+  return (await response.json()) as T
 }
 
 export function getApiErrorCode(error: unknown): string | null {

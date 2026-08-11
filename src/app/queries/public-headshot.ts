@@ -1,6 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { HEADSHOT_CONTENT_TYPES, HEADSHOT_MAX_BYTES, type HeadshotDto } from '../../application'
+import { useServerMutation } from '../../../adapters/tanstack-react-query'
+
+import { HEADSHOT_CONTENT_TYPES, HEADSHOT_MAX_BYTES } from '../../application/services/headshots'
+import type { HeadshotDto } from '../../application/dtos/headshot.dto'
 import { ApiClientError } from '../api/admin-events'
 
 export const publicHeadshotQueryKeys = {
@@ -55,7 +58,7 @@ export function useOwnHeadshot() {
 
 export function useUploadHeadshot() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useServerMutation({
     mutationFn: (file: File) => putOwnHeadshot(file),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: publicHeadshotQueryKeys.own })

@@ -4,16 +4,19 @@ import { useFieldArray, useForm, type FieldPath } from 'react-hook-form'
 import { z } from 'zod'
 
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
+import { announce } from '../../lib/announcer'
 import { useReplaceTaxonomies, useTaxonomies } from '../../queries/admin-events'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader } from '../../../components/ui/card'
+import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
-import type { TaxonomyItemInput, TaxonomyListDto } from '../../../application'
-import { TAXONOMY_KINDS, type TaxonomyKind } from '../../../domain'
+import type { TaxonomyItemInput, TaxonomyListDto } from '../../../application/dtos/taxonomy.dto'
+import { TAXONOMY_KINDS, type TaxonomyKind } from '../../../domain/taxonomy'
 
+import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState, LoadErrorState } from './AdminStates'
 
 const taxonomySchema = z
@@ -119,6 +122,7 @@ function TaxonomyEditorScreen() {
     return (
       <LoadErrorState
         message={getApiErrorMessage(taxonomyQuery.error, 'Unable to load taxonomies')}
+        pending={taxonomyQuery.isFetching}
         onRetry={() => void taxonomyQuery.refetch()}
       />
     )
@@ -130,27 +134,33 @@ function TaxonomyEditorScreen() {
         <CardContent className="grid gap-3">
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-4 w-64" />
+          <StatusLive aria-live="polite">Loading taxonomies…</StatusLive>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <div className="grid gap-4">
-      <TaxonomyForm
-        key={taxonomyQuery.data.eventId}
-        data={taxonomyQuery.data}
-        save={save}
-        navigateToLogin={() => void navigate({ to: '/admin' })}
-      />
-      <Link
-        to="/admin/events/$slug"
-        params={{ slug: slug ?? '' }}
-        className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-      >
-        Back to event settings
-      </Link>
-    </div>
+    <AppShell slug={slug ?? ''}>
+      <div className="grid gap-4">
+        <TaxonomyForm
+          key={taxonomyQuery.data.eventId}
+          data={taxonomyQuery.data}
+          save={save}
+          navigateToLogin={() => void navigate({ to: '/admin' })}
+        />
+        {/* Exact matching, or the parent path prefix-matches this page and the
+          back link is announced as the current page. */}
+        <Link
+          to="/admin/events/$slug"
+          params={{ slug: slug ?? '' }}
+          activeOptions={{ exact: true }}
+          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+        >
+          Back to event settings
+        </Link>
+      </div>
+    </AppShell>
   )
 }
 
@@ -177,7 +187,6 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
     formState: { errors, isDirty },
   } = useForm<TaxonomyValues>({ defaultValues: { rows: toRows(data.items) } })
   const { fields, append } = useFieldArray({ control, name: 'rows' })
-  const [originalRows, setOriginalRows] = useState<TaxonomyRow[]>(() => toRows(data.items))
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState | null>(null)
 
@@ -219,19 +228,36 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
       }
       return
     }
+    const originalRows = toRows(data.items)
     save.mutate(toItems(parsed.data.rows), {
       onSuccess: (server) => {
+        const current = taxonomySchema.safeParse(getValues())
+        const submittedWithServerTruth = mergeServerRows(
+          parsed.data.rows,
+          originalRows,
+          toRows(server.items),
+        )
         reset({
-          rows: mergeServerRows(parsed.data.rows, originalRows, toRows(server.items)),
+          rows: mergeServerRows(
+            current.success ? current.data.rows : parsed.data.rows,
+            parsed.data.rows,
+            submittedWithServerTruth,
+          ),
         })
-        setOriginalRows(toRows(server.items))
         setSavedMessage('Saved')
+        announce('Taxonomies saved')
       },
       onError: (error) => {
         const code = getApiErrorCode(error)
         if (code === 'forbidden') setSaveState({ kind: 'forbidden' })
         else if (code === 'not_found') setSaveState({ kind: 'denied' })
-        else setSaveState({ kind: 'error', message: getApiErrorMessage(error, 'Unable to save') })
+        else
+          setSaveState({
+            kind: 'error',
+            message: getApiErrorMessage(error, 'Unable to save the taxonomies'),
+          })
+        // No announce(): the summary alert below renders this same message and
+        // is already an assertive live region (DEC-014).
         if (code === 'unauthorized') {
           window.setTimeout(() => navigateToLogin(), 100)
         }
@@ -263,6 +289,19 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
     )
   }
 
+  // One role=alert per form: the submit-level summary. Per-row messages are
+  // FieldErrors wired into each control's aria-describedby.
+  const summaryMessage =
+    saveState !== null
+      ? saveState.kind === 'forbidden'
+        ? 'Access forbidden.'
+        : saveState.kind === 'denied'
+          ? 'Not found.'
+          : saveState.message
+      : errors.rows !== undefined
+        ? 'Please fix the highlighted fields.'
+        : null
+
   return (
     <Card>
       <CardHeader>
@@ -275,48 +314,32 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
               <h2 className="text-base font-semibold">{capitalize(group.kind)}</h2>
               {group.indices.map((index) => (
                 <div key={fields[index]?.id ?? index} className="grid gap-2 sm:grid-cols-2">
-                  <div className="grid gap-1.5">
-                    <label htmlFor={`taxonomy-key-${index}`}>Key</label>
-                    <Input
-                      id={`taxonomy-key-${index}`}
-                      aria-invalid={errors.rows?.[index]?.key !== undefined ? true : undefined}
-                      {...register(`rows.${index}.key`)}
-                    />
+                  <Field invalid={errors.rows?.[index]?.key !== undefined}>
+                    <FieldLabel htmlFor={`taxonomy-key-${index}`}>Key</FieldLabel>
+                    <Input id={`taxonomy-key-${index}`} {...register(`rows.${index}.key`)} />
                     {errors.rows?.[index]?.key !== undefined ? (
-                      <AlertLive>{errors.rows?.[index]?.key?.message}</AlertLive>
+                      <FieldError id={`taxonomy-key-${index}-error`}>
+                        {errors.rows[index]?.key?.message}
+                      </FieldError>
                     ) : null}
-                  </div>
-                  <div className="grid gap-1.5">
-                    <label htmlFor={`taxonomy-label-${index}`}>Label</label>
-                    <Input
-                      id={`taxonomy-label-${index}`}
-                      aria-invalid={errors.rows?.[index]?.label !== undefined ? true : undefined}
-                      {...register(`rows.${index}.label`)}
-                    />
+                  </Field>
+                  <Field invalid={errors.rows?.[index]?.label !== undefined}>
+                    <FieldLabel htmlFor={`taxonomy-label-${index}`}>Label</FieldLabel>
+                    <Input id={`taxonomy-label-${index}`} {...register(`rows.${index}.label`)} />
                     {errors.rows?.[index]?.label !== undefined ? (
-                      <AlertLive>{errors.rows?.[index]?.label?.message}</AlertLive>
+                      <FieldError id={`taxonomy-label-${index}-error`}>
+                        {errors.rows[index]?.label?.message}
+                      </FieldError>
                     ) : null}
-                  </div>
+                  </Field>
                 </div>
               ))}
             </section>
           ))}
-          {saveState !== null ? (
-            saveState.kind === 'forbidden' ? (
-              <AlertLive>Access forbidden.</AlertLive>
-            ) : saveState.kind === 'denied' ? (
-              <AlertLive>Not found.</AlertLive>
-            ) : (
-              <AlertLive>{saveState.message}</AlertLive>
-            )
-          ) : null}
+          {summaryMessage !== null ? <AlertLive>{summaryMessage}</AlertLive> : null}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-2">
-              <Button
-                type="submit"
-                disabled={save.isPending}
-                aria-label={save.isPending ? 'Saving…' : 'Save'}
-              >
+              <Button type="submit" pending={save.isPending}>
                 {save.isPending ? 'Saving…' : 'Save'}
               </Button>
               <Button
@@ -327,7 +350,14 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
                 Add item
               </Button>
             </div>
-            {savedMessage !== null ? <StatusLive>{savedMessage}</StatusLive> : null}
+            {/* One stable region for both outcomes, mounted before either has
+                anything to say: a live region created together with its text
+                is not in the accessibility tree when the text arrives, so it
+                announces nothing. The saved chip is cleared at submit, so the
+                in-flight message never overwrites a live one. */}
+            <StatusLive aria-live="polite">
+              {save.isPending ? 'Saving the taxonomies…' : savedMessage}
+            </StatusLive>
           </div>
         </form>
       </CardContent>

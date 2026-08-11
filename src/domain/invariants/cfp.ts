@@ -3,15 +3,8 @@ import type { CfpForm } from '../form.ts'
 import type { Cap, FormLimits } from '../form.ts'
 import type { VersionId } from '../form-version.ts'
 
-export const SUBMIT_GATE_REASONS = [
-  'open',
-  'not_open_yet',
-  'closed',
-  'total_cap_reached',
-  'identity_limit_reached',
-] as const
-
-export type SubmitGateReason = (typeof SUBMIT_GATE_REASONS)[number]
+export type SubmitGateReason =
+  'open' | 'not_open_yet' | 'closed' | 'total_cap_reached' | 'identity_limit_reached'
 
 export interface SubmitGate {
   readonly allowed: boolean

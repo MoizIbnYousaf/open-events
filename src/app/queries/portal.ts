@@ -1,15 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
 
+import type { SubmissionStatus } from '../../domain'
 import { ApiClientError, requestJson } from '../api/admin-events'
 
 /**
  * One speaker-portal row: the list item the API returns for the signed-in
  * speaker's own submission. Heavy detail (answers) never reaches this surface.
+ *
+ * `status` uses the domain vocabulary, which has exactly one member: the
+ * persisted status never changes. Acceptance is a separate record, so it
+ * travels as `accepted` and is the only decision this surface can render.
  */
 export interface PortalSubmission {
   readonly id: string
   readonly title: string
-  readonly status: string
+  readonly status: SubmissionStatus
+  readonly accepted: boolean
+  /**
+   * Whether the invite route can render an .ics right now. Acceptance alone is
+   * not enough: an event with no configured dates answers 409, and a
+   * `download` anchor would save that error envelope to disk as the .ics.
+   */
+  readonly inviteAvailable: boolean
   readonly formSlug: string
   readonly version: number
   readonly coSpeakerCount: number

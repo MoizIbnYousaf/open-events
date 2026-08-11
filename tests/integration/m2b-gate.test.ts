@@ -4,7 +4,13 @@ import { env, reset } from 'cloudflare:test'
 import { createSubmitUnitOfWork } from '../../src/db'
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
 import { NOW } from '../unit/helpers/fixtures'
-import { applyMigrations, buildSubmitBatch, countRows, seedDemoConf } from './m2b-helpers'
+import {
+  SEEDED_CONTACTS,
+  applyMigrations,
+  buildSubmitBatch,
+  countRows,
+  seedDemoConf,
+} from './m2b-helpers'
 
 beforeEach(async () => {
   await reset()
@@ -78,7 +84,7 @@ describe('version-bound submit gate against real D1', () => {
     expect(result.outcome).toBe('closed')
     expect(await countRows(env.DB, 'proposal_submissions')).toBe(0)
     expect(await countRows(env.DB, 'captured_messages')).toBe(0)
-    expect(await countRows(env.DB, 'contacts')).toBe(1)
+    expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS + 1)
   })
 
   it('returns closed for an unpublished form', async () => {

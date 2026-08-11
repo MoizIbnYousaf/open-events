@@ -40,19 +40,36 @@ const buttonVariants = cva(
   },
 )
 
+/**
+ * `pending` is the one place an async trigger's in-flight state is expressed:
+ * it makes the control inert so it cannot fire twice, and exposes aria-busy so
+ * the state is programmatic and not just a change in opacity. The visible
+ * label swap stays the caller's job — "Saving…" vs "Publishing…" is copy, not
+ * a primitive's decision.
+ *
+ * The native `disabled` attribute is kept deliberately. Base UI's
+ * focusableWhenDisabled swaps it for aria-disabled, which jest-dom's
+ * toBeDisabled() does not honour; per-row controls that need focus retention
+ * opt into it at the call site instead.
+ */
 function Button({
   className,
   variant = 'default',
   size = 'default',
+  pending = false,
+  disabled = false,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & { pending?: boolean }) {
   return (
     <ButtonPrimitive
       data-slot="button"
+      data-pending={pending ? '' : undefined}
+      aria-busy={pending ? true : undefined}
+      disabled={disabled || pending}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />
   )
 }
 
-export { Button, buttonVariants }
+export { Button }

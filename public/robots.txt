@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /cfp/
+Allow: /schedule/
+Disallow: /admin
+Disallow: /portal
+Disallow: /headshot
+Disallow: /evaluations
+Disallow: /start
+Disallow: /api/

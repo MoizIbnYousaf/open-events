@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 80" role="img" aria-label="Open Events">
+  <rect x="8" y="8" width="64" height="64" rx="14" fill="#171717"/>
+  <path fill="#fff" d="M26 26h28v7H35v3.5h16v7H35V47h19v7H26V26z"/>
+  <circle cx="59" cy="21" r="4.5" fill="#a3e635"/>
+  <text x="88" y="52" fill="#0d0d0d" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="32" font-weight="560" letter-spacing="-0.04em">Open Events</text>
+</svg>

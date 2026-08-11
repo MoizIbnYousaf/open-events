@@ -1,38 +1,55 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRouter } from '@tanstack/react-router'
 
 import { getApiErrorCode } from '../../api/admin-events'
-import { announce } from '../../lib/announcer'
 import {
   publicDraftQueryKeys,
-  recoverPublicSession,
   useSaveDraft,
   type PublicEditorState,
 } from '../../queries/public-drafts'
-import { ExpiredSessionState, ForbiddenState } from '../admin/AdminStates'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
+import { cn } from '../../../lib/utils'
 import { StatusLive } from '../../../components/ui/status-live'
 
-export default function CfpSaveBar() {
+/** The two refusals a save can come back with that the PAGE has to answer. */
+export type SaveDenial = 'unauthorized' | 'forbidden'
+
+interface CfpSaveBarProps {
+  /** Rendered when the step has somewhere to go back to. */
+  readonly onBack?: () => void
+  /** Rendered when the step has a next step; absent on the final step. */
+  readonly onNext?: () => void
+  /**
+   * Raised when the save is refused for who the reader is rather than for what
+   * they wrote. The bar has no business answering that: it is a row at the
+   * bottom of a reading column, and a page state rendered into it is a second
+   * dead-end card with a second h1 sitting under a wizard that is still
+   * editable and can no longer save anything. The page decides instead.
+   */
+  readonly onDenied: (code: SaveDenial) => void
+}
+
+/**
+ * The step's one action bar: Back, Save and Next together.
+ *
+ * They used to bracket the content card — Next above it inside the stepper,
+ * Save below it — so a speaker looking for "what do I press now" had to look in
+ * two places for one step's controls. One row owns the step's progression and
+ * its safety.
+ *
+ * It sticks to the bottom of the reading column while there is a Next, because
+ * Save is the control a speaker reaches for most and the one they should never
+ * have to scroll back to. On the final step there is no Next and the last
+ * control on the page is Submit, below the co-speakers card: a bar pinned to
+ * the viewport floor would sit on top of it, so there the row stays in flow.
+ * Safe-area padding keeps it clear of a phone's home indicator.
+ */
+export default function CfpSaveBar({ onBack, onNext, onDenied }: CfpSaveBarProps) {
   const queryClient = useQueryClient()
-  const router = useRouter({ warn: false })
   const save = useSaveDraft()
   const [reloadPending, setReloadPending] = useState(false)
   const code = getApiErrorCode(save.error)
-  const editor = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
-
-  if (code === 'unauthorized') {
-    return (
-      <ExpiredSessionState
-        onLogin={() => recoverPublicSession(queryClient, editor?.formId ?? '', router)}
-      />
-    )
-  }
-  if (code === 'forbidden') {
-    return <ForbiddenState />
-  }
   const conflict = code === 'conflict'
 
   const reloadLatest = () => {
@@ -51,20 +68,40 @@ export default function CfpSaveBar() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-3 border-t border-border bg-background py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+        onNext !== undefined && 'sticky bottom-0 z-10',
+      )}
+    >
+      {onBack !== undefined ? (
+        <Button type="button" variant="ghost" onClick={onBack}>
+          Back
+        </Button>
+      ) : null}
       <Button
         type="button"
+        variant="outline"
         pending={save.isPending}
         onClick={() =>
+          // No onSuccess announcement: the StatusLive below is a live
+          // region and already says "Saved", and the failure renders its own
+          // alert. One region per outcome (DEC-014, F-R3-13).
           save.mutate(undefined, {
-            // The failure renders its own alert with this exact sentence, so
-            // only the success needs the announcer (DEC-014).
-            onSuccess: () => announce('Draft saved'),
+            onError: (error) => {
+              const denial = getApiErrorCode(error)
+              if (denial === 'unauthorized' || denial === 'forbidden') onDenied(denial)
+            },
           })
         }
       >
         {save.isPending ? 'Saving…' : 'Save'}
       </Button>
+      {onNext !== undefined ? (
+        <Button type="button" onClick={onNext}>
+          Next
+        </Button>
+      ) : null}
       {/* One stable region for both, mounted before either has anything to
           say: a live region created together with its text is not in the
           accessibility tree when the text arrives, so it announces nothing.

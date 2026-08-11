@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '../../../src/app/query-client'
 import AdminLogin from '../../../src/app/features/admin/AdminLogin'
+import { setTourActive } from '../../../src/app/features/tour/tour-activity'
 import { Toaster } from '../../../src/components/ui/sonner'
 
 const SESSION_TOKEN = 'test-session-token'
@@ -90,6 +91,26 @@ describe('admin login screen', () => {
     await waitFor(() => expect(secret).toHaveFocus())
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // F-R4-4: the product tour narrates this page from its own popover, and it
+  // navigates here rather than a person asking for the field. Taking focus then
+  // emptied the popover of keyboard control and sent Escape into the input's
+  // scope, leaving the tour undismissable.
+  it('leaves focus alone while the product tour is narrating', async () => {
+    setTourActive(true)
+    try {
+      await mountLogin()
+
+      const secret = await screen.findByLabelText('Organizer secret')
+      expect(secret).not.toHaveFocus()
+      expect(document.activeElement).toBe(document.body)
+      // Suppressed, never removed: the field is still the first thing a visitor
+      // reaches for, and it is still there to reach for.
+      expect(secret).toBeEnabled()
+    } finally {
+      setTourActive(false)
+    }
   })
 
   it('rejects an empty secret with an accessible validation error and keeps focus on the field', async () => {

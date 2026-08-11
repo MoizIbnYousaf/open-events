@@ -120,7 +120,10 @@ describe('public email-link session start', () => {
     const submit = screen.getByRole('button', { name: /request a link/i })
     await user.click(submit)
 
-    expect(await screen.findByRole('button', { name: /sending/i })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: /sending/i })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
     resolveStart?.(jsonResponse({ status: 'accepted' }, 202))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /request a link/i })).toBeEnabled(),

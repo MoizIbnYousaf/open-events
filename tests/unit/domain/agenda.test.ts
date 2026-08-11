@@ -9,8 +9,11 @@ import {
   isPlaceableSlot,
   latestAgendaEnd,
   placeSessions,
+  trackGroupLabel,
   transitionAgendaStatus,
   transitionSessionAssignment,
+  UNTRACKED_GROUP_KEY,
+  UNTRACKED_GROUP_LABEL,
   type AgendaGridSlot,
 } from '../../../src/domain/agenda'
 
@@ -371,6 +374,61 @@ describe('agenda view derivation', () => {
     })
     expect(views.track).toEqual(aggregates.perTrack)
     expect(views.room).toEqual(aggregates.perRoom)
+  })
+})
+
+// A track is optional; a room and a slot are not. So "no track" is an ordinary
+// state of a scheduled session, and both surfaces that read these derivations —
+// the organizer board and the public programme — used to render it as nothing
+// at all: an unlabelled group under the previous track's heading, and an empty
+// chip in a table cell.
+describe('untracked sessions', () => {
+  const UNTRACKED: AgendaSessionInput = {
+    ...SESSION_C,
+    submissionId: 'submission-untracked',
+    trackId: null,
+    day: '2026-05-13',
+    start: '2026-05-13T11:00:00.000Z',
+    end: '2026-05-13T12:00:00.000Z',
+  }
+  const INPUT: AgendaPlacementInput = {
+    sessions: [SESSION_A, UNTRACKED],
+    rooms: [ROOM_MAIN, ROOM_BREAKOUT],
+    // The board passes no fallback track, exactly as the agenda service does:
+    // an untracked session must stay untracked rather than be filed under
+    // whichever track happens to be first.
+    tracks: [],
+  }
+
+  it('keeps a session with no track in its own group, never in another track', () => {
+    const aggregates = buildAgendaAggregates(placeSessions(INPUT))
+
+    expect(aggregates.perTrack).toEqual({
+      [TRACK_TALKS]: ['submission-a'],
+      [UNTRACKED_GROUP_KEY]: ['submission-untracked'],
+    })
+    expect(aggregates.perTrack[TRACK_TALKS]).not.toContain('submission-untracked')
+  })
+
+  it('carries that group through the track view under the untracked key', () => {
+    const views = deriveReq014Views(buildAgendaAggregates(placeSessions(INPUT)))
+
+    expect(Object.keys(views.track)).toContain(UNTRACKED_GROUP_KEY)
+    expect(views.track[UNTRACKED_GROUP_KEY]).toEqual(['submission-untracked'])
+  })
+
+  it('names the untracked group in words, and leaves a real track alone', () => {
+    expect(trackGroupLabel(UNTRACKED_GROUP_KEY)).toBe(UNTRACKED_GROUP_LABEL)
+    expect(trackGroupLabel(UNTRACKED_GROUP_LABEL)).toBe(UNTRACKED_GROUP_LABEL)
+    expect(trackGroupLabel('Talks')).toBe('Talks')
+  })
+
+  it('never leaves the untracked group nameless', () => {
+    const views = deriveReq014Views(buildAgendaAggregates(placeSessions(INPUT)))
+
+    for (const key of Object.keys(views.track)) {
+      expect(trackGroupLabel(key)).not.toBe('')
+    }
   })
 })
 

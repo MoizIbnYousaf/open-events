@@ -146,7 +146,10 @@ describe('taxonomy editor screen', () => {
     }
     await mountTaxonomy()
 
-    expect(await screen.findByText(/add first item/i)).toBeInTheDocument()
+    // The empty state instructs rather than reports: an imperative title over
+    // a sentence saying what the items are for, and the action beside it.
+    expect(await screen.findByText(/add your first taxonomy item/i)).toBeInTheDocument()
+    expect(screen.getByText(/formats, tracks and levels/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument()
   })
 
@@ -364,7 +367,7 @@ describe('taxonomy editor screen', () => {
 
     const saveButton = screen.getByRole('button', { name: /saving/i })
     expect(saveButton).toHaveTextContent('Saving…')
-    expect(saveButton).toBeDisabled()
+    expect(saveButton).toHaveAttribute('aria-disabled', 'true')
 
     resolveSave?.(jsonResponse(TAXONOMY_DTO))
     await waitFor(() => {

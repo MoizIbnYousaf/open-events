@@ -1,10 +1,22 @@
 import { useEffect } from 'react'
 
 import { AlertLive } from '../../../components/ui/alert-live'
+import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent } from '../../../components/ui/card'
+import { EmptyState } from '../../../components/ui/empty-state'
+import { DocumentStackIcon } from '../../../components/ui/icons'
+import { TextLink } from '../../../components/ui/link'
+import {
+  PageHeader,
+  PageHeaderContent,
+  PageHeaderDescription,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
+import { getApiErrorCode } from '../../api/admin-events'
+import { ForbiddenState } from '../admin/AdminStates'
 import { useOwnSubmissions, type PortalSubmission } from '../../queries/portal'
 import DocumentUploader from './DocumentUploader'
 import HeadshotUploader from './HeadshotUploader'
@@ -17,6 +29,10 @@ interface PortalPageProps {
 }
 
 const HEADING = 'Your submissions'
+const SUBHEADING = 'Your proposals, your onboarding tasks and the profile organizers see.'
+
+/** The measure the whole speaker journey reads at. */
+const COLUMN = 'mx-auto grid w-full max-w-[47rem] gap-5'
 
 /**
  * REQ-006 speaker portal: the signed-in speaker's own submissions. The page
@@ -38,8 +54,8 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
 
   if (unauthenticated) {
     return (
-      <div className="grid gap-4">
-        <h1 className="text-2xl font-semibold">{HEADING}</h1>
+      <div className={COLUMN}>
+        <Header />
         <Card>
           <CardContent>
             <StatusLive aria-live="polite">Taking you to the sign-in step…</StatusLive>
@@ -50,15 +66,19 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
   }
 
   if (query.isError) {
+    // A signed-in identity the portal will not serve is a different answer
+    // from an expired one, and it was previously indistinguishable from a
+    // transient failure with a retry that could only fail the same way.
+    if (getApiErrorCode(query.error) === 'forbidden') return <ForbiddenState />
     return (
-      <div className="grid gap-4">
-        <h1 className="text-2xl font-semibold">{HEADING}</h1>
+      <div className={COLUMN}>
+        <Header />
         <Card>
           <CardContent className="grid justify-items-start gap-3">
             <AlertLive>Your submissions are unavailable right now.</AlertLive>
             <Button
               type="button"
-              className="min-h-6"
+              variant="outline"
               pending={query.isFetching}
               onClick={() => {
                 void query.refetch()
@@ -74,8 +94,8 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
 
   if (data === undefined) {
     return (
-      <div className="grid gap-4" aria-busy={query.isPending}>
-        <h1 className="text-2xl font-semibold">{HEADING}</h1>
+      <div className={COLUMN} aria-busy={query.isPending}>
+        <Header />
         <Card>
           <CardContent className="grid gap-3">
             <Skeleton className="h-10 w-full" />
@@ -91,39 +111,55 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
   // with an empty own-list and still has tasks and a headshot to upload. The
   // checklist and the uploader therefore sit outside the empty branch.
   return (
-    <div className="grid gap-4">
-      <h1 className="text-2xl font-semibold">{HEADING}</h1>
+    <div className={COLUMN}>
+      <Header />
       {data.length === 0 ? (
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              No submissions yet. Proposals you submit appear here; any onboarding tasks assigned to
-              you are listed below.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<DocumentStackIcon size={20} />}
+          title="Submit your first proposal"
+          description="No submissions yet. Proposals you submit appear here; any onboarding tasks assigned to you are listed below."
+        />
       ) : (
-        <ul aria-label={HEADING} className="grid gap-3">
-          {data.map((submission) => (
-            <li key={submission.id}>
-              <Card>
-                <CardContent className="grid justify-items-start gap-1">
-                  <span className="font-medium">{submission.title}</span>
-                  <span className="text-sm text-muted-foreground">
-                    Status: {statusLabel(submission)}
-                  </span>
+        <Card>
+          <ul aria-label={HEADING} className="divide-y divide-border">
+            {data.map((submission) => (
+              <li
+                key={submission.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5"
+              >
+                <div className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="truncate text-sm font-medium">{submission.title}</span>
                   <InviteLink submission={submission} />
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-        </ul>
+                </div>
+                {/* Where a proposal stands is a lifecycle state, so the chip
+                    carries the marker that says so — the one channel that
+                    still separates a state from a plain value once colour has
+                    been spent on a single accent. */}
+                <Badge dot variant={submission.accepted ? 'secondary' : 'outline'}>
+                  {statusLabel(submission)}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
       <TasksPanel />
       <ProfileEditor />
       <HeadshotUploader />
       <DocumentUploader />
     </div>
+  )
+}
+
+/** The page heading, identical in every state so the page never loses its h1. */
+function Header() {
+  return (
+    <PageHeader>
+      <PageHeaderContent>
+        <PageHeaderTitle>{HEADING}</PageHeaderTitle>
+        <PageHeaderDescription>{SUBHEADING}</PageHeaderDescription>
+      </PageHeaderContent>
+    </PageHeader>
   )
 }
 
@@ -137,19 +173,20 @@ function InviteLink({ submission }: { readonly submission: PortalSubmission }) {
   if (!submission.accepted) return null
   if (!submission.inviteAvailable) {
     return (
-      <span className="text-sm text-muted-foreground">
+      <span className="text-xs text-muted-foreground">
         The calendar invite becomes available once the organizer sets the event dates.
       </span>
     )
   }
   return (
-    <a
-      className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+    <TextLink
+      hit
+      className="text-xs"
       href={`/api/public/invite/${encodeURIComponent(submission.id)}.ics`}
       download
     >
       Download the calendar invite
-    </a>
+    </TextLink>
   )
 }
 

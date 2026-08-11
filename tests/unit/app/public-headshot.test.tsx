@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -238,6 +238,41 @@ describe('HeadshotUploader', () => {
     expect(image).toHaveAttribute('src', 'blob:headshot-1')
   })
 
+  it('falls back to the placeholder when the image will not decode, once and only once', async () => {
+    renderUploader()
+
+    const image = await screen.findByRole('img', { name: /your current headshot/i })
+    const requestsBefore = fetchMock.mock.calls.length
+
+    // An object URL can stop resolving after it was handed over — a revoked
+    // blob, a signature that expired between fetch and paint. The browser's
+    // own broken-image glyph used to paint inside our hairline ring.
+    fireEvent.error(image)
+
+    expect(await screen.findByText('No photo')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /your current headshot/i })).not.toBeInTheDocument()
+    // The fallback is a decision about this URI, not a request: nothing is
+    // re-fetched, and nothing re-fetches on any later render either.
+    expect(fetchMock.mock.calls).toHaveLength(requestsBefore)
+  })
+
+  it('paints a replacement headshot after an earlier one failed to decode', async () => {
+    const user = userEvent.setup()
+    renderUploader()
+
+    fireEvent.error(await screen.findByRole('img', { name: /your current headshot/i }))
+    await screen.findByText('No photo')
+
+    // The refusal is remembered against the URI that earned it, so a fresh
+    // upload — a fresh object URL — is not condemned by the last one's
+    // verdict.
+    fetchHandler = (_url, init) =>
+      init?.method === 'PUT' ? jsonResponse(HEADSHOT_DTO) : pngResponse()
+    await user.upload(fileInput(), pngFile())
+
+    expect(await screen.findByRole('img', { name: /your current headshot/i })).toBeInTheDocument()
+  })
+
   it('offers a working "Try again" retry when the headshot fails to load', async () => {
     const user = userEvent.setup()
     fetchHandler = () => envelopeResponse('internal', 'Internal error', 500)
@@ -474,5 +509,39 @@ describe('HeadshotUploader', () => {
     cleanup()
 
     expect(revokedObjectUrls).toContain('blob:headshot-1')
+  })
+})
+
+describe('speaker upload sections share one empty grammar', () => {
+  it('states the missing headshot in the content column, not the avatar column', async () => {
+    fetchHandler = () => envelopeResponse('not_found', 'Not found', 404)
+    renderUploader()
+
+    const empty = await screen.findByText(/no headshot uploaded yet/i)
+    const emptyBox = empty.closest('[data-slot="empty-state"]')
+    expect(emptyBox).not.toBeNull()
+    // The 112px avatar column holds the picture slot and nothing else.
+    const placeholder = screen.getByText('No photo')
+    expect(placeholder).not.toContainElement(empty)
+    expect(placeholder.closest('[data-slot="empty-state"]')).toBeNull()
+    // Same anatomy as the sibling supporting-document section: icon tile,
+    // imperative title, explanation.
+    expect(emptyBox?.querySelector('[data-slot="empty-state-icon"]')).not.toBeNull()
+    expect(emptyBox).toHaveTextContent('Add your headshot')
+  })
+
+  it('drops the empty box once a headshot exists', async () => {
+    renderUploader()
+
+    await screen.findByAltText('Your current headshot')
+    expect(screen.queryByText(/no headshot uploaded yet/i)).not.toBeInTheDocument()
+  })
+
+  it('holds both file inputs at the app control height', async () => {
+    renderUploader()
+
+    const input = await screen.findByLabelText('Upload a headshot')
+    expect(input).toHaveClass('py-0')
+    expect(input).not.toHaveClass('h-auto')
   })
 })

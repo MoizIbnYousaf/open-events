@@ -16,8 +16,13 @@ export const Route = createFileRoute('/_public')({
  */
 function PublicShell() {
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8">
-      <div className="grid gap-6">
+    // The reading measure is capped at max-w-3xl and the gutters grow in three
+    // steps rather than one: a phone gets 16px of air, a tablet gets vertical
+    // room, and only a desktop pays for 24px side gutters. One rhythm for
+    // every public page, so the column never jumps as the reader moves
+    // between the portal, the call for papers and the schedule.
+    <div className="mx-auto w-full max-w-3xl px-4 py-4 md:py-6 lg:px-6 lg:py-8">
+      <div className="grid min-w-0 gap-4 md:gap-6">
         <SpeakerNav />
         <Outlet />
       </div>

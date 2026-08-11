@@ -36,9 +36,14 @@ const VENUE = 'Lifecycle Hall'
 const BIO = 'Keynote speaker and lifecycle enthusiast.'
 
 // Committed row-link accessible name (SubmissionList.tsx): `${title} —
-// ${statusText} — ${primarySpeaker.name}`; the seeded speaker's contact name
-// is the normalized email until the profile is saved.
-const ROW_LINK = (title: string) => `${title} — Pending — ${SPEAKER_EMAIL}`
+// ${primarySpeaker.name}`; the seeded speaker's contact name is the normalized
+// email until the profile is saved.
+//
+// The status token used to sit in the middle of this string. It came out with
+// F-R3-7: the list cannot see acceptances, so "Pending" stayed on a row whose
+// proposal had already been accepted and emailed. A row's accessible name is
+// which proposal this is, not what the list guesses has happened to it.
+const ROW_LINK = (title: string) => `${title} — ${SPEAKER_EMAIL}`
 
 const CHECKLIST_SIZE = 3
 
@@ -485,10 +490,14 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     // The reset seed already opens Round 1 with an 'Overall fit' criterion;
     // the journey runs a real round transition instead: close the seeded
     // round through the UI and open round 2.
+    // Both transitions go through the confirm rung: closing is one-way, and
+    // opening moves what the whole committee is scoring.
     await expect(adminPage.getByText('Round 1 is open.')).toBeVisible()
     await adminPage.getByRole('button', { name: 'Close round 1' }).click()
+    await adminPage.getByRole('button', { name: 'Confirm close' }).click()
     await expect(adminPage.getByText('No review round is open.')).toBeVisible()
     await adminPage.getByRole('button', { name: 'Open round 2' }).click()
+    await adminPage.getByRole('button', { name: 'Confirm open' }).click()
     await expect(adminPage.getByText('Round 2 is open.')).toBeVisible()
 
     // The evaluator identity must exist before assignment resolves the email.
@@ -634,10 +643,14 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     await expect(audience).toContainText(SPEAKER_EMAIL)
     await expect(audience).toContainText(CO_SPEAKER_EMAIL)
     await adminPage.getByRole('button', { name: 'Send acceptance' }).click()
+    // Real outbound mail sits behind the confirm ladder: the trigger opens a
+    // dialog and only the distinctly named confirm issues the send.
+    await adminPage.getByRole('button', { name: 'Send the email' }).click()
     await expect(
       adminPage.getByRole('region', { name: 'Acceptance' }).getByText('Acceptance sent'),
     ).toBeVisible()
     await adminPage.getByRole('button', { name: 'Send reminder' }).click()
+    await adminPage.getByRole('button', { name: 'Send the email' }).click()
     await expect(
       adminPage.getByRole('region', { name: 'Acceptance' }).getByText('Reminder sent'),
     ).toBeVisible()
@@ -698,6 +711,8 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     await expectNoSeriousAxeFindings(adminPage, 'agenda board')
 
     await adminPage.getByRole('button', { name: 'Publish agenda' }).click()
+    // Publication is also confirmed; the axe scan above runs with no dialog open.
+    await adminPage.getByRole('button', { name: 'Publish to the programme' }).click()
     await expect(adminPage.getByText('Published 2 sessions.')).toBeVisible()
 
     enterStage('mobile public schedule')

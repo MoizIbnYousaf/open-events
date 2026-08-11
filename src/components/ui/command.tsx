@@ -23,9 +23,10 @@ import { cn } from '../../lib/utils'
  * needs, and adding a second overlay runtime for the rest would be a new
  * dependency for a list, a filter and five key handlers.
  *
- * Deliberately free of lucide-react. This composition is mounted by the root
- * shell, so it lands in the entry chunk, and `scripts/perf-check.mjs` fails the
- * build if an icon set reaches it.
+ * Deliberately free of imported icon modules. This composition is mounted by
+ * the root shell, so it lands in the entry chunk, which `scripts/perf-check.mjs`
+ * holds to a gzip budget and greps for third-party icon strings — glyphs here
+ * are drawn inline, in file.
  *
  * The pattern is the ARIA combobox-with-listbox one: the text box keeps DOM
  * focus for the whole interaction and points at the active option with
@@ -35,6 +36,20 @@ import { cn } from '../../lib/utils'
 
 /** Marks an option in the DOM so Enter can activate exactly what is selected. */
 const ITEM_VALUE_ATTRIBUTE = 'data-command-value'
+
+/**
+ * The rendered option carrying a value, if one is on screen.
+ *
+ * One query against the list, which is what activation has always done — a ref
+ * on every row would buy nothing here and cost a render's worth of work on a
+ * list that is rebuilt on every keystroke.
+ */
+function optionNode(list: HTMLElement | null, value: string | null): HTMLElement | undefined {
+  if (list === null || value === null) return undefined
+  return Array.from(list.querySelectorAll<HTMLElement>(`[${ITEM_VALUE_ATTRIBUTE}]`)).find(
+    (node) => node.getAttribute(ITEM_VALUE_ATTRIBUTE) === value,
+  )
+}
 
 interface CommandContextValue {
   readonly activeValue: string | null
@@ -80,12 +95,12 @@ function CommandDialog({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop
           data-slot="command-overlay"
-          className="fixed inset-0 z-50 bg-black/20 data-closed:animate-out data-closed:fade-out-0 data-open:animate-in data-open:fade-in-0 motion-reduce:animate-none"
+          className="fixed inset-0 z-50 bg-scrim data-closed:animate-out data-closed:animation-duration-75 data-closed:fade-out-0 data-open:animate-in data-open:animation-duration-150 data-open:fade-in-0 motion-reduce:animate-none"
         />
         <DialogPrimitive.Popup
           data-slot="command-dialog"
           finalFocus={finalFocus}
-          className="fixed top-[12vh] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] -translate-x-1/2 overflow-hidden rounded-xl bg-popover text-popover-foreground ring-1 ring-foreground/10 outline-none data-closed:animate-out data-closed:fade-out-0 data-open:animate-in data-open:fade-in-0 motion-reduce:animate-none sm:max-w-lg"
+          className="fixed top-[12vh] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] -translate-x-1/2 overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-popover ring-1 ring-border outline-none data-closed:animate-out data-closed:animation-duration-75 data-closed:fade-out-0 data-closed:zoom-out-[0.98] data-open:animate-in data-open:animation-duration-150 data-open:ease-entrance data-open:fade-in-0 data-open:zoom-in-[0.98] motion-reduce:animate-none sm:max-w-lg"
         >
           <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
@@ -132,30 +147,51 @@ function Command({
 
   const itemId = useCallback((value: string) => `${baseId}-item-${value}`, [baseId])
 
+  /**
+   * Move the highlight, and keep the highlight on screen.
+   *
+   * The list is capped at 24rem — about a dozen rows — and the palette already
+   * offers more actions than that with an empty query, so arrowing past the
+   * fold used to move a highlight nobody could see: `aria-activedescendant`
+   * kept announcing it, and the sighted keyboard reader simply lost it.
+   *
+   * `block: 'nearest'` is the whole reason this is safe to do on every press —
+   * a row already in view does not move the scroller at all, so the list stays
+   * still until it has to move. No `behavior` is passed, deliberately: an
+   * explicit `smooth` OVERRIDES the element's computed `scroll-behavior`, which
+   * would animate straight through the global reduced-motion guard.
+   *
+   * Optional call because jsdom does not implement `scrollIntoView`.
+   *
+   * Pointer hover still goes through `setPreferred` directly: the pointer is
+   * already where the reader is looking, and scrolling under it would drag the
+   * list out from beneath the cursor.
+   */
+  const moveTo = useCallback((value: string | null) => {
+    setPreferred(value)
+    optionNode(listRef.current, value)?.scrollIntoView?.({ block: 'nearest' })
+  }, [])
+
   const move = useCallback(
     (delta: number) => {
       if (values.length === 0) return
       const current = activeValue === null ? -1 : values.indexOf(activeValue)
       const next = current < 0 ? 0 : (current + delta + values.length) % values.length
-      setPreferred(values[next] ?? null)
+      moveTo(values[next] ?? null)
     },
-    [activeValue, values],
+    [activeValue, moveTo, values],
   )
 
   const jump = useCallback(
     (toEnd: boolean) => {
       if (values.length === 0) return
-      setPreferred((toEnd ? values[values.length - 1] : values[0]) ?? null)
+      moveTo((toEnd ? values[values.length - 1] : values[0]) ?? null)
     },
-    [values],
+    [moveTo, values],
   )
 
   const runActive = useCallback(() => {
-    if (activeValue === null || listRef.current === null) return
-    const nodes = Array.from(
-      listRef.current.querySelectorAll<HTMLElement>(`[${ITEM_VALUE_ATTRIBUTE}]`),
-    )
-    nodes.find((node) => node.getAttribute(ITEM_VALUE_ATTRIBUTE) === activeValue)?.click()
+    optionNode(listRef.current, activeValue)?.click()
   }, [activeValue])
 
   const value = useMemo<CommandContextValue>(
@@ -201,10 +237,19 @@ function Command({
           if (event.key === 'Enter') {
             event.preventDefault()
             runActive()
+            return
           }
-          // Escape is deliberately left alone: the surrounding dialog owns it,
-          // and consuming it here would take the close key away from the
-          // component that also has to restore focus.
+          // Escape is a two-rung ladder: with a query it retreats one step —
+          // clear the query, keep the palette open — and only on an empty
+          // query does it fall through to the surrounding dialog, which owns
+          // the close key because it also has to restore focus. Consuming
+          // every Escape here would take that away; consuming none would make
+          // a mistyped query cost the whole palette.
+          if (event.key === 'Escape' && search !== '') {
+            event.preventDefault()
+            event.stopPropagation()
+            onSearchChange('')
+          }
         }}
         {...props}
       >
@@ -231,10 +276,23 @@ function CommandInput({ className, ...props }: ComponentProps<'input'>): ReactEl
       value={search}
       onChange={(event) => setSearch(event.target.value)}
       className={cn(
-        'w-full border-b border-border bg-transparent px-4 py-3 text-base outline-none placeholder:text-muted-foreground md:text-sm',
-        // The outline is replaced, never removed: this box holds focus for the
-        // whole interaction, so it has to look focused.
-        'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring',
+        'h-11 w-full border-b border-border bg-transparent px-3 text-base outline-none placeholder:text-muted-foreground md:text-sm',
+        // The focus indicator is the SEPARATOR, promoted — not a ring.
+        //
+        // A ring is a boundary drawn around a control to separate it from the
+        // things it is not. This control has no such neighbours: it is flush
+        // with three edges of a popup that clips its overflow, so a 2px ring
+        // survived only along the bottom and rendered as a saturated blue rule
+        // spanning the dialog — a design element the design never asked for.
+        //
+        // Dropping the indicator entirely was the wrong correction: a focusable
+        // control has to say so, and this box takes every keystroke in the
+        // palette. So the hairline it already needs — the one separating it
+        // from the list below — takes the accent and thickens to 2px while the
+        // box holds focus. The extra pixel is an INSET shadow, so it is drawn
+        // inside the border box: no overflow to clip, no bleed past the popup's
+        // edges, and no layout shift when it appears.
+        'focus-visible:border-ring focus-visible:shadow-[inset_0_-1px_0_0_var(--color-ring)]',
         className,
       )}
       {...props}
@@ -250,7 +308,17 @@ function CommandList({ className, ...props }: ComponentProps<'div'>): ReactEleme
       id={listId}
       data-slot="command-list"
       role="listbox"
-      className={cn('max-h-[min(24rem,60vh)] overflow-y-auto overscroll-contain p-1', className)}
+      // Chrome makes a scrollable box focusable, which put a second tab stop
+      // inside a two-stop dialog — and standing on it was strictly worse than
+      // standing in the input: same arrow keys, but `aria-activedescendant`
+      // lives on the input, so the highlighted option was announced to nobody.
+      // The combobox pattern keeps focus in the text box; this takes itself
+      // out of the tab order to keep that promise.
+      tabIndex={-1}
+      className={cn(
+        'max-h-[min(24rem,60vh)] scroll-py-1 overflow-y-auto overscroll-contain p-1',
+        className,
+      )}
       {...props}
     />
   )
@@ -268,7 +336,7 @@ function CommandEmpty({ className, ...props }: ComponentProps<'p'>): ReactElemen
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      className={cn('px-4 py-3 text-sm text-muted-foreground empty:hidden', className)}
+      className={cn('px-3 py-6 text-center text-sm text-muted-foreground empty:hidden', className)}
       {...props}
     />
   )
@@ -286,10 +354,13 @@ function CommandGroup({
       data-slot="command-group"
       role="group"
       aria-labelledby={headingId}
-      className={cn('py-1', className)}
+      className={cn('pb-1 not-first:pt-1', className)}
       {...props}
     >
-      <div id={headingId} className="px-3 py-1 text-xs font-medium text-muted-foreground">
+      <div
+        id={headingId}
+        className="px-2 pt-1.5 pb-1 text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase"
+      >
         {heading}
       </div>
       {children}
@@ -327,9 +398,12 @@ function CommandItem({
       onClick={onSelect}
       onPointerMove={() => setActiveValue(value)}
       className={cn(
-        'flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm outline-none',
+        'flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-[5px] px-2 text-left text-sm font-medium outline-none',
         'focus-visible:ring-2 focus-visible:ring-ring',
-        active ? 'bg-muted text-foreground' : 'text-foreground/90',
+        // Pointer hover and keyboard selection are ONE state: the row the
+        // arrow keys landed on and the row under the cursor must never be two
+        // different rows, or Enter becomes a guess.
+        active ? 'bg-foreground/5 text-foreground dark:bg-foreground/10' : 'text-muted-foreground',
         className,
       )}
       {...props}

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -307,26 +307,83 @@ describe('organizer submissions', () => {
     expect(await screen.findByRole('table')).toBeInTheDocument()
     for (const name of [
       'Title',
-      'Status',
       'Primary speaker',
       'Co-speakers',
       'Form/Version',
-      'Track/Tags',
+      // R2-1.11: the cell renders the routing rule's action target, and the
+      // header now says so instead of promising tracks and tags.
+      'Routing',
       'Submitted',
     ]) {
       const header = screen.getByRole('columnheader', { name })
       expect(header).toHaveAttribute('scope', 'col')
     }
+    expect(screen.queryByRole('columnheader', { name: 'Track/Tags' })).not.toBeInTheDocument()
 
+    // Identity, not status: the row link names the proposal and who is giving
+    // it (F-R3-7 — the list cannot see acceptances, so it cannot keep a status
+    // token in this name true).
     const rowLink = await screen.findByRole('link', {
-      name: /My talk.*pending.*Speaker A/i,
+      name: /^My talk.*Speaker A$/i,
     })
     expect(rowLink).toHaveAttribute(
       'href',
       `/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}`,
     )
-    expect(screen.getByText('Pending')).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
+  // F-R3-7: the persisted status is pinned to 'pending' for the life of a
+  // submission, so a Status column could only ever print "Pending" — including
+  // for a proposal the detail page had already recorded as accepted and
+  // emailed. The list makes one read and that read cannot see acceptances.
+  it('does not print a decision the list cannot know', async () => {
+    await mountList()
+    await screen.findByRole('table')
+
+    expect(screen.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument()
+    const table = screen.getByRole('table')
+    expect(within(table).queryByText('Pending')).not.toBeInTheDocument()
+    // Not in the row's accessible name either. That is where the token hid
+    // after the column went, and a screen-reader user heard the same stale
+    // verdict a sighted one no longer saw. The name is identity — which
+    // proposal is this — and identity is the title and who is giving it.
+    expect(screen.getByRole('link', { name: 'My talk — Speaker A' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Pending/ })).not.toBeInTheDocument()
+  })
+
+  // R1-M10 + R1-M11 / F-R5-4: the whole row lights up on hover but only the
+  // link navigates, and the identity column was the narrowest on the page.
+  it('gives the row link the whole identity cell and the title column room to breathe', async () => {
+    await mountList()
+    await screen.findByRole('table')
+
+    const row = screen.getAllByRole('row')[1]
+    expect(within(row!).getAllByRole('link')).toHaveLength(1)
+    const link = within(row!).getByRole('link')
+    expect(link.className).toMatch(/w-\[calc\(100%\+0\.5rem\)\]/)
+    expect(link.className).toMatch(/py-2/)
+
+    const titleHeader = screen.getByRole('columnheader', { name: 'Title' })
+    expect(titleHeader.className).toMatch(/min-w-\[15rem\]/)
+    // No column absorbs the slack any more: `w-full` on one column is what
+    // collapsed every other one to min-content.
+    for (const header of screen.getAllByRole('columnheader')) {
+      expect(header.className.split(/\s+/)).not.toContain('w-full')
+    }
+  })
+
+  // F-R5-5 call site: the pinned identity cell paints the row's own background
+  // through the primitive rather than naming a second wash of its own.
+  it('pins the identity column through the table primitive', async () => {
+    await mountList()
+    await screen.findByRole('table')
+
+    const titleHeader = screen.getByRole('columnheader', { name: 'Title' })
+    expect(titleHeader).toHaveAttribute('data-pinned', '')
+    const cell = screen.getAllByRole('cell')[0]
+    expect(cell).toHaveAttribute('data-pinned', '')
+    expect(cell?.className ?? '').not.toContain('group-hover/row:bg-muted')
   })
 
   it('shows aria-busy while the list loads and clears it when data resolves', async () => {
@@ -394,12 +451,15 @@ describe('organizer submissions', () => {
     expect(retried?.[1]?.method ?? 'GET').toBe('GET')
   })
 
-  it('renders expired-session for 401 and byte-identical generic denial for 403 and 404', async () => {
-    const deniedBodies: string[] = []
+  // R4-note: 403 used to print "Not found" here, so an organizer route opened
+  // by a session that is not an organizer's claimed the page did not exist.
+  // 404 keeps carrying absent AND cross-event ids (both answered identically by
+  // every admin route), so nothing about what exists leaks either way.
+  it('answers each denial in its own words and leaks nothing about the record', async () => {
     for (const state of [
-      { status: 401, code: 'unauthorized' },
-      { status: 403, code: 'forbidden' },
-      { status: 404, code: 'not_found' },
+      { status: 401, code: 'unauthorized', heading: 'Session expired' },
+      { status: 403, code: 'forbidden', heading: 'Access forbidden' },
+      { status: 404, code: 'not_found', heading: 'Not found' },
     ] as const) {
       fetchHandler = (url, init) => {
         const method = init?.method ?? 'GET'
@@ -410,12 +470,10 @@ describe('organizer submissions', () => {
       }
       await mountList()
 
+      expect(await screen.findByRole('heading', { name: state.heading })).toBeInTheDocument()
       if (state.status === 401) {
-        expect(await screen.findByRole('heading', { name: 'Session expired' })).toBeInTheDocument()
         expect(screen.getByRole('alert')).toHaveTextContent(/session has expired/i)
         expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
-      } else {
-        expect(await screen.findByRole('heading', { name: 'Not found' })).toBeInTheDocument()
       }
       const rendered = document.body.textContent ?? ''
       expect(rendered).not.toContain('server copy')
@@ -423,13 +481,44 @@ describe('organizer submissions', () => {
       expect(rendered).not.toContain('Speaker A')
       expect(rendered).not.toContain('speaker.a@example.test')
       expect(rendered).not.toContain(SUBMISSION_ID)
-      if (state.status !== 401) {
-        deniedBodies.push(rendered)
-      }
       cleanup()
     }
-    expect(deniedBodies).toHaveLength(2)
-    expect(deniedBodies[0]).toBe(deniedBodies[1])
+  })
+
+  // TA1-P13: how many proposals, said about the rows on screen — and said
+  // beside the h1 rather than inside it, because the heading is a focus target
+  // whose accessible name is contracted.
+  it('states the count of the rows it is showing, outside the heading', async () => {
+    await mountList()
+    await screen.findByRole('table')
+
+    const heading = screen.getByRole('heading', { level: 1 })
+    expect(heading).toHaveAccessibleName('Submissions')
+    expect(heading.textContent).toBe('Submissions')
+
+    const description = document.querySelector('[data-slot="page-header-description"]')
+    expect(description).toHaveTextContent('1 proposal from the call for papers.')
+    // The number is the length of the visible list, not a second read: as many
+    // row links in the table as the sentence claims proposals.
+    expect(within(screen.getByRole('table')).getAllByRole('link')).toHaveLength(1)
+    // Metadata, not an announcement: nothing here becomes a live region.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('keeps the count sentence out of the way until there are rows', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === listUrl()) return jsonResponse([])
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountList()
+    await screen.findByText(/no submissions yet/i)
+
+    const description = document.querySelector('[data-slot="page-header-description"]')
+    // "0 proposals" answers a question nobody asked on a page whose empty
+    // state is already explaining itself.
+    expect(description).toHaveTextContent('Proposals arrive here from the call for papers.')
+    expect(description?.textContent ?? '').not.toMatch(/\d/)
   })
 
   it('renders no counters or dashboard summary elements', async () => {
@@ -461,6 +550,69 @@ describe('organizer submissions', () => {
     // The answers stay read-only: the only controls on the page are the
     // acceptance actions, and nothing on the snapshot is editable.
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  // TA6-T8: the page a judge spends the most time on never said when the
+  // proposal arrived, though the list they clicked in from prints it.
+  it('says when the proposal was submitted, without touching the h1', async () => {
+    await mountDetail()
+
+    const heading = await screen.findByRole('heading', { level: 1, name: 'My talk' })
+    // The heading is a focus target with a contracted accessible name; the
+    // date sits outside it.
+    expect(heading).toHaveAccessibleName('My talk')
+    expect(heading).toHaveAttribute('tabindex', '-1')
+    expect(heading.textContent).toBe('My talk')
+
+    const description = document.querySelector('[data-slot="page-header-description"]')
+    expect(description).toHaveTextContent('Submitted Aug 8, 2026, 12:00 PM')
+    // `submittedAt`, named for what it is — the machine instant stays on the
+    // attribute, and the wire format is never the words.
+    const submitted = description?.querySelector('time')
+    expect(submitted).toHaveAttribute('datetime', SUBMISSION_DETAIL.submittedAt)
+    expect(submitted?.textContent).not.toBe(SUBMISSION_DETAIL.submittedAt)
+  })
+
+  // TA5-P1/P12: one meaning per shape. A lifecycle state carries the marker a
+  // reader without colour can still see; an annotation about the form version
+  // does not, because it is not a state at all.
+  it('marks the acceptance state as a state and the version as an annotation', async () => {
+    await mountDetail()
+    await screen.findByRole('heading', { level: 1, name: 'My talk' })
+
+    const state = screen.getByText('Pending').closest('[data-slot="badge"]')
+    expect(state).toHaveAttribute('data-dot', '')
+    // Nothing is in the air on load, so the marker is still rather than
+    // breathing.
+    expect(state).not.toHaveAttribute('data-pending')
+
+    const version = screen.getByText(/version 1/i).closest('[data-slot="badge"]')
+    expect(version).not.toHaveAttribute('data-dot')
+    expect(version?.className ?? '').not.toContain('before:')
+  })
+
+  // R1-M12 / V7-M12 / RV2-N2: the two columns of the detail canvas. The rail's
+  // width is what stops an acceptance subject line wrapping mid-title, the
+  // answer measure is what stops a long abstract running the full width of a
+  // desktop, and the answers card ends where its answers end so a sparse
+  // proposal never draws 1527px of framed nothing beside a 1600px rail.
+  it('holds the proposal and its rail in two columns, neither of them a void', async () => {
+    await mountDetail()
+    await screen.findByRole('heading', { name: 'My talk' })
+
+    const answers = screen.getByText('Title').closest('div')
+    expect(answers?.className ?? '').toMatch(/md:grid-cols-\[minmax\(0,10rem\)_minmax\(0,62ch\)\]/)
+
+    const canvas = screen.getByText('Title').closest('[class*="26rem"]')
+    expect(canvas).not.toBeNull()
+    expect(canvas?.className ?? '').toMatch(/lg:grid-cols-\[minmax\(0,1fr\)_26rem\]/)
+    // The row keeps stretching, so a proposal taller than the rail still pairs
+    // the two columns; only the card that would carry the void opts out.
+    expect(canvas?.className.split(/\s+/)).not.toContain('items-start')
+
+    const answersCard = screen.getByText('Title').closest('[data-slot="card"]')
+    expect(answersCard).not.toBeNull()
+    expect(answersCard?.className.split(/\s+/)).toContain('self-start')
   })
 
   it('reaches acceptance from the per-submission page and reflects the acceptance state', async () => {
@@ -507,12 +659,11 @@ describe('organizer submissions', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
-  it('renders expired-session for detail 401 and byte-identical generic denial for 403/404', async () => {
-    const deniedBodies: string[] = []
+  it('answers each detail denial in its own words and leaks nothing about the record', async () => {
     for (const state of [
-      { status: 401, code: 'unauthorized' },
-      { status: 403, code: 'forbidden' },
-      { status: 404, code: 'not_found' },
+      { status: 401, code: 'unauthorized', heading: 'Session expired' },
+      { status: 403, code: 'forbidden', heading: 'Access forbidden' },
+      { status: 404, code: 'not_found', heading: 'Not found' },
     ] as const) {
       fetchHandler = (url, init) => {
         const method = init?.method ?? 'GET'
@@ -526,12 +677,10 @@ describe('organizer submissions', () => {
       }
       await mountDetail()
 
+      expect(await screen.findByRole('heading', { name: state.heading })).toBeInTheDocument()
       if (state.status === 401) {
-        expect(await screen.findByRole('heading', { name: 'Session expired' })).toBeInTheDocument()
         expect(screen.getByRole('alert')).toHaveTextContent(/session has expired/i)
         expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
-      } else {
-        expect(await screen.findByRole('heading', { name: 'Not found' })).toBeInTheDocument()
       }
       const rendered = document.body.textContent ?? ''
       expect(rendered).not.toContain('server copy')
@@ -539,13 +688,36 @@ describe('organizer submissions', () => {
       expect(rendered).not.toContain('Speaker A')
       expect(rendered).not.toContain('speaker.a@example.test')
       expect(rendered).not.toContain(SUBMISSION_ID)
-      if (state.status !== 401) {
-        deniedBodies.push(rendered)
-      }
       cleanup()
     }
-    expect(deniedBodies).toHaveLength(2)
-    expect(deniedBodies[0]).toBe(deniedBodies[1])
+  })
+
+  // R2-1.5(a): a proposal whose fields were all optional or conditionally
+  // hidden used to render an empty <dl> — a card with nothing in it and no
+  // explanation of why.
+  it('explains an answerless proposal instead of rendering an empty list', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === detailUrl()) {
+        return jsonResponse({ ...SUBMISSION_DETAIL, answers: {} })
+      }
+      if (method === 'GET' && url === versionUrl()) return jsonResponse(FORM_VERSION_DETAIL)
+      if (method === 'GET' && url === previewUrl()) return jsonResponse(ACCEPTANCE_PREVIEW)
+      if (method === 'GET' && url === reminderPreviewUrl()) return jsonResponse(REMINDER_PREVIEW)
+      if (method === 'GET' && url === messagesUrl()) return jsonResponse([])
+      return (
+        committeeResponse(url, method) ??
+        jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      )
+    }
+    await mountDetail()
+
+    await screen.findByRole('heading', { name: 'My talk' })
+    const empty = document.querySelector('[data-slot="empty-state"]')
+    expect(empty).not.toBeNull()
+    expect(empty).toHaveTextContent('No answers were submitted')
+    expect(empty).toHaveTextContent(/optional or hidden/i)
+    expect(document.querySelector('dl')).toBeNull()
   })
 
   it('retries the failed version query when only the form-version GET fails', async () => {

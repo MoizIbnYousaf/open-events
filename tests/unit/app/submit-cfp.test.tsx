@@ -278,7 +278,10 @@ describe('public CFP submit and confirmation', () => {
       }
 
       await user.click(screen.getByRole('button', { name: /submit/i }))
-      expect(await screen.findByRole('button', { name: /submitting/i })).toBeDisabled()
+      expect(await screen.findByRole('button', { name: /submitting/i })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      )
       expect(submitCalls()).toHaveLength(1)
       resolveSubmit?.(jsonResponse(SUBMISSION_DTO))
       await screen.findByRole('status')
@@ -301,8 +304,16 @@ describe('public CFP submit and confirmation', () => {
       await saveDraftOnce()
 
       await user.click(screen.getByRole('button', { name: /submit/i }))
+      // The outcome is said ONCE: the h1 names it and takes focus, and the
+      // status region beneath carries the explanation instead of repeating the
+      // title back at the speaker (R1-m9). The region is still what marks the
+      // confirmation programmatically.
       const status = await screen.findByRole('status')
-      expect(status).toHaveTextContent(/submission received/i)
+      expect(status).toHaveTextContent(/with the organizers/i)
+      // Unanchored on purpose: the rule is that the region never repeats the
+      // title back, wherever in the sentence it would land. The `^` made the
+      // check pass for any echo that was not the first word.
+      expect(status).not.toHaveTextContent(/submission received/i)
       const heading = await screen.findByRole('heading', { name: /submission received/i })
       expect(heading).toHaveFocus()
 
@@ -346,6 +357,66 @@ describe('public CFP submit and confirmation', () => {
       expect(screen.queryByRole('button', { name: /next/i })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /add co-speaker/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /submit/i })).not.toBeInTheDocument()
+      // V7-CONFIRM-NEXT: not a dead end. The one thing left to press goes to
+      // the surface that lists what the speaker just sent.
+      expect(screen.getByRole('link', { name: /speaker portal/i })).toHaveAttribute(
+        'href',
+        '/portal',
+      )
+    })
+
+    it('replaces the wizard with one expired-session page when the submit is refused 401', async () => {
+      const { user } = await mountWizard()
+      await advanceToSubmitStep(user)
+      await saveDraftOnce()
+      fetchHandler = (url, init) => {
+        const method = init?.method ?? 'GET'
+        if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+          return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+        }
+        if (method === 'POST' && url === '/api/public/submit') {
+          return jsonResponse({ error: { code: 'unauthorized', message: 'Session expired' } }, 401)
+        }
+        return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      }
+
+      await user.click(screen.getByRole('button', { name: /submit/i }))
+      await screen.findByRole('heading', { name: 'Session expired' })
+
+      // One page state, once: a refused submit must not stack a dead-end card
+      // under a wizard that is still editable and cannot submit (V-B1/B2's
+      // anatomy, one control further along).
+      const h1s = screen.getAllByRole('heading', { level: 1 })
+      expect(h1s).toHaveLength(1)
+      expect(h1s[0]).toHaveTextContent('Session expired')
+      expect(screen.queryByRole('heading', { name: 'Call for papers' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /submit/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
+    })
+
+    it('replaces the wizard with the organizer page when the submit is refused 403', async () => {
+      const { user } = await mountWizard()
+      await advanceToSubmitStep(user)
+      await saveDraftOnce()
+      fetchHandler = (url, init) => {
+        const method = init?.method ?? 'GET'
+        if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+          return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+        }
+        if (method === 'POST' && url === '/api/public/submit') {
+          return jsonResponse({ error: { code: 'forbidden', message: 'Forbidden' } }, 403)
+        }
+        return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      }
+
+      await user.click(screen.getByRole('button', { name: /submit/i }))
+      await screen.findByRole('heading', { name: /saves proposals for speakers/i })
+
+      const h1s = screen.getAllByRole('heading', { level: 1 })
+      expect(h1s).toHaveLength(1)
+      expect(screen.queryByRole('heading', { name: 'Call for papers' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /submit/i })).not.toBeInTheDocument()
     })
 

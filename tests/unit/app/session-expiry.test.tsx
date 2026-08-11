@@ -274,6 +274,12 @@ describe('public session expiry', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/session has expired/i)
     expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
     expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+    // The refusal REPLACES the page. It used to render into the save bar's own
+    // slot, leaving a second h1 under a wizard that was still editable and
+    // could no longer save anything.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Call for papers' })).not.toBeInTheDocument()
   })
 
   it('renders the expired session state for a submit POST 401 with no confirmation', async () => {
@@ -312,9 +318,16 @@ describe('public session expiry', () => {
     expect(screen.queryByRole('heading', { name: 'Submission received' })).not.toBeInTheDocument()
   })
 
-  it.each(['save', 'submit'] as const)(
-    'renders ForbiddenState for a 403 on %s without the expired state',
-    async (surface) => {
+  // A 403 on the SAVE or the SUBMIT is an organizer following their own
+  // public link, and both surfaces now answer through the same page state —
+  // a way into their own workspace, never a second dead-end card stacked
+  // under a wizard that can no longer send anything.
+  it.each([
+    ['save', 'This form saves proposals for speakers'],
+    ['submit', 'This form saves proposals for speakers'],
+  ] as const)(
+    'renders a forbidden page state for a 403 on %s without the expired state',
+    async (surface, heading) => {
       fetchHandler = (url, init) => {
         const method = init?.method ?? 'GET'
         if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
@@ -357,8 +370,22 @@ describe('public session expiry', () => {
         clearSpy.mockRestore()
       }
 
-      expect(await screen.findByRole('heading', { name: 'Access forbidden' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
       expect(screen.queryByRole('heading', { name: 'Session expired' })).not.toBeInTheDocument()
+      // RV1-N2: one state answers both refusals, so its sentence names the
+      // identity rather than the operation. "cannot hold a speaker's draft"
+      // described a save to a reader who had just pressed Submit.
+      expect(
+        screen.getByText(
+          /A proposal belongs to a speaker session, and yours is an organizer one\./,
+        ),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/speaker's draft/i)).not.toBeInTheDocument()
+      // The way forward is the same on both legs, so it is asserted on both.
+      expect(screen.getByRole('link', { name: /organizer workspace/i })).toHaveAttribute(
+        'href',
+        '/admin',
+      )
     },
   )
 
@@ -408,9 +435,15 @@ describe('public session expiry', () => {
   })
 
   it('invokes a recovery handler targeting /start when Sign in again is clicked', async () => {
+    // Reached the way a real speaker reaches it: the optional draft probe says
+    // "no draft", the speaker writes, and the SAVE is the request that finds
+    // the session gone. A refused first probe is not an expired session.
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
       if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+        return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+      }
+      if (method === 'PUT' && url === '/api/public/draft') {
         return deniedEnvelope('unauthorized')
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -437,6 +470,7 @@ describe('public session expiry', () => {
         <RouterProvider router={router} />
       </QueryClientProvider>,
     )
+    await user.click(await screen.findByRole('button', { name: /^save$/i }))
     await screen.findByRole('heading', { name: 'Session expired' })
 
     const navigateSpy = vi.spyOn(router, 'navigate')
@@ -449,11 +483,15 @@ describe('public session expiry', () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
       if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+        return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+      }
+      if (method === 'PUT' && url === '/api/public/draft') {
         return deniedEnvelope('unauthorized')
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
-    const { queryClient } = await mountSaveSurface()
+    const { queryClient, user } = await mountSaveSurface()
+    await user.click(await screen.findByRole('button', { name: /^save$/i }))
     await screen.findByRole('heading', { name: 'Session expired' })
 
     const clearSpy = vi.spyOn(queryClient, 'clear')
@@ -517,5 +555,99 @@ describe('public session expiry', () => {
       await screen.findByRole('alert')
       cleanup()
     }
+  })
+})
+
+/**
+ * A refused save has three different meanings and the page owes each of them a
+ * different whole answer — never a second card stacked under a wizard that can
+ * no longer save. The probe is what tells them apart: GET /api/public/draft is
+ * session-guarded, so an answer of any kind proves a session existed and a
+ * refusal proves it did not.
+ */
+describe('a refused save replaces the wizard with one honest page state', () => {
+  function deniedProbeHandler(probe: 'unauthorized' | 'forbidden') {
+    return (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+        return deniedEnvelope(probe)
+      }
+      if (method === 'PUT' && url === '/api/public/draft') {
+        return deniedEnvelope(probe)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+  }
+
+  function assertOnePageState() {
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    // The wizard is gone, not merely pushed above the card: no step controls,
+    // no title field, nothing left to type into that cannot be saved.
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^next$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Call for papers' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/proposal title/i)).not.toBeInTheDocument()
+  }
+
+  it('tells a visitor who never had a session to identify themselves, not that it expired', async () => {
+    fetchHandler = deniedProbeHandler('unauthorized')
+    const { user } = await mountSaveSurface()
+    // The refused probe means "no draft", so the call for papers renders.
+    await screen.findByRole('heading', { level: 1, name: 'Call for papers' })
+    await user.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Identify yourself to save your proposal',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Session expired' })).not.toBeInTheDocument()
+    expect(screen.getByText(/nothing you have typed here has been stored yet/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /speaker sign-in/i })).toHaveAttribute('href', '/start')
+    assertOnePageState()
+  })
+
+  it('sends an organizer refused with 403 to their own workspace', async () => {
+    fetchHandler = deniedProbeHandler('forbidden')
+    const { user } = await mountSaveSurface()
+    await screen.findByRole('heading', { level: 1, name: 'Call for papers' })
+    await user.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'This form saves proposals for speakers',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /organizer workspace/i })).toHaveAttribute(
+      'href',
+      '/admin',
+    )
+    assertOnePageState()
+  })
+
+  it('keeps the genuine expiry for a speaker whose probe had answered', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+        return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+      }
+      if (method === 'PUT' && url === '/api/public/draft') {
+        return deniedEnvelope('unauthorized')
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    const { user } = await mountSaveSurface()
+    await user.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Session expired' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Identify yourself to save your proposal' }),
+    ).not.toBeInTheDocument()
+    assertOnePageState()
   })
 })

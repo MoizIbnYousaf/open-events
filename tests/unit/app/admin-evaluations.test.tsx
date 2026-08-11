@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -173,6 +173,19 @@ describe('organizer review committee panel', () => {
     expect(screen.getByRole('heading', { level: 2, name: /review committee/i })).toBeInTheDocument()
   })
 
+  // aria-busy tells assistive tech to hold off on the subtree it marks, so a
+  // live region inside it is announced to nobody. The busy flag belongs to the
+  // placeholder shapes; the sentence has to sit outside them.
+  it('keeps the loading sentence outside the aria-busy placeholder subtree', async () => {
+    fetchHandler = () => new Promise<Response>(() => undefined)
+    mountPanel()
+
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent(/loading the review committee/i)
+    expect(status.closest('[aria-busy="true"]')).toBeNull()
+    expect(document.querySelector('[aria-busy="true"]')).not.toBeNull()
+  })
+
   it('lists the committee roster and what each round concluded', async () => {
     mountPanel()
 
@@ -231,23 +244,57 @@ describe('organizer review committee panel', () => {
     expect(email.getAttribute('aria-describedby')).toBe(error.id)
   })
 
-  it('reports a refused assignment without leaking raw server copy', async () => {
-    const user = userEvent.setup()
-    fetchHandler = (url, init) => {
-      const method = init?.method ?? 'GET'
-      if (method === 'POST' && url === ASSIGNMENTS_PATH) {
-        return jsonResponse({ error: { code: 'not_found', message: 'raw server copy' } }, 404)
+  // F-R3-9: assignment resolves an existing identity and never creates one, so
+  // the ordinary refusal has a cause the organizer cannot guess and a recovery
+  // nobody was telling them about.
+  it.each([
+    {
+      code: 'not_found',
+      status: 404,
+      expected: /no one has signed in with that email yet/i,
+      recovery: /request a sign-in link/i,
+    },
+    {
+      code: 'conflict',
+      status: 409,
+      expected: /no open review round/i,
+      recovery: /open a round above/i,
+    },
+    {
+      code: 'validation_failed',
+      status: 400,
+      expected: /not an email address/i,
+      recovery: /check it and try again/i,
+    },
+    {
+      code: 'internal',
+      status: 500,
+      expected: /that evaluator could not be assigned/i,
+      recovery: /that evaluator could not be assigned/i,
+    },
+  ])(
+    'names the cause and the way forward when an assignment is refused with $code',
+    async ({ code, status, expected, recovery }) => {
+      const user = userEvent.setup()
+      fetchHandler = (url, init) => {
+        const method = init?.method ?? 'GET'
+        if (method === 'POST' && url === ASSIGNMENTS_PATH) {
+          return jsonResponse({ error: { code, message: 'raw server copy' } }, status)
+        }
+        return defaultHandler(url, init)
       }
-      return defaultHandler(url, init)
-    }
-    mountPanel()
-    await screen.findByText('Reviewer One')
+      mountPanel()
+      await screen.findByText('Reviewer One')
 
-    await user.type(screen.getByLabelText(/evaluator email/i), 'nobody@example.test')
-    await user.click(screen.getByRole('button', { name: /assign evaluator/i }))
+      await user.type(screen.getByLabelText(/evaluator email/i), 'nobody@example.test')
+      await user.click(screen.getByRole('button', { name: /assign evaluator/i }))
 
-    expect(await screen.findByText(/that evaluator could not be assigned/i)).toBeInTheDocument()
-  })
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(expected)
+      expect(alert).toHaveTextContent(recovery)
+      expect(document.body.textContent ?? '').not.toContain('raw server copy')
+    },
+  )
 
   it('closes the live round and opens the next one by number', async () => {
     const user = userEvent.setup()
@@ -255,14 +302,100 @@ describe('organizer review committee panel', () => {
     await screen.findByText('Reviewer One')
 
     await user.click(screen.getByRole('button', { name: /close round 2/i }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }))
     await waitFor(() =>
       expect(callsTo('/api/admin/events/demo-conf-2026/rounds/round-2/close', 'POST')).toBe(1),
     )
     await waitFor(() => expect(callsTo(ROUNDS_PATH, 'GET')).toBe(2))
 
     await user.click(screen.getByRole('button', { name: /open round 3/i }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm open' }))
     await waitFor(() => expect(callsTo(ROUNDS_PATH, 'POST')).toBe(1))
     expect(bodyOf(ROUNDS_PATH, 'POST')).toEqual({ number: 3, name: 'Round 3' })
+  })
+
+  // R2-1.3(b) / F-R3-5: closing a round is one-way, so the panel asks first
+  // and a cancelled question writes nothing.
+  it('asks before changing a round and writes nothing when the question is cancelled', async () => {
+    const user = userEvent.setup()
+    mountPanel()
+    await screen.findByText('Reviewer One')
+
+    await user.click(screen.getByRole('button', { name: /close round 2/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(/cannot be reopened/i)
+    expect(callsTo('/api/admin/events/demo-conf-2026/rounds/round-2/close', 'POST')).toBe(0)
+
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(callsTo('/api/admin/events/demo-conf-2026/rounds/round-2/close', 'POST')).toBe(0)
+
+    await user.click(screen.getByRole('button', { name: /open round 3/i }))
+    const openDialog = await screen.findByRole('dialog')
+    expect(openDialog).toHaveTextContent(/starts taking ratings/i)
+    await user.click(within(openDialog).getByRole('button', { name: /cancel/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(callsTo(ROUNDS_PATH, 'POST')).toBe(0)
+  })
+
+  // F-R3-1: a pending control is aria-disabled, not natively disabled, so the
+  // reader keeps the place they pressed from. These three sites still carried
+  // the native attribute and the browser blurred every one of them.
+  it('keeps focus on each in-flight control instead of dropping it to the body', async () => {
+    const user = userEvent.setup()
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'POST') return new Promise<Response>(() => undefined)
+      return defaultHandler(url, init)
+    }
+    mountPanel()
+    await screen.findByText('Reviewer One')
+
+    await user.type(screen.getByLabelText(/evaluator email/i), 'reviewer@example.test')
+    const assign = screen.getByRole('button', { name: 'Assign evaluator' })
+    await user.click(assign)
+    const assigning = await screen.findByRole('button', { name: 'Assigning evaluator…' })
+    expect(assigning).toHaveAttribute('aria-busy', 'true')
+    expect(assigning).toHaveAttribute('aria-disabled', 'true')
+    expect(assigning).not.toBeDisabled()
+    expect(assigning).toHaveFocus()
+    expect(document.activeElement).not.toBe(document.body)
+
+    // The round triggers sit behind their confirm dialog while the request
+    // runs, so the node itself is what carries the proof: aria-disabled and
+    // busy, never the native attribute that blurs whatever is standing on it.
+    cleanup()
+    for (const name of [/close round 2/i, /open round 3/i]) {
+      const roundUser = userEvent.setup()
+      mountPanel()
+      await screen.findByText('Reviewer One')
+      const trigger = screen.getByRole('button', { name })
+      await roundUser.click(trigger)
+      await roundUser.click(await screen.findByRole('button', { name: /^confirm/i }))
+      await waitFor(() => expect(trigger).toHaveAttribute('aria-busy', 'true'))
+      expect(trigger).toHaveAttribute('aria-disabled', 'true')
+      expect(trigger).not.toBeDisabled()
+      cleanup()
+    }
+  })
+
+  // V1-COMMS-FOCUS / V8-N1: the confirm dialog hands focus back to the trigger
+  // it was opened from, and closing a round replaces that trigger — so focus
+  // landed on <body>. The heading is the landing place.
+  it('lands focus on the panel heading when a round change replaces its trigger', async () => {
+    const user = userEvent.setup()
+    mountPanel()
+    await screen.findByText('Reviewer One')
+
+    await user.click(screen.getByRole('button', { name: /close round 2/i }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }))
+    await waitFor(() =>
+      expect(callsTo('/api/admin/events/demo-conf-2026/rounds/round-2/close', 'POST')).toBe(1),
+    )
+
+    const heading = screen.getByRole('heading', { name: 'Review committee' })
+    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 5000 })
+    expect(document.activeElement).not.toBe(document.body)
   })
 
   it('shows generic copy when the committee cannot be loaded', async () => {
@@ -386,23 +519,131 @@ describe('organizer review committee page', () => {
     expect(callsTo(CRITERIA_PATH, 'POST')).toBe(0)
   })
 
-  it('runs the rounds from the same page and links back to event settings', async () => {
+  // TA5-P1/P12: a round's status is a lifecycle state and wears the marker; a
+  // criterion's weight is an annotation about that criterion and does not. And
+  // while a close is really in the air, the open round's marker is what says
+  // so — silently, because this card already owns the page's live region.
+  it('marks a round status as state, a weight as annotation, and breathes the round being closed', async () => {
+    const user = userEvent.setup()
+    let releaseClose: ((response: Response) => void) | undefined
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'POST' && url === '/api/admin/events/demo-conf-2026/rounds/round-2/close') {
+        return new Promise<Response>((resolve) => {
+          releaseClose = resolve
+        })
+      }
+      return committeeHandler(url, init)
+    }
+    await mountCommittee()
+
+    await screen.findByText(/round 2 is open/i)
+    const chipFor = (label: string): Element | null =>
+      Array.from(document.querySelectorAll('[data-slot="badge"]')).find(
+        (chip) => chip.textContent === label,
+      ) ?? null
+
+    expect(chipFor('Open')).toHaveAttribute('data-dot', '')
+    expect(chipFor('Closed')).toHaveAttribute('data-dot', '')
+    expect(chipFor('Weight 2')).not.toHaveAttribute('data-dot')
+    expect(chipFor('Weight 2')?.className ?? '').not.toContain('before:')
+
+    await user.click(screen.getByRole('button', { name: /close round 2/i }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }))
+
+    await waitFor(() => expect(chipFor('Open')).toHaveAttribute('data-pending', ''))
+    // The label is the state the server last confirmed, and it stays true
+    // until the server says otherwise. The round that is already closed is not
+    // waiting on anything.
+    expect(chipFor('Open')).toHaveTextContent('Open')
+    expect(chipFor('Open')).not.toHaveAttribute('role')
+    expect(chipFor('Open')).not.toHaveAttribute('aria-live')
+    expect(chipFor('Closed')).not.toHaveAttribute('data-pending')
+
+    releaseClose?.(jsonResponse({ ...ROUND_TWO, status: 'closed' }))
+    // The wait ends and the marker settles back to rest.
+    await waitFor(() => expect(chipFor('Open')).not.toHaveAttribute('data-pending'))
+    expect(chipFor('Open')).toHaveAttribute('data-dot', '')
+  })
+
+  it('runs the rounds from the same page and adds no exit the rail already has', async () => {
     const user = userEvent.setup()
     await mountCommittee()
 
     expect(await screen.findByText(/round 2 is open/i)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /close round 2/i }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }))
     await waitFor(() =>
       expect(callsTo('/api/admin/events/demo-conf-2026/rounds/round-2/close', 'POST')).toBe(1),
     )
 
     await user.click(screen.getByRole('button', { name: /open round 3/i }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm open' }))
     await waitFor(() => expect(callsTo(ROUNDS_PATH, 'POST')).toBe(1))
     expect(bodyOf(ROUNDS_PATH, 'POST')).toEqual({ number: 3, name: 'Round 3' })
 
-    expect(screen.getByRole('link', { name: /back to event settings/i })).toBeInTheDocument()
+    // Review committee is one of the rail's own destinations, so the rail is
+    // already the way back to Event settings and marks where the reader stands.
+    // A second exit in the content column would claim the two pages are parent
+    // and child while the rail shows them as siblings (`BackLink.tsx`).
+    expect(screen.queryByRole('link', { name: /^back to/i })).toBeNull()
   })
+
+  // R2-1.3(b) / F-R3-5: the event-level surface asks the same question, in the
+  // same words, and a cancelled question writes nothing.
+  it('asks before changing a round from the event-level page', async () => {
+    const user = userEvent.setup()
+    await mountCommittee()
+    await screen.findByText(/round 2 is open/i)
+
+    await user.click(screen.getByRole('button', { name: /close round 2/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(/cannot be reopened/i)
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(callsTo('/api/admin/events/demo-conf-2026/rounds/round-2/close', 'POST')).toBe(0)
+  })
+
+  it('keeps focus on the in-flight Add criterion control', async () => {
+    const user = userEvent.setup()
+    fetchHandler = (url, init) => {
+      if ((init?.method ?? 'GET') === 'POST' && url === CRITERIA_PATH) {
+        return new Promise<Response>(() => undefined)
+      }
+      return committeeHandler(url, init)
+    }
+    await mountCommittee()
+    await screen.findByText('Overall fit')
+
+    await user.type(screen.getByLabelText(/criterion name/i), 'Clarity')
+    await user.click(screen.getByRole('button', { name: 'Add criterion' }))
+    const inFlight = await screen.findByRole('button', { name: 'Add criterion' })
+    await waitFor(() => expect(inFlight).toHaveAttribute('aria-busy', 'true'))
+    expect(inFlight).not.toBeDisabled()
+    expect(inFlight).toHaveFocus()
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('lands focus on the rounds heading when a round change replaces its trigger', async () => {
+    const user = userEvent.setup()
+    await mountCommittee()
+    await screen.findByText(/round 2 is open/i)
+
+    await user.click(screen.getByRole('button', { name: /close round 2/i }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }))
+    await waitFor(() =>
+      expect(callsTo('/api/admin/events/demo-conf-2026/rounds/round-2/close', 'POST')).toBe(1),
+    )
+
+    const heading = screen.getByRole('heading', { name: 'Review rounds' })
+    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 5000 })
+    expect(document.activeElement).not.toBe(document.body)
+    // The inner waitFor's 5s allowance equals the suite's default testTimeout,
+    // so under parallel-suite load the TEST clock could expire before the
+    // waitFor did — a load flake, not a product signal. The test gets its own
+    // budget so the only thing that can fail it is the focus contract.
+  }, 15000)
 
   it('shows generic copy when the committee page cannot be loaded', async () => {
     fetchHandler = () =>

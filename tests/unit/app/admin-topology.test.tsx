@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/react-router'
@@ -228,14 +228,19 @@ describe('real generated router topology', () => {
     expect(await screen.findByText('Format')).toBeInTheDocument()
   })
 
-  it('navigates back from taxonomies to the event config', async () => {
+  it('navigates back from taxonomies to the event config through the rail', async () => {
     const user = userEvent.setup()
     const router = mountRealRouter('/admin/events/demo-conf-2026/taxonomies')
     await router.load()
     renderReal(router)
 
     expect(await screen.findByText('Format')).toBeInTheDocument()
-    await user.click(screen.getByText(/back to event settings/i))
+    // Taxonomies is a rail destination, so the rail IS the way back and the
+    // page carries no second exit of its own (`BackLink.tsx`). The route has to
+    // stay reachable either way — that is what this asserts.
+    const rail = await screen.findByRole('navigation', { name: 'Event' })
+    expect(screen.queryByRole('link', { name: /^back to/i })).toBeNull()
+    await user.click(within(rail).getByRole('link', { name: 'Event settings' }))
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/admin/events/demo-conf-2026')

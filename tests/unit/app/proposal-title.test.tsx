@@ -368,3 +368,162 @@ describe('public CFP resumed draft hydration', () => {
     expect(submit).toBeEnabled()
   })
 })
+
+describe('public CFP proposal step composition', () => {
+  it('keeps the caret where the speaker put it when editing the middle of the title', async () => {
+    const { user } = await mountWizard()
+    await advanceToProposalInformation(user)
+
+    const title = await screen.findByRole<HTMLInputElement>('textbox', { name: 'Proposal title' })
+    await user.type(title, 'ReactCaret')
+    await user.type(title, 'ABC', { initialSelectionStart: 5, initialSelectionEnd: 5 })
+
+    expect(title).toHaveValue('ReactABCCaret')
+    expect(title.selectionStart).toBe(8)
+  })
+
+  it('keeps the words typed while a save is in flight, caret included', async () => {
+    // A save is a round trip and a speaker keeps writing across it. The
+    // acknowledgement used to be applied wholesale — server title in, editor
+    // title out — so every keystroke made after the PUT left was discarded the
+    // moment it landed, and the caret was thrown to the end of whatever was
+    // left. Deterministic, not a race in the flaky sense: the deferred PUT
+    // below reproduces it every run.
+    let resolveSave: ((response: Response) => void) | undefined
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === draftUrl()) {
+        return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+      }
+      if (method === 'PUT' && url === '/api/public/draft') {
+        return new Promise<Response>((resolve) => {
+          resolveSave = resolve
+        })
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    const { queryClient, user } = await mountWizard()
+    await advanceToProposalInformation(user)
+
+    const title = await screen.findByRole<HTMLInputElement>('textbox', { name: 'Proposal title' })
+    await user.type(title, 'Alpha')
+    await user.click(await screen.findByRole('button', { name: /save/i }))
+    await screen.findByRole('button', { name: /saving/i })
+
+    await user.type(title, ' and Beta')
+    await user.type(title, '!', { initialSelectionStart: 5, initialSelectionEnd: 5 })
+    expect(title).toHaveValue('Alpha! and Beta')
+
+    // The server only ever saw what the request carried.
+    expect(draftPutBodies()).toHaveLength(1)
+    expect(draftPutBodies()[0]?.title).toBe('Alpha')
+    resolveSave?.(jsonResponse({ ...SAVED_DRAFT, title: 'Alpha' }))
+    await screen.findByText('Saved', { exact: true })
+
+    expect(title).toHaveValue('Alpha! and Beta')
+    expect(title.selectionStart).toBe(6)
+    expect(document.activeElement).toBe(title)
+    // Still unsaved work, because it is: nobody has stored those keystrokes.
+    expect(queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)?.title).toBe(
+      'Alpha! and Beta',
+    )
+    expect(queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)?.dirty).toBe(
+      true,
+    )
+  })
+
+  it('accepts the saved draft wholesale when nothing was typed during the save', async () => {
+    const { queryClient, user } = await mountWizard()
+    await advanceToProposalInformation(user)
+    await fillProposalAndSave(user)
+
+    const editor = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
+    expect(editor?.title).toBe('My talk')
+    expect(editor?.draftId).toBe(SAVED_DRAFT.id)
+    expect(editor?.dirty).toBe(false)
+  })
+
+  it('renders the step heading and description above the first field', async () => {
+    const { user } = await mountWizard()
+    await advanceToProposalInformation(user)
+
+    const heading = await screen.findByRole('heading', { name: 'Proposal information' })
+    const title = await screen.findByRole('textbox', { name: 'Proposal title' })
+    expect(heading.tagName).toBe('H2')
+    expect(
+      heading.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeGreaterThan(0)
+  })
+
+  it('focuses the proposal title — the first field on the step — on arrival', async () => {
+    const { user } = await mountWizard()
+    await advanceToProposalInformation(user)
+
+    expect(await screen.findByRole('textbox', { name: 'Proposal title' })).toHaveFocus()
+  })
+
+  it('focuses the title, not the second invalid field, when the step fails validation', async () => {
+    const { user } = await mountWizard()
+    await advanceToProposalInformation(user)
+
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    const title = await screen.findByRole('textbox', { name: 'Proposal title' })
+    expect(title).toHaveFocus()
+    expect(title).toHaveAttribute('aria-invalid', 'true')
+    expect(await screen.findByLabelText(/session format/i)).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('gathers Back, Save and Next into one action bar below the content card', async () => {
+    const { user } = await mountWizard()
+    await advanceToProposalInformation(user)
+
+    const back = screen.getByRole('button', { name: 'Back' })
+    const save = screen.getByRole('button', { name: 'Save' })
+    const next = screen.getByRole('button', { name: 'Next' })
+    expect(back.parentElement).toBe(save.parentElement)
+    expect(next.parentElement).toBe(save.parentElement)
+    // The step's controls sit under the content they act on, never above it.
+    const card = screen.getByRole('heading', { name: 'Proposal information' })
+    expect(card.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(0)
+    // The stepper is the map alone.
+    expect(screen.getByRole('navigation', { name: 'Form steps' })).not.toContainElement(next)
+  })
+})
+
+describe('public CFP review step', () => {
+  async function reachReviewStep(user: ReturnType<typeof userEvent.setup>) {
+    await advanceToProposalInformation(user)
+    await user.selectOptions(await screen.findByLabelText(/session format/i), 'talk')
+    await user.type(await screen.findByRole('textbox', { name: 'Proposal title' }), 'My talk')
+    await user.click(screen.getByRole('button', { name: /next/i }))
+    await user.click(screen.getByRole('button', { name: /next/i }))
+    expect(await screen.findByRole('listitem', { name: /review and submit/i })).toHaveAttribute(
+      'aria-current',
+    )
+  }
+
+  it('summarises the answers the speaker is about to send', async () => {
+    const { user } = await mountWizard()
+    await reachReviewStep(user)
+
+    const summaryTitle = screen.getByText('Proposal title', { selector: 'dt' })
+    expect(summaryTitle).toBeInTheDocument()
+    expect(summaryTitle.parentElement).toHaveTextContent('My talk')
+    const format = screen.getByText('Session format', { selector: 'dt' })
+    expect(format.parentElement).toHaveTextContent('talk')
+    // Hidden questions were never asked, so the summary does not list them.
+    expect(screen.queryByText('Workshop details', { selector: 'dt' })).not.toBeInTheDocument()
+  })
+
+  it('says in words why Submit is off before the draft has been saved', async () => {
+    const { user } = await mountWizard()
+    await reachReviewStep(user)
+
+    const submit = screen.getByRole('button', { name: /submit/i })
+    expect(submit).toBeDisabled()
+    const reason = screen.getByText(/save your draft first/i)
+    expect(submit).toHaveAttribute('aria-describedby', reason.id)
+    expect(reason.id).not.toBe('')
+  })
+})

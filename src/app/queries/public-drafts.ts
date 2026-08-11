@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { useServerMutation } from '../../../adapters/tanstack-react-query'
@@ -68,6 +69,11 @@ export function usePublicEditor(formId: string, formVersionId: string) {
 
 export function useSaveDraft() {
   const queryClient = useQueryClient()
+  // What the PUT carried, captured as it left. A save is a round trip and a
+  // speaker keeps writing across it: acknowledging the server's copy wholesale
+  // threw away every keystroke made while the request was in flight, which is
+  // the one moment a speaker is most likely to still be typing.
+  const sent = useRef<{ readonly title: string; readonly answers: AnswerMap } | null>(null)
   return useServerMutation({
     mutationFn: () => {
       const editor = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
@@ -81,18 +87,29 @@ export function useSaveDraft() {
         title: editor.title,
         answers: editor.answers,
       }
+      sent.current = { title: editor.title, answers: editor.answers }
       return saveDraft(input)
     },
     onSuccess: (draft: DraftDto) => {
       const editor = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
       if (editor === undefined) return
+      // MERGE, never overwrite: anything the editor holds that is not what the
+      // PUT sent was typed after it left, so it is newer than the answer coming
+      // back and it wins. Identity comparison is exact here because every
+      // editor write replaces the object it changes.
+      const inFlight = sent.current
+      sent.current = null
+      const titleAhead = inFlight !== null && editor.title !== inFlight.title
+      const answersAhead = inFlight !== null && editor.answers !== inFlight.answers
       queryClient.setQueryData(publicDraftQueryKeys.activeDraft(editor.formId), draft)
       queryClient.setQueryData(publicDraftQueryKeys.editor, {
         ...editor,
         draftId: draft.id,
-        title: draft.title,
-        answers: draft.answers,
-        dirty: false,
+        title: titleAhead ? editor.title : draft.title,
+        answers: answersAhead ? editor.answers : draft.answers,
+        // Still dirty when the speaker is ahead of the server: what they typed
+        // during the save has not been stored by anyone yet.
+        dirty: titleAhead || answersAhead,
       })
     },
     retry: false,

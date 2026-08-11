@@ -3,6 +3,13 @@ import type { ReactElement } from 'react'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import TasksPanel from '../../../src/app/features/public/TasksPanel'
@@ -124,6 +131,46 @@ function renderWithClient(ui: ReactElement) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+  return { queryClient }
+}
+
+/**
+ * Readiness inside a router, because its rows now drill down.
+ *
+ * Every identity cell on this table is a `Link` to the submission it names, so
+ * the page needs a router the way the submissions list beside it always has.
+ * The stub destination is registered as a real route: a link that resolves to
+ * nothing is not the contract, and asserting on its `href` is how the test
+ * proves the row leads where it says it does.
+ */
+async function renderReadiness(eventSlug: string) {
+  const rootRoute = createRootRoute()
+  const readinessRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/admin/events/$slug/readiness',
+    component: () => <ReadinessPage eventSlug={eventSlug} />,
+  })
+  const submissionRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/admin/events/$slug/submissions/$submissionId',
+    component: () => <div>Submission</div>,
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([readinessRoute, submissionRoute]),
+    history: createMemoryHistory({ initialEntries: [`/admin/events/${eventSlug}/readiness`] }),
+  })
+  // Loaded before it is rendered: a RouterProvider that has not resolved its
+  // match yet paints nothing, and the first assertion after `render` — the
+  // loading state's own aria-busy — would be reading an empty document.
+  await router.load()
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  )
   return { queryClient }
 }
 
@@ -400,7 +447,7 @@ describe('organizer readiness', () => {
   })
 
   it('renders exactly one page-owned h1 and a real readiness table', async () => {
-    renderWithClient(<ReadinessPage eventSlug={EVENT_SLUG} />)
+    await renderReadiness(EVENT_SLUG)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Readiness' })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
@@ -421,13 +468,67 @@ describe('organizer readiness', () => {
     expect(rendered).not.toContain('undefined')
   })
 
+  it('makes every identity cell a drill-down to that submission', async () => {
+    await renderReadiness(EVENT_SLUG)
+
+    // TA2-1.2: a row that names a proposal and reports what its speaker still
+    // owes must also be the way to that proposal. It used to be inert text, so
+    // an organizer read "not ready" here and then went hunting for the same
+    // title on another list.
+    const talk = await screen.findByRole('link', { name: 'My talk — open submission' })
+    expect(talk).toHaveAttribute(
+      'href',
+      `/admin/events/${EVENT_SLUG}/submissions/${READINESS.submissions[0].submissionId}`,
+    )
+    const workshop = screen.getByRole('link', { name: 'Hands-on workshop — open submission' })
+    expect(workshop).toHaveAttribute(
+      'href',
+      `/admin/events/${EVENT_SLUG}/submissions/${READINESS.submissions[1].submissionId}`,
+    )
+    // One link per row, in the identity cell and nowhere else: the count of
+    // ways out of a row is part of what keeps the table scannable.
+    expect(screen.getAllByRole('link')).toHaveLength(2)
+    // WCAG 2.2 target size, the same opt-in the submissions list uses for the
+    // same reason — a link alone in a table cell.
+    expect(talk).toHaveClass('inline-flex', 'min-h-6', 'min-w-6')
+  })
+
+  // TA4-P3: the frame belongs to the element that scrolls. Wrapped in an
+  // `overflow-hidden` box, the scroll container's focus ring — an outward
+  // shadow on a real tab stop — was clipped out of existence.
+  it('frames the scroller itself, so nothing clips its focus ring', async () => {
+    await renderReadiness(EVENT_SLUG)
+    await screen.findByRole('table')
+
+    const scroller = document.querySelector('[data-slot="table-container"]')
+    expect(scroller).toHaveClass('ring-1', 'ring-border', 'rounded-lg')
+    expect(scroller).toHaveClass('focus-visible:ring-2')
+    expect(scroller).toHaveAttribute('tabindex', '0')
+    expect(scroller?.parentElement?.className ?? '').not.toContain('overflow-hidden')
+  })
+
+  // TA5-P1: ready/not ready is a lifecycle state, so it says so in shape as
+  // well as in tint — a channel that survives greyscale and colour blindness.
+  it('marks the readiness chips as state, in both the row and the header', async () => {
+    await renderReadiness(EVENT_SLUG)
+    await screen.findByRole('table')
+
+    const chips = Array.from(document.querySelectorAll('[data-slot="badge"]'))
+    expect(chips.map((chip) => chip.textContent)).toEqual(['1 not ready', 'Not ready', 'Ready'])
+    for (const chip of chips) {
+      expect(chip).toHaveAttribute('data-dot', '')
+      // Nothing is in flight on a page that only reads.
+      expect(chip).not.toHaveAttribute('data-pending')
+    }
+  })
+
   it('shows an aria-busy loading status, an empty state, and an error retry', async () => {
     let resolveRows: ((response: Response) => void) | undefined
     fetchHandler = () =>
       new Promise<Response>((resolve) => {
         resolveRows = resolve
       })
-    const first = renderWithClient(<ReadinessPage eventSlug={EVENT_SLUG} />)
+    const first = await renderReadiness(EVENT_SLUG)
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull()
     expect(screen.getByRole('status')).toBeInTheDocument()
     resolveRows?.(jsonResponse(EMPTY_READINESS))
@@ -437,7 +538,7 @@ describe('organizer readiness', () => {
 
     fetchHandler = () =>
       jsonResponse({ error: { code: 'internal', message: 'raw server copy' } }, 500)
-    renderWithClient(<ReadinessPage eventSlug={EVENT_SLUG} />)
+    await renderReadiness(EVENT_SLUG)
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Unable to load readiness.')
     expect(document.body.textContent ?? '').not.toContain('raw server copy')
@@ -448,7 +549,7 @@ describe('organizer readiness', () => {
   })
 
   it('reads only the routed event dataset, never another event’s rows', async () => {
-    renderWithClient(<ReadinessPage eventSlug={OTHER_EVENT_SLUG} />)
+    await renderReadiness(OTHER_EVENT_SLUG)
 
     expect(await screen.findByText('No submissions to track yet.')).toBeInTheDocument()
     expect(countCalls(OTHER_READINESS_URL)).toBe(1)
@@ -459,7 +560,7 @@ describe('organizer readiness', () => {
   it('refreshes readiness on the pinned bounded polling interval', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
-      renderWithClient(<ReadinessPage eventSlug={EVENT_SLUG} />)
+      await renderReadiness(EVENT_SLUG)
       await vi.waitFor(() => {
         expect(countCalls(READINESS_URL)).toBe(1)
       })
@@ -470,5 +571,24 @@ describe('organizer readiness', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('speaker task control naming', () => {
+  it('leads the confirm-participation name with the words on the button', async () => {
+    fetchHandler = (url) =>
+      url === TASKS_URL
+        ? jsonResponse([{ ...TASKS[1], status: 'pending', completedAt: null }])
+        : jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    renderWithClient(<TasksPanel />)
+
+    const control = await screen.findByRole('button', { name: /^I confirm I will participate/ })
+    expect(control).toHaveTextContent('I confirm I will participate')
+    // WCAG 2.5.3: the visible words start the accessible name; the row context
+    // that keeps three sibling rows apart follows it.
+    expect(control.getAttribute('aria-label')).toContain('I confirm I will participate')
+    expect(control.getAttribute('aria-label')).toContain(
+      'Mark complete: Confirm your participation for My talk',
+    )
   })
 })

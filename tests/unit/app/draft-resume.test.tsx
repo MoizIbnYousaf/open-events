@@ -8,7 +8,11 @@ import type { DraftDto, FormDefinitionDto } from '../../../src/application'
 import { getActiveDraft, saveDraft } from '../../../src/app/api/public'
 import CfpSaveBar from '../../../src/app/features/public/CfpSaveBar'
 import CfpWizard from '../../../src/app/features/public/CfpWizard'
-import { useActiveDraft, useSaveDraft } from '../../../src/app/queries/public-drafts'
+import {
+  publicDraftQueryKeys,
+  useActiveDraft,
+  useSaveDraft,
+} from '../../../src/app/queries/public-drafts'
 
 const EVENT_ID = 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d'
 const EVENT_SLUG = 'demo-conf-2026'
@@ -153,11 +157,14 @@ function renderDraftUi() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <CfpWizard form={PUBLISHED_FORM} eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />
-    </QueryClientProvider>,
-  )
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <CfpWizard form={PUBLISHED_FORM} eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />
+      </QueryClientProvider>,
+    ),
+  }
 }
 
 beforeEach(() => {
@@ -225,9 +232,9 @@ describe('public CFP draft save and resume', () => {
 
     await user.click(await screen.findByRole('button', { name: /save/i }))
     const saving = await screen.findByRole('button', { name: /saving/i })
-    expect(saving).toBeDisabled()
+    expect(saving).toHaveAttribute('aria-disabled', 'true')
     // The in-flight state is on the control AND in a status region: aria-busy
-    // on a disabled button is not reliably announced.
+    // alone is not reliably announced.
     expect(saving).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('status')).toHaveTextContent(/saving your draft/i)
     resolveSave?.(jsonResponse(SAVED_DRAFT))
@@ -335,23 +342,44 @@ describe('public CFP draft save and resume', () => {
     expect(await screen.findByLabelText(/title/i)).toHaveValue('')
   })
 
+  // The draft probe is optional, so a refusal has two entirely different
+  // meanings and the page owes each of them a different answer. Both are
+  // pinned here: the FIRST refusal is "you have no draft", a LATER one is
+  // "your session died while you were writing".
   it.each([
     { status: 401, code: 'unauthorized', heading: 'Session expired' },
     { status: 403, code: 'forbidden', heading: 'Access forbidden' },
   ] as const)(
-    'renders the production denial state for a $status draft GET',
+    'renders the production denial state for a $status draft GET once the probe has answered',
     async ({ status, code, heading }) => {
       fetchHandler = (url, init) => {
         const method = init?.method ?? 'GET'
         if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
-          return jsonResponse({ error: { code, message: heading } }, status)
+          return jsonResponse(ACTIVE_DRAFT)
         }
         if (method === 'PUT' && url === '/api/public/draft') {
           return jsonResponse(SAVED_DRAFT)
         }
         return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
       }
-      renderDraftUi()
+      const { queryClient } = renderDraftUi()
+      // The probe answered once, so this reader demonstrably HAD a session.
+      await screen.findByRole('button', { name: /next/i })
+      await waitFor(() =>
+        expect(
+          queryClient.getQueryData(publicDraftQueryKeys.activeDraft(FORM_ID)),
+        ).not.toBeUndefined(),
+      )
+
+      // The session dies mid-draft: the same probe now refuses.
+      fetchHandler = (url, init) => {
+        const method = init?.method ?? 'GET'
+        if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+          return jsonResponse({ error: { code, message: heading } }, status)
+        }
+        return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      }
+      await queryClient.refetchQueries({ queryKey: publicDraftQueryKeys.activeDraft(FORM_ID) })
 
       expect(await screen.findByText(heading)).toBeInTheDocument()
       if (heading === 'Session expired') {
@@ -365,6 +393,45 @@ describe('public CFP draft save and resume', () => {
       expect(screen.queryByText('Not found')).not.toBeInTheDocument()
     },
   )
+
+  it.each([
+    { status: 401, code: 'unauthorized', label: 'a visitor with no session' },
+    { status: 403, code: 'forbidden', label: 'an organizer following their own public link' },
+  ] as const)(
+    'renders the call for papers when the first draft probe is refused ($status, $label)',
+    async ({ status, code }) => {
+      fetchHandler = (url, init) => {
+        const method = init?.method ?? 'GET'
+        if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+          return jsonResponse({ error: { code, message: code } }, status)
+        }
+        return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      }
+      renderDraftUi()
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Call for papers' }),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /next/i })).toBeInTheDocument()
+      for (const deadEnd of ['Session expired', 'Access forbidden', 'Unable to load your draft.']) {
+        expect(screen.queryByText(deadEnd)).not.toBeInTheDocument()
+      }
+    },
+  )
+
+  it('still surfaces a retry when the first draft probe fails for a reason that is not a refusal', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+        return jsonResponse({ error: { code: 'internal', message: 'boom' } }, 500)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderDraftUi()
+
+    expect(await screen.findByText('Unable to load your draft.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
 
   it('arms the dirty beforeunload guard only after editing', async () => {
     const user = userEvent.setup()

@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -219,6 +220,85 @@ describe('public schedule', () => {
     expect(rendered).toContain('11:00')
     expect(rendered).not.toContain('speaker.a@example.test')
     expect(rendered).not.toContain('contact-1')
+  })
+
+  it('offers a pending-aware retry instead of a dead-end error', async () => {
+    const user = userEvent.setup()
+    await mountPage('error')
+
+    await screen.findByRole('alert')
+    const retry = screen.getByRole('button', { name: 'Retry' })
+    expect(fetchMock.mock.calls).toHaveLength(1)
+
+    // The refetch is reader-pressed: nothing retries behind their back.
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === SCHEDULE_URL) return jsonResponse(SCHEDULE_ENVELOPE)
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await user.click(retry)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Schedule' })).toBeInTheDocument()
+    expect(fetchMock.mock.calls).toHaveLength(2)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('names every view table for assistive tech with an sr-only caption', async () => {
+    await mountPage('ready')
+
+    await screen.findByRole('heading', { level: 1, name: 'Schedule' })
+    const captions = Array.from(document.querySelectorAll('table > caption'))
+    expect(captions).toHaveLength(5)
+    for (const caption of captions) {
+      expect(caption).toHaveClass('sr-only')
+      expect((caption.textContent ?? '').length).toBeGreaterThan(0)
+    }
+    // Each of the five regions still owns its own horizontally scrollable box,
+    // so a wide table slides inside the card rather than moving the page.
+    for (const view of ['List', 'Day', 'Week', 'Track', 'Room']) {
+      const region = screen.getByRole('region', { name: view })
+      expect(region.querySelector('.overflow-x-auto')).not.toBeNull()
+    }
+  })
+
+  it('renders a track as an enumerated value, never wearing the state face', async () => {
+    await mountPage('ready')
+
+    await screen.findByRole('heading', { level: 1, name: 'Schedule' })
+    const chips = screen.getAllByText('Workshop', { selector: '[data-slot="badge"]' })
+    expect(chips.length).toBeGreaterThan(0)
+    for (const chip of chips) {
+      // A track is one value out of a set the organizer wrote down. It is not
+      // a state anything can be in, so it carries no state marker and none of
+      // the tinted "this went well" face the organizer surfaces spend on
+      // accepted / published / ready.
+      expect(chip).not.toHaveAttribute('data-dot')
+      expect(chip).not.toHaveAttribute('data-pending')
+      expect(chip).toHaveAttribute('data-variant', 'outline')
+    }
+  })
+
+  it('frames each view on the scroller itself, with nothing clipping its focus ring', async () => {
+    await mountPage('ready')
+
+    await screen.findByRole('heading', { level: 1, name: 'Schedule' })
+    for (const view of ['List', 'Day', 'Week', 'Track', 'Room']) {
+      const region = screen.getByRole('region', { name: view })
+      const scroller = region.querySelector('[data-slot="table-container"]')
+      expect(scroller).not.toBeNull()
+      // The frame is the scroller's own, so the rounding follows the content
+      // instead of sitting on a box the content scrolls past.
+      expect(scroller).toHaveClass('rounded-lg', 'ring-1')
+      // The scroller is a tab stop and its focus indicator paints OUTWARD, so
+      // no ancestor between it and the region may clip. A wrapper with
+      // `overflow-hidden` used to sit exactly here and cut the ring away.
+      let ancestor = scroller?.parentElement ?? null
+      while (ancestor !== null && ancestor !== region) {
+        expect(ancestor.className).not.toMatch(/\boverflow-hidden\b/)
+        ancestor = ancestor.parentElement
+      }
+      expect(ancestor).toBe(region)
+    }
   })
 
   it('uses the schedule query key for usePublicSchedule', async () => {

@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { getApiErrorMessage } from '../../api/admin-events'
@@ -9,15 +10,23 @@ import {
   useSendReminder,
   useSubmissionMessages,
 } from '../../queries/admin-communications'
-import { announce } from '../../lib/announcer'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
+import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
+import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
+import { SectionHeading } from '../../../components/ui/section-heading'
 import type { SubmissionId } from '../../../domain'
+import { formatInstant } from './format-instant'
 
 interface CommunicationsPanelProps {
   readonly slug: string
   readonly submissionId: SubmissionId
+}
+
+/** How a send is described before it happens, in recipients rather than rows. */
+function recipientCount(count: number): string {
+  return count === 1 ? '1 recipient' : `${count} recipients`
 }
 
 /**
@@ -37,6 +46,20 @@ export default function CommunicationsPanel({ slug, submissionId }: Communicatio
   const accept = useAcceptSubmission(slug, submissionId)
   const send = useSendAcceptance(slug, submissionId)
   const sendReminder = useSendReminder(slug, submissionId)
+  const headingRef = useRef<HTMLHeadingElement | null>(null)
+
+  /**
+   * Where focus lands when the control that had it stops being pressable.
+   *
+   * Every action in this panel replaces its own trigger on success: accepting
+   * swaps the Accept button for the "Acceptance recorded" line, and both sends
+   * leave their trigger permanently disabled once the mail is out — so the
+   * confirm dialog handed focus back to a control the browser then blurred, and
+   * a keyboard reader landed on <body> with the page's place lost. The panel
+   * heading is always mounted and is a landing place, not another action (the
+   * TasksPanel choreography).
+   */
+  const landOnHeading = () => headingRef.current?.focus()
 
   const isLoading = preview.isPending || messages.isPending
   const loadError = preview.error ?? messages.error
@@ -49,11 +72,16 @@ export default function CommunicationsPanel({ slug, submissionId }: Communicatio
     <section
       aria-labelledby="communications-heading"
       aria-busy={isLoading || undefined}
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-3"
     >
-      <h2 id="communications-heading" className="text-base font-semibold">
+      <SectionHeading
+        id="communications-heading"
+        ref={headingRef}
+        tabIndex={-1}
+        className="outline-hidden"
+      >
         Acceptance
-      </h2>
+      </SectionHeading>
 
       {/*
         A stable region whose text changes, not a region created together with
@@ -65,7 +93,15 @@ export default function CommunicationsPanel({ slug, submissionId }: Communicatio
       <StatusLive aria-live="polite">
         {isLoading ? 'Loading acceptance communications…' : null}
       </StatusLive>
-      {isLoading ? null : loadError !== null ? (
+      {isLoading ? (
+        // The shape the panel is about to take, so the card does not jump when
+        // the two queries land.
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      ) : loadError !== null ? (
         <div className="flex flex-col items-start gap-2">
           <AlertLive>
             {getApiErrorMessage(loadError, 'Acceptance communications could not be loaded.')}
@@ -73,7 +109,6 @@ export default function CommunicationsPanel({ slug, submissionId }: Communicatio
           <Button
             type="button"
             variant="outline"
-            size="lg"
             pending={preview.isFetching || messages.isFetching}
             onClick={() => {
               void retry()
@@ -87,16 +122,15 @@ export default function CommunicationsPanel({ slug, submissionId }: Communicatio
           messages={messages.data ?? []}
           preview={preview.data}
           onAccept={() => {
-            accept.mutate(undefined, {
-              // Only the success is announced. The failure already renders its
-              // own role=alert below with the same sentence, and two live
-              // regions carrying one message speak it twice (DEC-014).
-              onSuccess: () => announce('Proposal accepted'),
-            })
+            // No announcement here. The acceptance chip below flips from
+            // "Not accepted yet" to "Acceptance recorded" and is itself a live
+            // region, so it speaks the outcome; the failure renders its own
+            // role=alert. One region per outcome (DEC-014, F-R3-13).
+            accept.mutate(undefined, { onSuccess: landOnHeading })
           }}
           acceptError={accept.error}
           isAccepting={accept.isPending}
-          onSend={() => {
+          onSend={(onSent) => {
             send.mutate(undefined, {
               // A toast: sending is the last thing an organizer does on this
               // submission, and they leave for the next one immediately. The
@@ -105,16 +139,24 @@ export default function CommunicationsPanel({ slug, submissionId }: Communicatio
               // outcome needed a channel of its own (DEC-019). The failure
               // does not get one; it has its own alert. No announce() beside
               // it: the toaster's region already speaks this once (DEC-014).
-              onSuccess: () => toast.success('Acceptance sent'),
+              onSuccess: () => {
+                onSent()
+                landOnHeading()
+                toast.success('Acceptance sent')
+              },
             })
           }}
           sendError={send.error}
           isSending={send.isPending}
           reminderAlreadySent={reminderPreview.data?.alreadySent === true}
-          onSendReminder={() => {
+          onSendReminder={(onSent) => {
             sendReminder.mutate(undefined, {
               // Same channel decision as the acceptance send (DEC-019/DEC-014).
-              onSuccess: () => toast.success('Reminder sent'),
+              onSuccess: () => {
+                onSent()
+                landOnHeading()
+                toast.success('Reminder sent')
+              },
             })
           }}
           reminderError={sendReminder.error}
@@ -145,11 +187,12 @@ interface CommunicationsBodyProps {
   readonly onAccept: () => void
   readonly acceptError: unknown
   readonly isAccepting: boolean
-  readonly onSend: () => void
+  /** `onSent` closes the confirmation, and only the server's answer calls it. */
+  readonly onSend: (onSent: () => void) => void
   readonly sendError: unknown
   readonly isSending: boolean
   readonly reminderAlreadySent: boolean
-  readonly onSendReminder: () => void
+  readonly onSendReminder: (onSent: () => void) => void
   readonly reminderError: unknown
   readonly isSendingReminder: boolean
 }
@@ -172,6 +215,14 @@ function CommunicationsBody({
   // always sends one now, so a missing kind counts as an acceptance row.
   const alreadySent = messages.some((message) => (message.kind ?? 'acceptance') === 'acceptance')
   const accepted = preview?.accepted === true
+  const [confirmSend, setConfirmSend] = useState(false)
+  const [confirmReminder, setConfirmReminder] = useState(false)
+  const audience = preview?.audience ?? []
+  const audienceSize = audience.length > 0 ? audience.length : 1
+  const audienceNames =
+    audience.length > 0
+      ? audience.map((recipient) => recipient.email).join(', ')
+      : (preview?.toEmail ?? '')
 
   return (
     <>
@@ -183,7 +234,6 @@ function CommunicationsBody({
             <StatusLive aria-live="polite">Not accepted yet</StatusLive>
             <Button
               type="button"
-              size="lg"
               pending={isAccepting}
               disabled={preview === undefined}
               onClick={onAccept}
@@ -213,20 +263,23 @@ function CommunicationsBody({
           No acceptance message can be rendered for this submission yet.
         </p>
       ) : (
-        <dl className="flex flex-col gap-2 text-sm">
-          <div className="flex flex-col gap-1">
-            <dt className="font-medium">Recipient</dt>
-            <dd>{preview.toEmail}</dd>
+        <dl className="flex flex-col divide-y divide-border rounded-lg text-sm ring-1 ring-border">
+          <div className="flex flex-col gap-1 p-3">
+            <dt className="text-xs font-medium text-muted-foreground">Recipient</dt>
+            <dd className="break-words">{preview.toEmail}</dd>
           </div>
           {preview.audience !== undefined && preview.audience.length > 0 ? (
-            <div className="flex flex-col gap-1">
-              <dt className="font-medium" id="communications-audience">
+            <div className="flex flex-col gap-1 p-3">
+              <dt
+                className="text-xs font-medium text-muted-foreground"
+                id="communications-audience"
+              >
                 Audience
               </dt>
               <dd>
                 <ul aria-labelledby="communications-audience" className="flex flex-col gap-1">
                   {preview.audience.map((recipient) => (
-                    <li key={recipient.email}>
+                    <li key={recipient.email} className="break-words">
                       {recipient.email}
                       {recipient.alreadySent ? (
                         <span className="text-muted-foreground"> — sent</span>
@@ -237,14 +290,19 @@ function CommunicationsBody({
               </dd>
             </div>
           ) : null}
-          <div className="flex flex-col gap-1">
-            <dt className="font-medium">Subject</dt>
-            <dd>{preview.subject}</dd>
+          <div className="flex flex-col gap-1 p-3">
+            <dt className="text-xs font-medium text-muted-foreground">Subject</dt>
+            <dd className="font-medium break-words">{preview.subject}</dd>
           </div>
-          <div className="flex flex-col gap-1">
-            <dt className="font-medium">Message</dt>
+          <div className="flex flex-col gap-1 p-3">
+            <dt className="text-xs font-medium text-muted-foreground">Message</dt>
             <dd>
-              <pre className="whitespace-pre-wrap font-sans">{preview.body}</pre>
+              {/* The message as it will be read, quoted rather than boxed: a
+                  left rule marks it as someone else's words without building a
+                  second card inside this one. */}
+              <pre className="border-l-2 border-border pl-3 text-[15px] leading-relaxed whitespace-pre-wrap font-sans">
+                {preview.body}
+              </pre>
             </dd>
           </div>
         </dl>
@@ -254,13 +312,12 @@ function CommunicationsBody({
         <AlertLive>{getApiErrorMessage(sendError, 'The acceptance could not be sent.')}</AlertLive>
       ) : null}
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
-          size="lg"
           pending={isSending}
           disabled={alreadySent || !accepted || preview === undefined}
-          onClick={onSend}
+          onClick={() => setConfirmSend(true)}
         >
           {isSending ? 'Sending acceptance…' : 'Send acceptance'}
         </Button>
@@ -278,19 +335,40 @@ function CommunicationsBody({
         ) : null}
       </div>
 
+      {/* Real mail leaves the building the moment this resolves, and no product
+          can recall it — so the ask names who receives it and how many.
+
+          A failure keeps the dialog open and is repeated inside it: the panel's
+          alert is the one live region that speaks it (DEC-014), and this
+          sentence is what a sighted reader sees, because the alert itself sits
+          behind the very dialog that caused it. */}
+      <ConfirmDialog
+        open={confirmSend}
+        onOpenChange={setConfirmSend}
+        tone="default"
+        title="Send the acceptance email"
+        description={`This sends the acceptance above to ${recipientCount(audienceSize)}: ${audienceNames}. Email cannot be recalled once it has been sent.${
+          sendError === null || sendError === undefined
+            ? ''
+            : ' The last attempt failed: the acceptance could not be sent.'
+        }`}
+        confirmLabel="Send the email"
+        pending={isSending}
+        onConfirm={() => onSend(() => setConfirmSend(false))}
+      />
+
       {/* Static copy: a 5xx body is server internals, not organizer guidance. */}
       {reminderError !== null && reminderError !== undefined ? (
         <AlertLive>The reminder could not be sent.</AlertLive>
       ) : null}
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
           variant="outline"
-          size="lg"
           pending={isSendingReminder}
           disabled={reminderAlreadySent || !accepted || preview === undefined}
-          onClick={onSendReminder}
+          onClick={() => setConfirmReminder(true)}
         >
           {isSendingReminder ? 'Sending reminder…' : 'Send reminder'}
         </Button>
@@ -303,21 +381,46 @@ function CommunicationsBody({
         ) : null}
       </div>
 
+      <ConfirmDialog
+        open={confirmReminder}
+        onOpenChange={setConfirmReminder}
+        tone="default"
+        title="Send the reminder email"
+        description={`This sends a reminder about the outstanding speaker tasks to ${recipientCount(audienceSize)}: ${audienceNames}. Email cannot be recalled once it has been sent.${
+          reminderError === null || reminderError === undefined
+            ? ''
+            : ' The last attempt failed: the reminder could not be sent.'
+        }`}
+        confirmLabel="Send the email"
+        pending={isSendingReminder}
+        onConfirm={() => onSendReminder(() => setConfirmReminder(false))}
+      />
+
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold" id="communications-history">
+        <h3
+          className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase"
+          id="communications-history"
+        >
           Send history
         </h3>
         {messages.length > 0 ? (
-          <ul aria-labelledby="communications-history" className="flex flex-col gap-2 text-sm">
+          <ul
+            aria-labelledby="communications-history"
+            className="flex flex-col divide-y divide-border rounded-lg text-sm ring-1 ring-border"
+          >
             {messages.map((message) => (
-              <li key={message.id} className="flex flex-col gap-1">
-                <span>{message.subject}</span>
-                <span className="text-muted-foreground">
+              <li key={message.id} className="flex flex-col gap-0.5 p-3">
+                <span className="font-medium break-words">{message.subject}</span>
+                <span className="text-xs text-muted-foreground">
                   {(message.kind ?? 'acceptance') === 'reminder' ? 'Reminder' : 'Acceptance'}
                   {message.toEmail !== undefined ? ` — ${message.toEmail}` : null}
                 </span>
-                <time dateTime={message.createdAt} className="text-muted-foreground">
-                  {message.createdAt}
+                {/* The machine instant stays on `dateTime`, where a machine
+                    reads it; the words are for the organizer, who was being
+                    handed a raw ISO-8601 string with a `T` and a `Z` as the
+                    log of mail they had just sent. */}
+                <time dateTime={message.createdAt} className="text-xs text-muted-foreground">
+                  {formatInstant(message.createdAt)}
                 </time>
               </li>
             ))}

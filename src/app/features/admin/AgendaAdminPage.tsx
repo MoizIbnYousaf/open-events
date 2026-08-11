@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 
 import type {
   AgendaBoardDto,
@@ -10,17 +10,36 @@ import type {
   PlaceAgendaSessionInput,
 } from '../../../application'
 import type { SubmissionId } from '../../../domain'
-import { DEFAULT_SESSION_MINUTES, type AgendaConflictKind } from '../../../domain/agenda'
+import {
+  DEFAULT_SESSION_MINUTES,
+  trackGroupLabel,
+  type AgendaConflictKind,
+} from '../../../domain/agenda'
+import { cn } from '../../../lib/utils'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent } from '../../../components/ui/card'
+import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
+import { EmptyState } from '../../../components/ui/empty-state'
+import { InboxIcon } from '../../../components/ui/icons'
+import { linkVariants } from '../../../components/ui/link-variants'
+import { NativeSelect } from '../../../components/ui/native-select'
+import {
+  PageHeader,
+  PageHeaderActions,
+  PageHeaderContent,
+  PageHeaderDescription,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
+import { SectionHeading } from '../../../components/ui/section-heading'
 import { getApiErrorCode } from '../../api/admin-events'
 import { placeAgendaSession, publishAgenda, unplaceAgendaSession } from '../../api/admin-agenda'
 import { adminAgendaQueryKeys, useAgendaBoard } from '../../queries/admin-agenda'
-import { DeniedState, ForbiddenState } from './AdminStates'
+import AppShell from '../nav/AppShell'
+import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
 import {
   isBeyondListedDays,
   isOffWindowDay,
@@ -45,14 +64,42 @@ const CONFLICT_LABELS: Readonly<Record<AgendaConflictKind, string>> = {
   track: 'Track',
 }
 
-const selectClass =
-  'h-9 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring'
-
-const linkClass = 'w-fit text-sm font-medium text-primary underline-offset-4 hover:underline'
-
 // The board-day select is a singleton of the page, exactly like its own
 // `agenda-board-day` id, so the notice that describes it can be one too.
 const WINDOW_REACH_NOTICE_ID = 'agenda-board-window-reach'
+
+/**
+ * The board's labelled select: the shared `NativeSelect` recipe with the
+ * page's own 12px label above it.
+ *
+ * These controls stay native `<select>` elements on purpose: constraint
+ * validation (`required` + the intercepted `onInvalid`), `selectOptions` from
+ * the keyboard, and a real element to move focus to from the conflicts list are
+ * all behaviour the placement contract depends on, and a composite listbox
+ * carries none of them. What was wrong with them was the look, so only the look
+ * changes — and it now changes in `src/components/ui/native-select.tsx`, where
+ * every other native select on the product reads the same tokens.
+ */
+function BoardSelect({
+  label,
+  id,
+  className,
+  wrapperClassName,
+  ...props
+}: React.ComponentProps<'select'> & {
+  readonly label: string
+  readonly id: string
+  readonly wrapperClassName?: string
+}) {
+  return (
+    <span className={cn('grid min-w-0 gap-1.5', wrapperClassName)}>
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
+      <NativeSelect id={id} className={className} {...props} />
+    </span>
+  )
+}
 
 function optionLabel(options: readonly { id: string; label: string }[], id: string): string {
   return options.find((option) => option.id === id)?.label ?? id
@@ -141,13 +188,21 @@ function PreconditionLink({
   const copy = PRECONDITION_COPY[precondition]
   if (copy.destination === 'taxonomies') {
     return (
-      <Link to="/admin/events/$slug/taxonomies" params={{ slug: eventSlug }} className={linkClass}>
+      <Link
+        to="/admin/events/$slug/taxonomies"
+        params={{ slug: eventSlug }}
+        className={linkVariants({ className: 'w-fit text-sm' })}
+      >
         {copy.linkLabel}
       </Link>
     )
   }
   return (
-    <Link to="/admin/events/$slug" params={{ slug: eventSlug }} className={linkClass}>
+    <Link
+      to="/admin/events/$slug"
+      params={{ slug: eventSlug }}
+      className={linkVariants({ className: 'w-fit text-sm' })}
+    >
       {copy.linkLabel}
     </Link>
   )
@@ -333,6 +388,27 @@ function storedPlacement(session: AgendaSessionDto, board: AgendaBoardDto): Plac
   }
 }
 
+/**
+ * What removing a placement costs, said before it happens.
+ *
+ * Removal is not irreversible — the session can be placed again — so the copy
+ * does not claim that it is. What it does say is the part an organizer cannot
+ * get back by re-placing: the audience-facing consequence of a published
+ * session disappearing from the programme, and the day, time and room they
+ * would have to choose again from memory.
+ */
+function removalConsequence(session: AgendaSessionDto): string {
+  const where =
+    session.roomLabel === null
+      ? `${session.day} ${timeOfDay(session.start)}–${timeOfDay(session.end)}`
+      : `${session.roomLabel}, ${session.day} ${timeOfDay(session.start)}–${timeOfDay(session.end)}`
+  const published =
+    session.status === 'published'
+      ? ' This session is published, so it also disappears from the public programme.'
+      : ''
+  return `“${session.title}” is currently at ${where}. Removing it clears that day, time and room; you can place it again, but this placement is not kept.${published}`
+}
+
 function SessionPlacementForm({
   session,
   board,
@@ -340,15 +416,23 @@ function SessionPlacementForm({
   onUnplace,
   onRegisterDayField,
   isSaving,
+  isRemoving,
+  isPublishing,
+  removalFailed,
 }: {
   readonly session: AgendaSessionDto
   readonly board: AgendaBoardDto
   readonly onPlace: (request: AgendaPlacementRequest) => void
-  readonly onUnplace: (submissionId: string) => void
+  readonly onUnplace: (submissionId: string, onRemoved: () => void) => void
   readonly onRegisterDayField: (submissionId: string, element: HTMLSelectElement | null) => void
   readonly isSaving: boolean
+  readonly isRemoving: boolean
+  /** True only while a publish that will actually move THIS session is in the air. */
+  readonly isPublishing: boolean
+  readonly removalFailed: boolean
 }) {
   const [edited, setEdited] = useState<PlacementDraft | null>(null)
+  const [confirmRemoval, setConfirmRemoval] = useState(false)
   const stored = storedPlacement(session, board)
   // The board takes writes from this form and from the drag board alike, and
   // both replace the whole board. So the controls follow the stored placement:
@@ -407,13 +491,27 @@ function SessionPlacementForm({
     <form
       aria-label={`Placement for ${session.title}`}
       onSubmit={submit}
-      className="grid gap-2 rounded-lg border border-border p-3"
+      className="grid gap-3 rounded-lg p-3 ring-1 ring-border"
     >
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-medium">{session.title}</span>
-        <Badge>{session.status === 'published' ? 'Published' : 'Draft'}</Badge>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-sm font-medium">{session.title}</span>
+        {/* Draft or published is a lifecycle state, so the chip wears the
+            state marker rather than leaning on its tint alone — and while a
+            publish that really moves THIS session is running, the marker
+            breathes. The chip is the thing whose truth is in question during
+            that wait; until now it claimed the old state as calmly as ever
+            while the button beside it said pending. The word does not change
+            while the wait lasts: it is still the last state the server
+            confirmed, and it stays true until the server says otherwise. */}
+        <Badge
+          variant={session.status === 'published' ? 'secondary' : 'outline'}
+          dot
+          pending={isPublishing}
+        >
+          {session.status === 'published' ? 'Published' : 'Draft'}
+        </Badge>
+        <span className="text-sm text-muted-foreground">{placementSummary(session)}</span>
       </div>
-      <p className="text-sm text-muted-foreground">{placementSummary(session)}</p>
       {/* Worth saying in every state, unlike the notice below: a board short of
           its rooms is exactly where a placement it cannot name is most likely,
           and removal is then the only thing left to do about it.
@@ -424,7 +522,7 @@ function SessionPlacementForm({
           field never lands on it either — so the description association, not
           the live region, is what carries the explanation to the control. */}
       {orphanedRoom ? (
-        <StatusLive aria-live="polite" id={orphanedRoomNoticeId}>
+        <StatusLive aria-live="polite" id={orphanedRoomNoticeId} className="text-balance">
           {orphanedRoomNotice(placeable)}
         </StatusLive>
       ) : null}
@@ -432,22 +530,25 @@ function SessionPlacementForm({
           board short of a prerequisite offers no Day or Start to contradict
           the summary. */}
       {offGrid ? (
-        <StatusLive aria-live="polite" id={offGridNoticeId}>
+        <StatusLive aria-live="polite" id={offGridNoticeId} className="text-balance">
           {offGridNotice(session, board)}
         </StatusLive>
       ) : null}
       <div className="flex flex-wrap items-end gap-3">
         {placeable ? (
           <>
-            <span className="grid gap-1">
-              <label htmlFor={fieldId('day')} className="text-sm">
-                Day
-              </label>
-              <select
+            {/* The four controls take a whole line of the form, never the space
+                two buttons happen to leave on theirs. As a `flex-1` item they
+                were handed the leftover 50px at 390px — four selects one
+                character wide, each of them naming a decision the organizer is
+                about to make. `w-full` wraps the row before it can be
+                squeezed; the buttons follow on their own line. */}
+            <div className="grid w-full min-w-0 gap-3 sm:grid-cols-4">
+              <BoardSelect
+                label="Day"
                 id={fieldId('day')}
                 aria-label="Day"
                 ref={(element) => onRegisterDayField(session.submissionId, element)}
-                className={selectClass}
                 required={true}
                 aria-describedby={offGrid ? offGridNoticeId : undefined}
                 value={draft.day}
@@ -478,16 +579,11 @@ function SessionPlacementForm({
                     {option.day}
                   </option>
                 ))}
-              </select>
-            </span>
-            <span className="grid gap-1">
-              <label htmlFor={fieldId('room')} className="text-sm">
-                Room
-              </label>
-              <select
+              </BoardSelect>
+              <BoardSelect
+                label="Room"
                 id={fieldId('room')}
                 aria-label="Room"
-                className={selectClass}
                 required={true}
                 aria-describedby={orphanedRoom ? orphanedRoomNoticeId : undefined}
                 value={draft.roomId}
@@ -503,16 +599,11 @@ function SessionPlacementForm({
                     {room.label}
                   </option>
                 ))}
-              </select>
-            </span>
-            <span className="grid gap-1">
-              <label htmlFor={fieldId('start')} className="text-sm">
-                Start
-              </label>
-              <select
+              </BoardSelect>
+              <BoardSelect
+                label="Start"
                 id={fieldId('start')}
                 aria-label="Start"
-                className={selectClass}
                 required={true}
                 aria-describedby={offGrid ? offGridNoticeId : undefined}
                 value={draft.startTime}
@@ -531,16 +622,11 @@ function SessionPlacementForm({
                     {slot.startTime}
                   </option>
                 ))}
-              </select>
-            </span>
-            <span className="grid gap-1">
-              <label htmlFor={fieldId('track')} className="text-sm">
-                Track
-              </label>
-              <select
+              </BoardSelect>
+              <BoardSelect
+                label="Track"
                 id={fieldId('track')}
                 aria-label="Track"
-                className={selectClass}
                 value={draft.trackId}
                 onChange={(event) => setEdited({ ...draft, trackId: event.target.value })}
               >
@@ -550,25 +636,50 @@ function SessionPlacementForm({
                     {track.label}
                   </option>
                 ))}
-              </select>
-            </span>
-            <span aria-live="polite" aria-atomic="true">
-              <Button type="submit" variant="outline" size="sm" disabled={isPending}>
-                {isPending ? 'Placing…' : 'Place'}
-              </Button>
-            </span>
+              </BoardSelect>
+            </div>
+            {/* No live region around this control. A region wrapping a button
+                announces the button's own label as a status — this one spoke
+                the bare word "Place" on every re-render — and the outcome is
+                already announced once, beside the board, by the Sessions
+                region. The in-flight state belongs to the control itself:
+                `pending` keeps it focused and tab-reachable while it is busy,
+                which `disabled` cannot do. */}
+            <Button type="submit" variant="outline" pending={isPending}>
+              {isPending ? 'Placing…' : 'Place'}
+            </Button>
           </>
         ) : null}
         {session.assignment === 'scheduled' ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label={`Remove ${session.title} from the schedule`}
-            onClick={() => onUnplace(session.submissionId)}
-          >
-            Remove from the schedule
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              aria-label={`Remove ${session.title} from the schedule`}
+              onClick={() => setConfirmRemoval(true)}
+            >
+              Remove from the schedule
+            </Button>
+            {/* Real removal, announced to an audience by its absence — so it
+                asks first, and the question names what disappears. */}
+            <ConfirmDialog
+              open={confirmRemoval}
+              onOpenChange={setConfirmRemoval}
+              title={`Remove ${session.title} from the schedule`}
+              description={`${removalConsequence(session)}${
+                removalFailed
+                  ? ' The last attempt failed: the session could not be removed from the schedule.'
+                  : ''
+              }`}
+              confirmLabel="Remove from the schedule"
+              pending={isRemoving}
+              onConfirm={() =>
+                onUnplace(session.submissionId, () => {
+                  setConfirmRemoval(false)
+                })
+              }
+            />
+          </>
         ) : null}
       </div>
       {draft.issue === null ? null : <AlertLive>{draft.issue}</AlertLive>}
@@ -580,6 +691,74 @@ function SessionPlacementForm({
 function conflictSummary(count: number): string {
   if (count === 0) return 'No conflicts.'
   return count === 1 ? '1 conflict to resolve.' : `${count} conflicts to resolve.`
+}
+
+/**
+ * The sessions a publish would actually move. Publishing takes every scheduled
+ * DRAFT session to the programme: one that is already published is already
+ * there, and an unplaced one has no room to appear in. Counting every scheduled
+ * session instead is how the confirmation came to promise a number its own
+ * outcome then contradicted — the dialog said two sessions, the answer said one.
+ */
+function publishableSessions(board: AgendaBoardDto): readonly AgendaSessionDto[] {
+  return board.sessions.filter(
+    (session) => session.assignment === 'scheduled' && session.status === 'draft',
+  )
+}
+
+/** The kinds of conflict on the board, named in the order the list shows them. */
+function conflictKinds(board: AgendaBoardDto): readonly string[] {
+  const kinds = Object.keys(CONFLICT_LABELS) as AgendaConflictKind[]
+  // One pass: the filter and the relabelling are the same decision about the
+  // same kind, and walking the list twice to make it was the only reason this
+  // read as two steps (react-doctor/js-combine-iterations).
+  return kinds.flatMap((kind) =>
+    board.conflicts.some((conflict) => conflict.kind === kind)
+      ? [CONFLICT_LABELS[kind].toLowerCase()]
+      : [],
+  )
+}
+
+/** `a`, `a and b`, `a, b and c` — the kinds as one readable phrase. */
+function joinWords(words: readonly string[]): string {
+  if (words.length <= 1) return words[0] ?? ''
+  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
+}
+
+/**
+ * What publishing does, said before it happens, from the same board the page is
+ * already showing.
+ *
+ * Three things an organizer needs and used to be denied. The number is the
+ * sessions this press really moves, so it cannot disagree with the sentence
+ * that reports the result afterwards. The conflicts are named: a schedule that
+ * double-books a room is exactly the schedule someone must not publish by
+ * accident, and the ask that hides it is asking about a different schedule than
+ * the one on screen. And the way back is stated truthfully — a published
+ * session is not stuck on the programme, it comes off by being removed from the
+ * schedule, which is a control on this very page.
+ */
+function publishConsequence(board: AgendaBoardDto): string {
+  const count = publishableSessions(board).length
+  // Two entirely different reasons for publishing nothing, and one sentence was
+  // being used for both: an organizer who has not scheduled a single session
+  // was told every scheduled session was already public. Same board data, two
+  // honest answers.
+  const scheduled = board.sessions.filter((session) => session.assignment === 'scheduled').length
+  const audience =
+    count === 0
+      ? scheduled === 0
+        ? 'No sessions are scheduled yet, so this publishes nothing — place a session on the board first.'
+        : 'Every scheduled session is already on the public programme, so this publishes nothing new.'
+      : `This puts ${count} scheduled ${count === 1 ? 'session' : 'sessions'} on the public programme, where anyone with the schedule link can read ${count === 1 ? 'it' : 'them'}.`
+  const conflicts = board.conflicts.length
+  const unresolved =
+    conflicts === 0
+      ? ''
+      : conflicts === 1
+        ? ` The board still has one unresolved ${joinWords(conflictKinds(board))} conflict, and publishing does not resolve it — the programme shows it exactly as it stands.`
+        : ` The board still has ${conflicts} unresolved conflicts (${joinWords(conflictKinds(board))}), and publishing does not resolve them — the programme shows them exactly as they stand.`
+  return `${audience}${unresolved} A published session comes back off the programme only by being removed from the schedule, one session at a time.`
 }
 
 /** Where a placement that just landed put the session. */
@@ -600,8 +779,13 @@ function ViewRegion({
   }>
 }) {
   return (
-    <section aria-label={`${name} view`} className="grid gap-1 rounded-lg border border-border p-3">
-      <h3 className="text-sm font-medium">{name}</h3>
+    <section
+      aria-label={`${name} view`}
+      className="grid content-start gap-2 rounded-lg p-3 ring-1 ring-border"
+    >
+      <h3 className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">
+        {name}
+      </h3>
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing scheduled.</p>
       ) : (
@@ -609,13 +793,16 @@ function ViewRegion({
           {groups.map((group) => (
             <li key={group.key} className="grid gap-1">
               {group.label === '' ? null : (
-                <span className="text-sm text-muted-foreground">{group.label}</span>
+                <span className="text-xs font-medium text-muted-foreground">{group.label}</span>
               )}
-              <ul className="grid gap-1">
+              <ul className="grid gap-0.5">
                 {group.sessions.map((session) => (
-                  <li key={session.submissionId} className="flex flex-wrap gap-x-3 text-sm">
-                    <span>{session.title}</span>
-                    <span className="text-muted-foreground">
+                  <li
+                    key={session.submissionId}
+                    className="flex flex-wrap items-baseline gap-x-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate">{session.title}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
                       {timeOfDay(session.start)}–{timeOfDay(session.end)}
                     </span>
                   </li>
@@ -629,7 +816,43 @@ function ViewRegion({
   )
 }
 
+/**
+ * The organizer shell is mounted by the feature, exactly as the other organizer
+ * surfaces mount it, so a route file can never hand the agenda to a reader
+ * without the rail that tells them where they are (C1 F9).
+ */
 export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
+  const boardQuery = useAgendaBoard(eventSlug)
+  // An expired session is a DEAD END, and a dead end is a page. Rendered inside
+  // the rail it was a card sitting in a shell full of destinations the reader
+  // is no longer allowed to open — the same moment wore two different anatomies
+  // depending on which organizer route it happened on. Bare is what the
+  // majority render and what the AdminStates grammar is drawn for. The
+  // observer added here shares the route's existing query, so no request is
+  // added by asking the question one level up.
+  if (boardQuery.isError && getApiErrorCode(boardQuery.error) === 'unauthorized') {
+    return <ExpiredAgendaSession />
+  }
+  return (
+    <AppShell slug={eventSlug}>
+      <AgendaAdminScreen eventSlug={eventSlug} />
+    </AppShell>
+  )
+}
+
+/**
+ * The expired-session branch as its own component, so the router hook it needs
+ * is only called when the branch really renders.
+ */
+function ExpiredAgendaSession() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    document.title = 'Session expired — SpeakerOps'
+  }, [])
+  return <ExpiredSessionState onLogin={() => void navigate({ to: '/admin' })} />
+}
+
+function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
   const queryClient = useQueryClient()
   const queryKey = adminAgendaQueryKeys.board(eventSlug)
   const boardQuery = useAgendaBoard(eventSlug)
@@ -682,6 +905,7 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
     },
   })
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [confirmPublish, setConfirmPublish] = useState(false)
   const dayFields = useRef(new Map<string, HTMLSelectElement>())
 
   useEffect(() => {
@@ -707,9 +931,12 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
     },
     [place],
   )
+  // The confirmation the removal was asked from closes on the SERVER's answer,
+  // never on the click: a dialog that vanished on click would report a failure
+  // behind itself, where the organizer who asked for it is no longer looking.
   const unplaceSession = useCallback(
-    (submissionId: string) => {
-      unplace.mutate(submissionId)
+    (submissionId: string, onRemoved: () => void) => {
+      unplace.mutate(submissionId, { onSuccess: onRemoved })
     },
     [unplace],
   )
@@ -718,6 +945,9 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
     const code = getApiErrorCode(boardQuery.error)
     if (code === 'forbidden') return <ForbiddenState />
     if (code === 'not_found') return <DeniedState />
+    // `unauthorized` never reaches here: the page answers an expired session
+    // above the shell, so the dead end is a page rather than a card inside a
+    // rail of destinations the reader can no longer open.
   }
 
   if (boardQuery.isPending) {
@@ -741,9 +971,13 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
   if (board === undefined) {
     return (
       <div className="grid gap-4">
-        <h1 className="text-2xl font-semibold">Agenda</h1>
+        <PageHeader>
+          <PageHeaderContent>
+            <PageHeaderTitle>Agenda</PageHeaderTitle>
+          </PageHeaderContent>
+        </PageHeader>
         <Card>
-          <CardContent className="grid gap-3">
+          <CardContent className="grid justify-items-start gap-3">
             <AlertLive>Unable to load the agenda.</AlertLive>
             <Button variant="outline" onClick={() => void boardQuery.refetch()}>
               Retry
@@ -757,12 +991,16 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
   if (board.sessions.length === 0) {
     return (
       <div className="grid gap-4">
-        <h1 className="text-2xl font-semibold">Agenda</h1>
-        <Card>
-          <CardContent>
-            <StatusLive aria-live="polite">No accepted sessions to schedule yet.</StatusLive>
-          </CardContent>
-        </Card>
+        <PageHeader>
+          <PageHeaderContent>
+            <PageHeaderTitle>Agenda</PageHeaderTitle>
+          </PageHeaderContent>
+        </PageHeader>
+        <EmptyState
+          icon={<InboxIcon size={20} />}
+          title={<StatusLive aria-live="polite">No accepted sessions to schedule yet.</StatusLive>}
+          description="Accept a proposal from the submissions queue and it arrives here ready to be given a room and a time."
+        />
       </div>
     )
   }
@@ -772,6 +1010,9 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
   const days = placeableDays(board)
   const day = selectedDay ?? days[0]?.day ?? board.sessions[0]?.day ?? ''
   const title = (submissionId: string): string => byId.get(submissionId)?.title ?? submissionId
+  const scheduledCount = board.sessions.filter(
+    (session) => session.assignment === 'scheduled',
+  ).length
   const groupsOf = (
     grouped: Readonly<Record<string, readonly string[]>>,
     label: (key: string) => string,
@@ -791,22 +1032,76 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
 
   return (
     <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold">Agenda</h1>
+      {/* The page title, the one number that decides whether the schedule is
+            ready, and the action that ends the job — one strip, in that order. */}
+      <PageHeader>
+        <PageHeaderContent>
+          <PageHeaderTitle>Agenda</PageHeaderTitle>
+          <PageHeaderDescription>
+            {scheduledCount} of {board.sessions.length}{' '}
+            {board.sessions.length === 1 ? 'session' : 'sessions'} placed
+          </PageHeaderDescription>
+        </PageHeaderContent>
+        <PageHeaderActions>
+          {board.conflicts.length === 0 ? null : (
+            <Badge variant="destructive">
+              {board.conflicts.length} {board.conflicts.length === 1 ? 'conflict' : 'conflicts'}
+            </Badge>
+          )}
+          <Button type="button" onClick={() => setConfirmPublish(true)} pending={publish.isPending}>
+            Publish agenda
+          </Button>
+        </PageHeaderActions>
+      </PageHeader>
+
+      {/* Publishing is what an audience reads, so it asks first — and the ask
+            names the sessions this press really moves and the conflicts that go
+            public with them, from the same board the page is showing. */}
+      <ConfirmDialog
+        open={confirmPublish}
+        onOpenChange={setConfirmPublish}
+        tone="default"
+        title="Publish the agenda"
+        description={`${publishConsequence(board)}${
+          publish.isError ? ' The last attempt failed: the agenda could not be published.' : ''
+        }`}
+        confirmLabel="Publish to the programme"
+        pending={publish.isPending}
+        onConfirm={() =>
+          publish.mutate(undefined, {
+            onSuccess: () => {
+              setConfirmPublish(false)
+            },
+          })
+        }
+      />
+
+      {(publish.isSuccess || publish.isError) && (
+        <div className="grid justify-items-start gap-2">
+          {publish.isSuccess ? (
+            <StatusLive aria-live="polite">
+              Published {publish.data.publishedCount}{' '}
+              {publish.data.publishedCount === 1 ? 'session' : 'sessions'}.
+            </StatusLive>
+          ) : null}
+          {publish.isError ? <AlertLive>Could not publish the agenda.</AlertLive> : null}
+        </div>
+      )}
 
       {/* A placement needs a day, a slot on it, and a room to go in. Each can be
-          missing on its own, so the page names the ones that are — and only
-          those — beside the surface that fixes each. Naming a prerequisite that
-          is already met would send the organizer to a setting they have already
-          made; naming none at all is what makes a board look broken. */}
+            missing on its own, so the page names the ones that are — and only
+            those — beside the surface that fixes each. Naming a prerequisite that
+            is already met would send the organizer to a setting they have already
+            made; naming none at all is what makes a board look broken. */}
       {unmet.length === 0 ? null : (
-        <section aria-label="Placement prerequisites" className="grid gap-3">
-          <h2 className="text-lg font-semibold">Before sessions can be placed</h2>
+        <section aria-label="Placement prerequisites" className="grid gap-2">
+          <SectionHeading>Before sessions can be placed</SectionHeading>
           <Card>
-            <CardContent>
+            <CardContent className="grid gap-3">
               <ul className="grid gap-3">
                 {unmet.map((precondition) => (
-                  <li key={precondition} className="grid gap-1">
-                    <StatusLive aria-live="polite">
+                  <li key={precondition} className="grid justify-items-start gap-1">
+                    <StatusLive aria-live="polite" className="text-balance">
                       {PRECONDITION_COPY[precondition].message}
                     </StatusLive>
                     <PreconditionLink precondition={precondition} eventSlug={eventSlug} />
@@ -818,42 +1113,30 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
         </section>
       )}
 
-      <section aria-label="Publishing" className="flex flex-wrap items-center gap-3">
-        <Button type="button" onClick={() => publish.mutate()} disabled={publish.isPending}>
-          Publish agenda
-        </Button>
-        {publish.isSuccess ? (
-          <StatusLive aria-live="polite">
-            Published {publish.data.publishedCount}{' '}
-            {publish.data.publishedCount === 1 ? 'session' : 'sessions'}.
-          </StatusLive>
-        ) : null}
-        {publish.isError ? <AlertLive>Could not publish the agenda.</AlertLive> : null}
-      </section>
-
       <section aria-label="Conflicts" className="grid gap-2">
-        <h2 className="text-lg font-semibold">Conflicts</h2>
+        <SectionHeading>Conflicts</SectionHeading>
         {/* One live region across both states: a conflict that appears after a
-            placement has to be spoken, and a region that unmounts says nothing. */}
+              placement has to be spoken, and a region that unmounts says nothing. */}
         <StatusLive aria-live="polite">{conflictSummary(board.conflicts.length)}</StatusLive>
         {board.conflicts.length === 0 ? null : (
-          <ul className="grid gap-2">
+          <ul className="grid divide-y divide-border rounded-lg ring-1 ring-destructive/40">
             {board.conflicts.map((conflict) => (
               <li
                 key={`${conflict.kind}-${conflict.first}-${conflict.second}`}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive p-2"
+                className="flex flex-wrap items-center gap-2 p-3"
               >
-                <Badge>{CONFLICT_LABELS[conflict.kind]}</Badge>
-                <span className="text-sm">
+                <Badge variant="destructive">{CONFLICT_LABELS[conflict.kind]}</Badge>
+                <span className="min-w-0 text-sm">
                   {title(conflict.first)} and {title(conflict.second)}
                 </span>
                 {/* The shortcut only moves focus to a day select, so it is
-                    offered exactly when that select exists. */}
+                      offered exactly when that select exists. */}
                 {placeable ? (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="ml-auto"
                     aria-label={`Reschedule ${title(conflict.first)}`}
                     onClick={() => dayFields.current.get(conflict.first)?.focus()}
                   >
@@ -867,39 +1150,33 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
       </section>
 
       {/* Every cell of the drag board is a room crossed with a slot of the day,
-          so a board short of either is a table nothing can be dropped into. */}
+            so a board short of either is a table nothing can be dropped into. */}
       {placeable ? (
         <section aria-label="Placement board" className="grid gap-3">
-          <h2 className="text-lg font-semibold">Placement board</h2>
+          <SectionHeading>Placement board</SectionHeading>
           {/* A very long window is drawn only as far as it can be read, and the
-              board says so rather than letting the last day it lists pass for
-              the end of the event. The days past it are days the event really
-              covers and the server really accepts a placement on. */}
+                board says so rather than letting the last day it lists pass for
+                the end of the event. The days past it are days the event really
+                covers and the server really accepts a placement on. */}
           {unlistedWindowDays(board) === 0 ? null : (
-            <StatusLive aria-live="polite" id={WINDOW_REACH_NOTICE_ID}>
+            <StatusLive aria-live="polite" id={WINDOW_REACH_NOTICE_ID} className="text-balance">
               {windowReachNotice(board)}
             </StatusLive>
           )}
-          <span className="grid w-fit gap-1">
-            <label htmlFor="agenda-board-day" className="text-sm">
-              Board day
-            </label>
-            <select
-              id="agenda-board-day"
-              className={selectClass}
-              aria-describedby={
-                unlistedWindowDays(board) === 0 ? undefined : WINDOW_REACH_NOTICE_ID
-              }
-              value={day}
-              onChange={(event) => setSelectedDay(event.target.value)}
-            >
-              {days.map((option) => (
-                <option key={option.day} value={option.day}>
-                  {option.day}
-                </option>
-              ))}
-            </select>
-          </span>
+          <BoardSelect
+            label="Board day"
+            id="agenda-board-day"
+            wrapperClassName="w-fit min-w-40"
+            aria-describedby={unlistedWindowDays(board) === 0 ? undefined : WINDOW_REACH_NOTICE_ID}
+            value={day}
+            onChange={(event) => setSelectedDay(event.target.value)}
+          >
+            {days.map((option) => (
+              <option key={option.day} value={option.day}>
+                {option.day}
+              </option>
+            ))}
+          </BoardSelect>
           <Suspense
             fallback={
               <div aria-busy="true" className="grid gap-2">
@@ -914,13 +1191,23 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
       ) : null}
 
       <section aria-label="Sessions" className="grid gap-3">
-        <h2 className="text-lg font-semibold">Sessions</h2>
-        {place.isError ? <AlertLive>Could not place the session.</AlertLive> : null}
-        {unplace.isError ? (
-          <AlertLive>Could not remove the session from the schedule.</AlertLive>
-        ) : null}
+        <SectionHeading>Sessions</SectionHeading>
+        {/* One region for both failures, mounted whether or not it has anything
+            to say. A live region has to be in the accessibility tree before its
+            content arrives, and a removal is confirmed from a modal that stays
+            open on failure: a region created at that moment lands inside the
+            subtree the dialog has already hidden, where the sentence it carries
+            reaches nobody. Mounted from the start it is part of the page the
+            dialog holds open behind it, and it speaks. */}
+        <AlertLive>
+          {place.isError
+            ? 'Could not place the session.'
+            : unplace.isError
+              ? 'Could not remove the session from the schedule.'
+              : null}
+        </AlertLive>
         {/* A placement that lands is as much news as one that fails, and it is
-            the only confirmation an organizer who never sees the board gets. */}
+              the only confirmation an organizer who never sees the board gets. */}
         {placed === undefined ? null : (
           <StatusLive aria-live="polite">{placedAnnouncement(placed)}</StatusLive>
         )}
@@ -935,40 +1222,61 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
             onPlace={placeSession}
             onUnplace={unplaceSession}
             onRegisterDayField={registerDayField}
-            isSaving={place.isPending || unplace.isPending}
+            // Per ROW, not per page. One page-wide flag put "Placing…" and
+            // aria-busy on every Place button on the board — including during a
+            // removal somewhere else entirely, which places nothing at all.
+            isSaving={place.isPending && place.variables.submissionId === session.submissionId}
+            isRemoving={unplace.isPending && unplace.variables === session.submissionId}
+            // Per SESSION, for the same reason: a publish moves the scheduled
+            // drafts and nothing else, so a session already on the programme —
+            // or not on the board at all — is not waiting on this press and
+            // must not pretend to be.
+            isPublishing={
+              publish.isPending && session.assignment === 'scheduled' && session.status === 'draft'
+            }
+            removalFailed={unplace.isError}
           />
         ))}
       </section>
 
       <section aria-label="Views" className="grid gap-3">
-        <h2 className="text-lg font-semibold">Views</h2>
-        <ViewRegion
-          name="List"
-          groups={
-            board.views.list.length === 0
-              ? []
-              : [
-                  {
-                    key: 'list',
-                    label: '',
-                    sessions: board.views.list.flatMap((submissionId) => {
-                      const session = byId.get(submissionId)
-                      return session === undefined ? [] : [session]
-                    }),
-                  },
-                ]
-          }
-        />
-        <ViewRegion name="Day" groups={groupsOf(board.views.day, (key) => key)} />
-        <ViewRegion name="Week" groups={groupsOf(board.views.week, (key) => key)} />
-        <ViewRegion
-          name="Track"
-          groups={groupsOf(board.views.track, (key) => optionLabel(board.tracks, key))}
-        />
-        <ViewRegion
-          name="Room"
-          groups={groupsOf(board.views.room, (key) => optionLabel(board.rooms, key))}
-        />
+        <SectionHeading>Views</SectionHeading>
+        {/* All five stay mounted: they are five readings of one schedule, and
+              the golden walkthrough reads every one of them by name. */}
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          <ViewRegion
+            name="List"
+            groups={
+              board.views.list.length === 0
+                ? []
+                : [
+                    {
+                      key: 'list',
+                      label: '',
+                      sessions: board.views.list.flatMap((submissionId) => {
+                        const session = byId.get(submissionId)
+                        return session === undefined ? [] : [session]
+                      }),
+                    },
+                  ]
+            }
+          />
+          <ViewRegion name="Day" groups={groupsOf(board.views.day, (key) => key)} />
+          <ViewRegion name="Week" groups={groupsOf(board.views.week, (key) => key)} />
+          {/* An untracked session is its own group, and it says so: the key the
+                derivation files it under carries no label, and a group heading
+                left blank reads as a continuation of the one above it. */}
+          <ViewRegion
+            name="Track"
+            groups={groupsOf(board.views.track, (key) =>
+              trackGroupLabel(optionLabel(board.tracks, key)),
+            )}
+          />
+          <ViewRegion
+            name="Room"
+            groups={groupsOf(board.views.room, (key) => optionLabel(board.rooms, key))}
+          />
+        </div>
       </section>
     </div>
   )

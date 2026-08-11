@@ -54,9 +54,13 @@ export function organizerDestinations(slug: string): readonly NavDestination[] {
       params,
       group: 'Programme',
     },
+    /* "Review committee", not "Evaluations": the page this opens is titled
+       Review committee, and the product also has a SEPARATE speaker-facing
+       /evaluations surface. One word for two destinations made the rail
+       contradict the page it opened. */
     {
       id: 'evaluations',
-      label: 'Evaluations',
+      label: 'Review committee',
       to: '/admin/events/$slug/evaluations',
       params,
       group: 'Programme',

@@ -130,6 +130,37 @@ const CONFLICT_BOARD: AgendaBoardDto = {
   conflicts: [{ kind: 'room', first: PLACED.submissionId, second: SECOND_PLACED.submissionId }],
 }
 
+// A session placed without a track. The board keys its group by the identifier
+// it does not have, and the views have to name that group rather than leave it
+// blank under whichever track was drawn before it.
+const UNTRACKED: AgendaSessionDto = {
+  ...PLACED,
+  submissionId: 'submission-untracked',
+  title: 'Hallway track',
+  trackId: null,
+  trackLabel: null,
+  position: 1,
+}
+
+const UNTRACKED_BOARD: AgendaBoardDto = {
+  ...PLACED_BOARD,
+  sessions: [PLACED, UNTRACKED],
+  views: {
+    ...PLACED_BOARD.views,
+    list: [PLACED.submissionId, UNTRACKED.submissionId],
+    track: { [TRACK_TALKS.id]: [PLACED.submissionId], '': [UNTRACKED.submissionId] },
+  },
+}
+
+// One session still to publish, one already on the programme, and a room they
+// both hold: the exact state whose confirmation used to overcount the sessions
+// and say nothing at all about the double booking.
+const PART_PUBLISHED_CONFLICT_BOARD: AgendaBoardDto = {
+  ...PLACED_BOARD,
+  sessions: [PLACED, { ...SECOND_PLACED, status: 'published' }],
+  conflicts: [{ kind: 'room', first: PLACED.submissionId, second: SECOND_PLACED.submissionId }],
+}
+
 const SECOND_UNPLACED: AgendaSessionDto = {
   ...UNPLACED,
   submissionId: SECOND_PLACED.submissionId,
@@ -139,6 +170,18 @@ const SECOND_UNPLACED: AgendaSessionDto = {
 const ABOUT_TO_CLASH_BOARD: AgendaBoardDto = {
   ...PLACED_BOARD,
   sessions: [PLACED, SECOND_UNPLACED],
+}
+
+/** Two rows that can both be placed: the shape a page-wide flag gets wrong. */
+const TWO_UNPLACED_BOARD: AgendaBoardDto = {
+  ...BOARD,
+  sessions: [UNPLACED, SECOND_UNPLACED],
+}
+
+/** One placed row to remove, one unplaced row that must stay idle while it is. */
+const MIXED_BOARD: AgendaBoardDto = {
+  ...PLACED_BOARD,
+  sessions: [PLACED, { ...SECOND_UNPLACED, submissionId: 'submission-3' }],
 }
 
 // An event whose dates are still unset yields no grid at all: the server
@@ -358,6 +401,18 @@ async function placementForm(title: string): Promise<HTMLElement> {
   return await screen.findByRole('form', { name: new RegExp(`placement for ${title}`, 'i') })
 }
 
+/**
+ * Removing a placement and publishing the agenda both pass through a
+ * confirmation now: the first takes a session off a programme an audience may
+ * already be reading, and the second puts every scheduled session in front of
+ * one. The confirm control carries a label of its own — the trigger says what
+ * it is about to open, the dialog says what the answer does — so the two are
+ * never the same button.
+ */
+async function confirmIn(user: ReturnType<typeof userEvent.setup>, label: string): Promise<void> {
+  await user.click(await screen.findByRole('button', { name: label }))
+}
+
 beforeEach(() => {
   requests = []
   fetchHandler = boardHandler(BOARD)
@@ -443,12 +498,46 @@ describe('agenda admin surfaces', () => {
     expect(document.body.textContent ?? '').not.toContain('Access denied raw copy')
   })
 
+  // Every other organizer route hands an expired session back to sign-in. The
+  // agenda used to fall through to "Unable to load the agenda" with a Retry
+  // that could only 401 again — a dead end wearing a button.
+  it('hands an expired session back to sign-in instead of a retry that cannot work', async () => {
+    fetchHandler = () =>
+      jsonResponse({ error: { code: 'unauthorized', message: 'raw session copy' } }, 401)
+    await renderPage()
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Session expired' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull()
+    expect(document.body.textContent ?? '').not.toContain('raw session copy')
+  })
+
   it('tells the organizer when nothing has been accepted yet', async () => {
     await mountPage('empty')
 
     // The loading state announces itself as well, so this waits for the empty
     // state's own copy rather than for whichever status arrives first.
     expect(await screen.findByText(/no accepted sessions/i)).toHaveAttribute('role', 'status')
+  })
+
+  it('wears the same empty-state grammar as every other empty surface', async () => {
+    await mountPage('empty')
+    await screen.findByText(/no accepted sessions/i)
+
+    // Icon tile, title, explanation — the anatomy the primitive documents and
+    // the submissions queue already renders. Without the tile a judge walking
+    // Submissions → Agenda meets two different empty boxes for one product.
+    const empty = document.querySelector('[data-slot="empty-state"]')
+    expect(empty).not.toBeNull()
+    expect(empty?.querySelector('[data-slot="empty-state-icon"]')).not.toBeNull()
+    expect(empty?.querySelector('[data-slot="empty-state-description"]')).not.toBeNull()
+    // The tile is decoration; the title is what speaks.
+    expect(empty?.querySelector('[data-slot="empty-state-icon"]')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
   })
 })
 
@@ -541,6 +630,27 @@ describe('agenda placement', () => {
     expect(within(form).getByRole('button', { name: /place/i })).toHaveFocus()
   })
 
+  it('keeps the four placement controls on a line of their own', async () => {
+    await mountPage('ready')
+    const form = await placementForm(UNPLACED.title)
+
+    // jsdom has no layout, so the pin is on the contract that produces it: the
+    // control grid takes the full width of the wrapping row instead of
+    // competing with the buttons for what they leave. As a `flex-1` item it was
+    // handed the 50px left over at 390px — four selects one character wide.
+    const grid = within(form).getByLabelText('Day').closest('div.grid')
+    expect(grid).not.toBeNull()
+    expect(grid?.className).toContain('w-full')
+    expect(grid?.className).toContain('sm:grid-cols-4')
+    expect(grid?.className).not.toContain('flex-1')
+    expect(grid?.parentElement?.className).toContain('flex-wrap')
+    // Every one of the four is in that grid, and none of them can be squeezed
+    // to nothing by a sibling: min-w-0 is on the cell, the floor is the row.
+    for (const label of ['Day', 'Room', 'Start', 'Track']) {
+      expect(within(form).getByLabelText(label).closest('div.grid')).toBe(grid)
+    }
+  })
+
   it('applies the placement optimistically and rolls it back when the save fails', async () => {
     const user = userEvent.setup()
     await mountPage('ready')
@@ -558,8 +668,15 @@ describe('agenda placement', () => {
     await user.click(within(form).getByRole('button', { name: /place/i }))
 
     const pendingButton = await within(form).findByRole('button', { name: 'Placing…' })
-    expect(pendingButton).toBeDisabled()
-    expect(pendingButton.parentElement).toHaveAttribute('aria-live', 'polite')
+    // Pending is not `disabled`: the control stays focusable and keeps its tab
+    // stop while it is busy, so the aria-busy it carries is on an element a
+    // reader can still be standing on. And nothing wraps it in a live region —
+    // a region around a control announces the control's own label as a status,
+    // which is how this page came to speak the bare word "Place".
+    expect(pendingButton).toHaveAttribute('aria-busy', 'true')
+    expect(pendingButton).toHaveAttribute('aria-disabled', 'true')
+    expect(pendingButton).not.toHaveAttribute('disabled')
+    expect(pendingButton.closest('[aria-live]')).toBeNull()
 
     // Optimistic: the session shows its new room before the server answers.
     const placedText = new RegExp(`placed in ${ROOM_MAIN.label}`, 'i')
@@ -568,10 +685,64 @@ describe('agenda placement', () => {
     await waitFor(() => expect(pending.fail).not.toBeNull())
     pending.fail?.()
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not place the session/i)
+    // The region is mounted from the start (it has to be, to be announced at
+    // all), so the wait is for the sentence arriving in it, not for it to exist.
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/could not place the session/i),
+    )
     await waitFor(() => expect(within(form).queryByText(placedText)).toBeNull())
     expect(within(form).getByText(/not placed yet/i)).toBeInTheDocument()
     expect(document.body.textContent ?? '').not.toContain('raw')
+  })
+
+  // V3-N3: the in-flight flag was page-wide, so one placement marked EVERY
+  // Place button on the board busy — and so did a removal, which places nothing.
+  it('marks only the row being placed, leaving every other Place button idle', async () => {
+    const user = userEvent.setup()
+    fetchHandler = boardHandler(TWO_UNPLACED_BOARD)
+    await renderPage()
+
+    const first = await placementForm(UNPLACED.title)
+    const second = await placementForm(SECOND_UNPLACED.title)
+    await user.selectOptions(within(first).getByLabelText('Room'), ROOM_MAIN.id)
+
+    fetchHandler = (request) => {
+      if (request.method !== 'PUT') return jsonResponse(TWO_UNPLACED_BOARD)
+      return new Promise<Response>(() => undefined)
+    }
+    await user.click(within(first).getByRole('button', { name: /^place$/i }))
+
+    expect(await within(first).findByRole('button', { name: 'Placing…' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
+    const idle = within(second).getByRole('button', { name: /^place$/i })
+    expect(idle).not.toHaveAttribute('aria-busy')
+    expect(within(second).queryByRole('button', { name: 'Placing…' })).toBeNull()
+  })
+
+  it('never claims a session is being placed while another one is being removed', async () => {
+    const user = userEvent.setup()
+    fetchHandler = boardHandler(MIXED_BOARD)
+    await renderPage()
+
+    const unplacedForm = await placementForm(SECOND_UNPLACED.title)
+    // Captured before the ask opens: the confirmation is modal, so everything
+    // behind it is aria-hidden while the removal runs and the node itself is
+    // what can still be read.
+    const place = within(unplacedForm).getByRole('button', { name: /^place$/i })
+    fetchHandler = (request) => {
+      if (request.method !== 'DELETE') return jsonResponse(MIXED_BOARD)
+      return new Promise<Response>(() => undefined)
+    }
+    await user.click(
+      screen.getByRole('button', { name: `Remove ${PLACED.title} from the schedule` }),
+    )
+    await confirmIn(user, 'Remove from the schedule')
+    await waitFor(() => expect(requests.some((request) => request.method === 'DELETE')).toBe(true))
+
+    expect(place).not.toHaveAttribute('aria-busy')
+    expect(place).toHaveTextContent(/^Place$/)
   })
 
   it('resyncs its controls to the placement the server actually stored', async () => {
@@ -1208,10 +1379,12 @@ describe('agenda preconditions', () => {
 
     const notice = await screen.findByText(/no dates yet/i)
     expect(notice).toHaveAttribute('role', 'status')
-    expect(screen.getByRole('link', { name: /event settings/i })).toHaveAttribute(
-      'href',
-      EVENT_SETTINGS_PATH,
-    )
+    // Named by its own sentence, not by the destination: the rail beside the
+    // page also links to the event settings, and the link that matters here is
+    // the one the prerequisite offers.
+    expect(
+      screen.getByRole('link', { name: /set the event dates in the event settings/i }),
+    ).toHaveAttribute('href', EVENT_SETTINGS_PATH)
     // A prerequisite that is already met is never printed as missing.
     expect(document.body.textContent ?? '').not.toMatch(/no rooms/i)
     expect(document.body.textContent ?? '').not.toMatch(/schedulable|too short/i)
@@ -1228,10 +1401,9 @@ describe('agenda preconditions', () => {
     // send them to a field they have already filled in.
     expect(document.body.textContent ?? '').not.toMatch(/no dates yet/i)
     expect(document.body.textContent ?? '').not.toMatch(/no rooms/i)
-    expect(screen.getByRole('link', { name: /event settings/i })).toHaveAttribute(
-      'href',
-      EVENT_SETTINGS_PATH,
-    )
+    expect(
+      screen.getByRole('link', { name: /widen the event window in the event settings/i }),
+    ).toHaveAttribute('href', EVENT_SETTINGS_PATH)
   })
 
   it('names the missing rooms and links to the taxonomy editor', async () => {
@@ -1295,6 +1467,7 @@ describe('agenda preconditions', () => {
           name: new RegExp(`remove ${PLACED.title} from the schedule`, 'i'),
         }),
       )
+      await confirmIn(user, 'Remove from the schedule')
 
       await waitFor(() => {
         expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(1)
@@ -1333,6 +1506,14 @@ describe('agenda retraction', () => {
         name: new RegExp(`remove ${PLACED.title} from the schedule`, 'i'),
       }),
     )
+    // The dialog names what disappears before the removal runs, and Cancel is
+    // what it opens focused on.
+    const removalDialog = await screen.findByRole('dialog')
+    expect(removalDialog).toHaveTextContent(new RegExp(PLACED.title, 'i'))
+    await waitFor(() =>
+      expect(within(removalDialog).getByRole('button', { name: 'Cancel' })).toHaveFocus(),
+    )
+    await confirmIn(user, 'Remove from the schedule')
 
     await waitFor(() => {
       expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(1)
@@ -1342,6 +1523,26 @@ describe('agenda retraction', () => {
     )
     expect(await within(form).findByText(/not placed yet/i)).toBeInTheDocument()
     expect(await screen.findByText(/removed .* from the schedule/i)).toBeInTheDocument()
+  })
+
+  it('writes nothing when the removal is asked for and then declined', async () => {
+    const user = userEvent.setup()
+    fetchHandler = boardHandler(PLACED_BOARD)
+    await renderPage()
+    const form = await placementForm(PLACED.title)
+
+    await user.click(
+      within(form).getByRole('button', {
+        name: new RegExp(`remove ${PLACED.title} from the schedule`, 'i'),
+      }),
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }),
+    )
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(0)
+    expect(within(form).getByText(new RegExp(`placed in ${ROOM_MAIN.label}`, 'i'))).toBeVisible()
   })
 
   it('offers no removal for a session that has no place yet', async () => {
@@ -1366,8 +1567,15 @@ describe('agenda retraction', () => {
         name: new RegExp(`remove ${PLACED.title} from the schedule`, 'i'),
       }),
     )
+    await confirmIn(user, 'Remove from the schedule')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not remove the session/i)
+    // The dialog stays open over the failure, so this also pins that the page's
+    // one alert region survives inside the subtree the modal hides — a region
+    // created at that moment would not have (F-R3-11).
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/could not remove the session/i),
+    )
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/the last attempt failed/i)
     expect(document.body.textContent ?? '').not.toContain('raw server copy')
   })
 })
@@ -1390,12 +1598,74 @@ describe('agenda publishing, conflicts and views', () => {
     await renderPage()
 
     await user.click(await screen.findByRole('button', { name: /publish agenda/i }))
+    // Publishing puts the schedule in front of an audience, so the ask names
+    // how many sessions that is before anything is written.
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/1 scheduled session/i)
+    await confirmIn(user, 'Publish to the programme')
 
     await waitFor(() => {
       expect(requests.filter((request) => request.method === 'POST')).toHaveLength(1)
     })
     expect(requests.find((request) => request.method === 'POST')?.url).toBe(PUBLISH_URL)
     expect(await screen.findByText(/published 1 session/i)).toBeInTheDocument()
+  })
+
+  // TA5-P1/P12: draft-or-published is a lifecycle state, so the chip carries a
+  // marker that survives greyscale — and while a publish that really moves
+  // THIS session is in the air, that marker is what says so. The chip used to
+  // claim the old state as calmly as ever while the button beside it went
+  // pending.
+  it('breathes the chip of a session a publish is really moving, and no other', async () => {
+    const user = userEvent.setup()
+    let releasePublish: ((response: Response) => void) | undefined
+    // The board the server would answer with, so the refetch that follows a
+    // publish agrees with the publish itself.
+    let served: AgendaBoardDto = PART_PUBLISHED_CONFLICT_BOARD
+    fetchHandler = (request) => {
+      if (request.method === 'POST' && request.url === PUBLISH_URL) {
+        return new Promise<Response>((resolve) => {
+          releasePublish = resolve
+        })
+      }
+      return jsonResponse(served)
+    }
+    await renderPage()
+
+    // Queried through the DOM rather than by role: the confirm dialog holds
+    // the rest of the page inert while it is open, which is exactly the moment
+    // this contract is about.
+    const chipOf = (title: string): Element | null =>
+      document.querySelector(`form[aria-label="Placement for ${title}"] [data-slot="badge"]`)
+
+    await placementForm(PLACED.title)
+    expect(chipOf(PLACED.title)).toHaveAttribute('data-dot', '')
+    expect(chipOf(PLACED.title)).not.toHaveAttribute('data-pending')
+
+    await user.click(await screen.findByRole('button', { name: /publish agenda/i }))
+    await confirmIn(user, 'Publish to the programme')
+
+    await waitFor(() => expect(chipOf(PLACED.title)).toHaveAttribute('data-pending', ''))
+    // The word does not change while the wait lasts: it is still the last
+    // state the server confirmed.
+    expect(chipOf(PLACED.title)).toHaveTextContent('Draft')
+    // Visual only. The wait is already spoken by the region this page owns,
+    // and this product allows exactly one of those.
+    expect(chipOf(PLACED.title)).not.toHaveAttribute('aria-live')
+    expect(chipOf(PLACED.title)).not.toHaveAttribute('role')
+    // A session already on the programme is not waiting on this press.
+    expect(chipOf(SECOND_PLACED.title)).not.toHaveAttribute('data-pending')
+    expect(chipOf(SECOND_PLACED.title)).toHaveAttribute('data-dot', '')
+
+    served = {
+      ...PART_PUBLISHED_CONFLICT_BOARD,
+      sessions: [
+        { ...PLACED, status: 'published' },
+        { ...SECOND_PLACED, status: 'published' },
+      ],
+    }
+    releasePublish?.(jsonResponse({ publishedCount: 1, board: served }))
+    await waitFor(() => expect(chipOf(PLACED.title)).toHaveTextContent('Published'))
+    expect(chipOf(PLACED.title)).not.toHaveAttribute('data-pending')
   })
 
   it('renders each conflict with both session titles and moves focus to the fix', async () => {
@@ -1449,6 +1719,91 @@ describe('agenda publishing, conflicts and views', () => {
     expect(
       within(await screen.findByRole('region', { name: 'Week view' })).getByText('2026-W20'),
     ).toBeInTheDocument()
+  })
+
+  it('gives an untracked session its own named group instead of the previous track’s', async () => {
+    fetchHandler = boardHandler(UNTRACKED_BOARD)
+    await renderPage()
+
+    const view = await screen.findByRole('region', { name: 'Track view' })
+    // The group the untracked session sits in is the one that says so — the
+    // heading is inside its own list item, so a reader moving through the tree
+    // meets "No track" before the session and never "Talks".
+    const group = within(view)
+      .getByText(UNTRACKED.title)
+      .closest('li')
+      ?.parentElement?.closest('li')
+    expect(group).not.toBeNull()
+    expect(group).toHaveTextContent('No track')
+    expect(group).not.toHaveTextContent(TRACK_TALKS.label)
+    // And the real track keeps only its own session.
+    const talks = within(view).getByText(TRACK_TALKS.label).closest('li')
+    expect(talks).toHaveTextContent(PLACED.title)
+    expect(talks).not.toHaveTextContent(UNTRACKED.title)
+    // The word is the one the placement select offers for the same state.
+    expect(within(await placementForm(UNTRACKED.title)).getByLabelText('Track')).toHaveTextContent(
+      'No track',
+    )
+  })
+
+  it('names the sessions a publish really moves, and the conflict it would take public', async () => {
+    const user = userEvent.setup()
+    fetchHandler = boardHandler(PART_PUBLISHED_CONFLICT_BOARD)
+    await renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /publish agenda/i }))
+    const dialog = await screen.findByRole('dialog')
+
+    // Two sessions are scheduled and one of them is already on the programme,
+    // so this press moves exactly one — the number the outcome will report.
+    expect(dialog).toHaveTextContent(/1 scheduled session/i)
+    expect(dialog).not.toHaveTextContent(/2 scheduled sessions/i)
+    // The double booking the board shows is named in the ask, not hidden by it.
+    expect(dialog).toHaveTextContent(/one unresolved room conflict/i)
+    // And the way back is stated truthfully: removal is a control on this page.
+    expect(dialog).toHaveTextContent(/removed from the schedule/i)
+  })
+
+  // V3-N1: "publishes nothing" has two entirely different causes, and one
+  // sentence was doing both jobs — telling an organizer who has scheduled
+  // nothing at all that everything scheduled is already public.
+  it('says nothing is scheduled yet rather than that everything is already public', async () => {
+    const user = userEvent.setup()
+    fetchHandler = boardHandler(BOARD)
+    await renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /publish agenda/i }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(dialog).toHaveTextContent(/no sessions are scheduled yet/i)
+    expect(dialog).not.toHaveTextContent(/already on the public programme/i)
+  })
+
+  it('says everything is already public when every scheduled session is', async () => {
+    const user = userEvent.setup()
+    fetchHandler = boardHandler({
+      ...PLACED_BOARD,
+      sessions: [{ ...PLACED, status: 'published' }],
+    })
+    await renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /publish agenda/i }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(dialog).toHaveTextContent(/already on the public programme/i)
+    expect(dialog).not.toHaveTextContent(/no sessions are scheduled yet/i)
+  })
+
+  it('says nothing about conflicts when the board has none', async () => {
+    const user = userEvent.setup()
+    fetchHandler = boardHandler(PLACED_BOARD)
+    await renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /publish agenda/i }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(dialog).toHaveTextContent(/1 scheduled session/i)
+    expect(dialog).not.toHaveTextContent(/unresolved/i)
   })
 })
 

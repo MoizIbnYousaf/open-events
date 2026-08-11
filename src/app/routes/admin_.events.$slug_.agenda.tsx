@@ -1,18 +1,16 @@
 import { createFileRoute, useParams } from '@tanstack/react-router'
 
 import AgendaAdminPage from '../features/admin/AgendaAdminPage'
-import AppShell from '../features/nav/AppShell'
 
 import type {} from '../routeTree.gen'
 
+// The feature mounts `AppShell` itself, exactly as the other organizer features
+// do (C1 F9): the route file resolves the slug and nothing else, so a new
+// organizer route cannot land shell-less by forgetting to wrap it here.
 function AgendaAdminRoutePage() {
   const params = useParams({ strict: false })
   const slug = params.slug as string | undefined
-  return (
-    <AppShell slug={slug ?? ''}>
-      <AgendaAdminPage eventSlug={slug ?? ''} />
-    </AppShell>
-  )
+  return <AgendaAdminPage eventSlug={slug ?? ''} />
 }
 
 const agendaAdminRoute = createFileRoute('/admin_/events/$slug_/agenda')({

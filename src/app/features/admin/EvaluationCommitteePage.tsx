@@ -1,9 +1,27 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from '@tanstack/react-router'
 
 import { AlertLive } from '../../../components/ui/alert-live'
+import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
-import { Card, CardContent } from '../../../components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '../../../components/ui/card'
+import { EmptyState } from '../../../components/ui/empty-state'
+import { ClipboardIcon } from '../../../components/ui/icons'
+import { Field, FieldLabel } from '../../../components/ui/field'
+import { Input } from '../../../components/ui/input'
+import {
+  PageHeader,
+  PageHeaderContent,
+  PageHeaderDescription,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import { getApiErrorCode } from '../../api/admin-events'
@@ -16,11 +34,7 @@ import {
 } from '../../queries/admin-evaluations'
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
-
-const fieldClass =
-  'h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none disabled:opacity-50 md:text-sm'
-
-const linkClass = 'text-sm font-medium text-primary underline-offset-4 hover:underline'
+import RoundConfirmDialog from './RoundConfirmDialog'
 
 /**
  * The event-level half of REQ-009: the rubric the committee scores against and
@@ -33,19 +47,44 @@ const linkClass = 'text-sm font-medium text-primary underline-offset-4 hover:und
 export default function EvaluationCommitteePage() {
   const params = useParams({ strict: false })
   const slug = params.slug as string | undefined
+  const criteria = useEvaluationCriteria(slug as EventSlug | undefined)
+  const rounds = useEvaluationRounds(slug as EventSlug | undefined)
+  // An expired session is a dead end, and a dead end is a PAGE. Rendered inside
+  // the rail it was a card in a shell full of destinations the reader can no
+  // longer open — the same moment wearing a different anatomy depending on
+  // which organizer route reached it. Bare is what the majority render and what
+  // the AdminStates grammar is drawn for. Both observers share the screen's own
+  // queries, so asking one level up adds no request.
+  const loadError = criteria.error ?? rounds.error
+  if (loadError != null && getApiErrorCode(loadError) === 'unauthorized') {
+    return <ExpiredCommitteeSession />
+  }
   return (
     <AppShell slug={slug ?? ''}>
-      <div className="grid gap-4">
+      {/* The same reading measure Event settings and Taxonomies use. This page
+          is a form — a rubric editor and a rounds editor — and full-bleed it
+          stretched a single-line "Criterion name" input to ~1250px, wider than
+          a page of prose. C0 §3: readable column for forms, full width for
+          tables and boards. */}
+      <div className="mx-auto grid w-full max-w-3xl gap-4">
         <EvaluationCommitteeScreen />
       </div>
     </AppShell>
   )
 }
 
+/** Its own component so the router hook runs only when the branch renders. */
+function ExpiredCommitteeSession() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    document.title = 'Session expired — SpeakerOps'
+  }, [])
+  return <ExpiredSessionState onLogin={() => void navigate({ to: '/admin' })} />
+}
+
 function EvaluationCommitteeScreen() {
   const params = useParams({ strict: false })
   const slug = params.slug as EventSlug | undefined
-  const navigate = useNavigate()
   const criteria = useEvaluationCriteria(slug)
   const rounds = useEvaluationRounds(slug)
 
@@ -58,15 +97,28 @@ function EvaluationCommitteeScreen() {
     const code = getApiErrorCode(loadError)
     if (code === 'forbidden') return <ForbiddenState />
     if (code === 'not_found') return <DeniedState />
-    if (code === 'unauthorized') {
-      return <ExpiredSessionState onLogin={() => void navigate({ to: '/admin' })} />
-    }
+    // `unauthorized` never reaches here: the page answers it above the shell.
+    // A committee that cannot be read is a transient server or network fault,
+    // so the organizer gets something to press instead of a sentence and a
+    // dead end. Refetching a read adds no write to the mutation ledger.
+    const retrying = criteria.isFetching || rounds.isFetching
     return (
       <div className="grid gap-4">
-        <h1 className="text-2xl font-semibold">Review committee</h1>
+        <CommitteeHeading />
         <Card>
-          <CardContent className="grid gap-3">
+          <CardContent className="grid justify-items-start gap-3">
             <AlertLive>The review committee could not be loaded.</AlertLive>
+            <Button
+              type="button"
+              variant="outline"
+              pending={retrying}
+              onClick={() => {
+                void criteria.refetch()
+                void rounds.refetch()
+              }}
+            >
+              {retrying ? 'Trying again…' : 'Try again'}
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -75,25 +127,40 @@ function EvaluationCommitteeScreen() {
 
   if (criteria.isPending || rounds.isPending || slug === undefined) {
     return (
-      <Card aria-busy="true" aria-label="Loading the review committee">
-        <CardContent className="grid gap-3">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-4 w-64" />
-          <StatusLive aria-live="polite">Loading the review committee…</StatusLive>
-        </CardContent>
-      </Card>
+      <div aria-busy="true" aria-label="Loading the review committee" className="grid gap-4">
+        <Card>
+          <CardContent className="grid gap-3">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-4 w-64" />
+            <StatusLive>Loading the review committee…</StatusLive>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
+  // No back link: Review committee is a rail destination, so the rail is the
+  // way back and says so with `aria-current`. See `BackLink.tsx`.
   return (
     <div className="grid gap-4">
-      <h1 className="text-2xl font-semibold">Review committee</h1>
+      <CommitteeHeading />
       <CriteriaSection slug={slug} defined={criteria.data ?? []} />
       <RoundsSection slug={slug} rounds={rounds.data ?? []} />
-      <Link to="/admin/events/$slug" params={{ slug }} className={linkClass}>
-        Back to event settings
-      </Link>
     </div>
+  )
+}
+
+/** One h1 for the page, identical in every state it survives into. */
+function CommitteeHeading() {
+  return (
+    <PageHeader>
+      <PageHeaderContent>
+        <PageHeaderTitle>Review committee</PageHeaderTitle>
+        <PageHeaderDescription>
+          The rubric every rating is scored against, and the rounds it is scored in.
+        </PageHeaderDescription>
+      </PageHeaderContent>
+    </PageHeader>
   )
 }
 
@@ -154,26 +221,34 @@ function CriteriaSection({
 
   return (
     <Card>
+      <CardHeader>
+        <CardTitle level={2}>Criteria</CardTitle>
+        <CardDescription>Relative weights: a criterion at 2 counts twice one at 1.</CardDescription>
+      </CardHeader>
       <CardContent className="grid gap-3">
-        <h2 className="text-base font-semibold">Criteria</h2>
         {defined.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No criteria yet. Every rating is scored against the criteria you define here.
-          </p>
+          <EmptyState
+            icon={<ClipboardIcon size={20} />}
+            title="Define what the committee scores"
+            description="Every rating is weighed against the criteria you add here."
+          />
         ) : (
-          <ul className="grid gap-2 text-sm">
+          <ul className="-my-1 divide-y divide-border">
             {defined.map((criterion) => (
-              <li key={criterion.id} className="flex flex-wrap items-baseline gap-2">
-                <span className="font-medium">{criterion.name}</span>
-                <span className="text-muted-foreground">{`Weight ${criterion.weight}`}</span>
+              <li key={criterion.id} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="min-w-0 flex-1 truncate font-medium">{criterion.name}</span>
+                {/* An annotation on a criterion, not a state it is in: quiet
+                    ink, and no state marker to claim otherwise. */}
+                <Badge variant="ghost">{`Weight ${criterion.weight}`}</Badge>
               </li>
             ))}
           </ul>
         )}
-
-        <div className="grid gap-1.5">
-          <label htmlFor="criterion-name">Criterion name</label>
-          <input
+      </CardContent>
+      <CardFooter className="flex-wrap items-end gap-3">
+        <Field className="min-w-48 flex-1">
+          <FieldLabel htmlFor="criterion-name">Criterion name</FieldLabel>
+          <Input
             id="criterion-name"
             value={name}
             aria-invalid={nameMissing ? true : undefined}
@@ -182,31 +257,31 @@ function CriteriaSection({
               setName(event.target.value)
               setNameMissing(false)
             }}
-            className={fieldClass}
           />
-          {nameMissing ? (
-            <AlertLive id={nameErrorId}>A criterion name is required</AlertLive>
-          ) : null}
-        </div>
-        <div className="grid gap-1.5">
-          <label htmlFor="criterion-weight">Weight</label>
-          <input
+        </Field>
+        <Field className="w-24">
+          <FieldLabel htmlFor="criterion-weight">Weight</FieldLabel>
+          <Input
             id="criterion-weight"
             type="number"
             min={1}
             step={1}
             value={weight}
             onChange={(event) => setWeight(event.target.value)}
-            className={fieldClass}
           />
-        </div>
-        <div>
-          <Button type="button" disabled={define.isPending} onClick={handleAdd}>
-            Add criterion
-          </Button>
-        </div>
-        {define.isError ? <AlertLive>That criterion could not be saved.</AlertLive> : null}
-      </CardContent>
+        </Field>
+        <Button type="button" pending={define.isPending} onClick={handleAdd}>
+          Add criterion
+        </Button>
+        {nameMissing ? (
+          <AlertLive id={nameErrorId} className="w-full">
+            A criterion name is required
+          </AlertLive>
+        ) : null}
+        {define.isError ? (
+          <AlertLive className="w-full">That criterion could not be saved.</AlertLive>
+        ) : null}
+      </CardFooter>
     </Card>
   )
 }
@@ -227,52 +302,125 @@ function RoundsSection({
   readonly rounds: readonly ListedRound[]
 }) {
   const run = useRunEventRounds(slug)
+  const [confirmRound, setConfirmRound] = useState<'open' | 'close' | null>(null)
+  const headingRef = useRef<HTMLHeadingElement | null>(null)
+  /**
+   * Closing the open round removes "Close round N" and opening one renumbers
+   * it, so the confirm dialog hands focus back to a trigger that is no longer
+   * there and it lands on <body>. The card's own heading is always mounted and
+   * is a landing place rather than another action.
+   */
+  const landOnHeading = () => headingRef.current?.focus()
   const liveRound = rounds.filter((round) => round.status === 'open').at(-1) ?? null
   const nextNumber = rounds.reduce((best, round) => Math.max(best, round.number), 0) + 1
 
   return (
     <Card>
+      <CardHeader>
+        <CardTitle level={2} ref={headingRef} tabIndex={-1} className="outline-hidden">
+          Review rounds
+        </CardTitle>
+      </CardHeader>
       <CardContent className="grid gap-3">
-        <h2 className="text-base font-semibold">Review rounds</h2>
-        <StatusLive aria-live="polite">
+        <StatusLive>
           {liveRound === null ? 'No review round is open.' : `Round ${liveRound.number} is open.`}
         </StatusLive>
         {rounds.length === 0 ? null : (
-          <ul className="grid gap-2 text-sm">
+          <ul className="-my-1 divide-y divide-border">
             {rounds.map((round) => (
-              <li key={round.id} className="flex flex-wrap items-baseline gap-2">
-                <span className="font-medium">{`Round ${round.number}: ${round.name}`}</span>
-                <span className="text-muted-foreground">
-                  {round.status === 'closed' ? 'Closed' : 'Open'}
+              <li key={round.id} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {`Round ${round.number}: ${round.name}`}
                 </span>
+                {/* A round's status is a lifecycle state, so the chip carries
+                    the state marker — and while a close is actually in the
+                    air, that marker is the thing that says so. Only the open
+                    round is moving: opening a round creates a new one, and no
+                    chip on screen is waiting on that. The LABEL does not
+                    change while the wait lasts; it is still the state the
+                    server last confirmed, and it stays true until the server
+                    says otherwise. The animation is silent by design — this
+                    card already owns the page's live region, and a second
+                    voice announcing the same wait is not an improvement. */}
+                <Badge
+                  variant={round.status === 'closed' ? 'outline' : 'secondary'}
+                  dot
+                  pending={run.close.isPending && round.id === liveRound?.id}
+                >
+                  {round.status === 'closed' ? 'Closed' : 'Open'}
+                </Badge>
               </li>
             ))}
           </ul>
         )}
-        <div className="flex flex-wrap items-center gap-3">
-          {liveRound === null ? null : (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={run.close.isPending}
-              onClick={() => run.close.mutate(liveRound.id)}
-            >
-              {`Close round ${liveRound.number}`}
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            disabled={run.open.isPending}
-            onClick={() => run.open.mutate({ number: nextNumber, name: `Round ${nextNumber}` })}
-          >
-            {`Open round ${nextNumber}`}
-          </Button>
-        </div>
         {run.open.isError || run.close.isError ? (
           <AlertLive>That review round could not be changed.</AlertLive>
         ) : null}
       </CardContent>
+      <CardFooter className="flex-wrap gap-3">
+        {liveRound === null ? null : (
+          <Button
+            type="button"
+            variant="outline"
+            pending={run.close.isPending}
+            onClick={() => setConfirmRound('close')}
+          >
+            {`Close round ${liveRound.number}`}
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          pending={run.open.isPending}
+          onClick={() => setConfirmRound('open')}
+        >
+          {`Open round ${nextNumber}`}
+        </Button>
+        {/* Same two questions the submission-level panel asks, from the same
+            module: closing is one-way, and opening moves what the committee
+            is scoring. */}
+        {liveRound === null ? null : (
+          <RoundConfirmDialog
+            open={confirmRound === 'close'}
+            onOpenChange={(next) => {
+              if (!next) setConfirmRound(null)
+            }}
+            kind="close"
+            number={liveRound.number}
+            pending={run.close.isPending}
+            failed={run.close.isError}
+            onConfirm={() =>
+              run.close.mutate(liveRound.id, {
+                onSuccess: () => {
+                  setConfirmRound(null)
+                  landOnHeading()
+                },
+              })
+            }
+          />
+        )}
+        <RoundConfirmDialog
+          open={confirmRound === 'open'}
+          onOpenChange={(next) => {
+            if (!next) setConfirmRound(null)
+          }}
+          kind="open"
+          number={nextNumber}
+          pending={run.open.isPending}
+          failed={run.open.isError}
+          onConfirm={() =>
+            run.open.mutate(
+              { number: nextNumber, name: `Round ${nextNumber}` },
+              {
+                onSuccess: () => {
+                  setConfirmRound(null)
+                  landOnHeading()
+                },
+              },
+            )
+          }
+        />
+      </CardFooter>
     </Card>
   )
 }

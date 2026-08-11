@@ -7,11 +7,13 @@ const FORM_ID = 'f0000000-0000-4000-8000-000000000001'
 const EVENT_SLUG = 'demo-conf-2026'
 const FORM_SLUG = 'cfp'
 
-// Committed row-link accessible name (SubmissionList.tsx:107):
-// `${title} — ${statusText} — ${primarySpeaker.name}`; the seeded speaker's
-// contact name is the normalized email (session.ts:138), so the primary
-// speaker name in the row link is the email itself.
-const ORGANIZER_ROW_LINK_NAME = `My talk — Pending — ${EMAIL}`
+// Committed row-link accessible name (SubmissionList.tsx):
+// `${title} — ${primarySpeaker.name}`; the seeded speaker's contact name is the
+// normalized email (session.ts:138), so the primary speaker name in the row
+// link is the email itself. The status token that used to sit between the two
+// came out with F-R3-7 — the list cannot see acceptances, so it could not keep
+// that token true.
+const ORGANIZER_ROW_LINK_NAME = `My talk — ${EMAIL}`
 
 // Explicit mutation accounting: every 2xx write in the whole journey must
 // match this normalized endpoint + method + intended-count map. A 2xx

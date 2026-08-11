@@ -3,16 +3,21 @@ import { toast } from 'sonner'
 
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
-import { Card, CardContent } from '../../../components/ui/card'
+import { Card, CardContent, CardHeader } from '../../../components/ui/card'
+import { EmptyState } from '../../../components/ui/empty-state'
+import { InboxIcon } from '../../../components/ui/icons'
 import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
+import { Input } from '../../../components/ui/input'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
+import { SectionHeading } from '../../../components/ui/section-heading'
 import { getApiErrorCode } from '../../api/admin-events'
 import {
   describeHeadshotRejection,
   useOwnHeadshot,
   useUploadHeadshot,
 } from '../../queries/public-headshot'
+import { FILE_INPUT_CLASS } from './DocumentUploader'
 
 const INPUT_ID = 'headshot-file'
 
@@ -35,6 +40,9 @@ export default function HeadshotUploader() {
   const [refusedInFlight, setRefusedInFlight] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
+  // A 403 is a different answer from a transient failure: retrying it can only
+  // produce the same 403, so the denied branch offers no control to press.
+  const loadDenied = getApiErrorCode(headshot.error) === 'forbidden'
   const objectUrl = headshot.data?.objectUrl
   useEffect(() => {
     return () => {
@@ -89,99 +97,173 @@ export default function HeadshotUploader() {
     (upload.isError ? uploadErrorMessage(getApiErrorCode(upload.error), upload.error) : null)
 
   return (
-    <section aria-labelledby="headshot-heading" className="grid gap-4">
-      <h2 id="headshot-heading" className="text-lg font-semibold">
-        Headshot
-      </h2>
+    <section aria-labelledby="headshot-heading">
       <Card>
-        <CardContent className="grid gap-3">
+        <CardHeader>
+          <SectionHeading id="headshot-heading">Headshot</SectionHeading>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-[7rem_1fr] sm:items-start sm:gap-4">
           <Preview
-            isPending={headshot.isPending}
-            isError={headshot.isError}
-            isFetching={headshot.isFetching}
+            state={previewState(headshot.isPending, loadDenied, headshot.isError)}
+            isRetrying={headshot.isFetching}
             onRetry={() => void headshot.refetch()}
             objectUrl={objectUrl}
           />
-          {/*
-            The file input is the control the problem belongs to: a rejected
-            or failed upload used to render its message with no id and leave
-            the input with no aria-invalid, so assistive tech had no way to
-            connect the two. `problem` is the single source for both.
-          */}
-          <Field invalid={problem !== null}>
-            <FieldLabel htmlFor={INPUT_ID} className="font-medium">
-              Upload a headshot (JPEG, PNG, or WebP, up to 2 MB)
-            </FieldLabel>
-            <input
-              id={INPUT_ID}
-              aria-label="Upload a headshot"
-              ref={inputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="min-h-6 text-sm"
-              aria-invalid={problem !== null ? true : undefined}
-              aria-describedby={problem !== null ? `${INPUT_ID}-error` : undefined}
-              onChange={onPick}
-            />
-            {problem !== null ? <FieldError id={`${INPUT_ID}-error`}>{problem}</FieldError> : null}
-          </Field>
-          {upload.isPending ? (
-            <StatusLive aria-live="polite">Uploading your headshot…</StatusLive>
-          ) : null}
-          {/* The label that stays, not a second live region: the outcome is
-              spoken once by the toaster (DEC-014, DEC-019), and this is still
-              the on-page record beside the re-read image. */}
-          {upload.isSuccess ? (
-            <span className="text-sm text-muted-foreground">Headshot updated</span>
-          ) : null}
-          {problem !== null ? <AlertLive>{problem}</AlertLive> : null}
+          <div className="grid gap-3">
+            {/*
+              The file input is the control the problem belongs to: a rejected
+              or failed upload used to render its message with no id and leave
+              the input with no aria-invalid, so assistive tech had no way to
+              connect the two. `problem` is the single source for both.
+            */}
+            <Field invalid={problem !== null}>
+              <FieldLabel htmlFor={INPUT_ID}>Upload a headshot</FieldLabel>
+              <Input
+                id={INPUT_ID}
+                aria-label="Upload a headshot"
+                ref={inputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className={FILE_INPUT_CLASS}
+                aria-invalid={problem !== null ? true : undefined}
+                aria-describedby={problem !== null ? `${INPUT_ID}-error` : undefined}
+                onChange={onPick}
+              />
+              {/* Guidance stays a plain sibling, not a Field description: a
+                  description would register itself into the input's
+                  aria-describedby, and that attribute is reserved here for the
+                  one `problem` message so a screen reader hears the fault and
+                  nothing else when something is wrong. */}
+              <p className="text-xs text-muted-foreground">JPEG, PNG or WebP, 2 MB max.</p>
+              {problem !== null ? (
+                <FieldError id={`${INPUT_ID}-error`}>{problem}</FieldError>
+              ) : null}
+            </Field>
+            {upload.isPending ? (
+              <StatusLive aria-live="polite">Uploading your headshot…</StatusLive>
+            ) : null}
+            {/* The record slot, in the content column and in the same place its
+                sibling section keeps its own: the "nothing here yet" sentence
+                used to live inside the 112px preview column, where it wrapped
+                to two lines beside an empty card. Both upload sections now say
+                the same thing the same way. */}
+            {headshot.isPending || headshot.isError || objectUrl !== undefined ? null : (
+              <EmptyState
+                icon={<InboxIcon size={20} />}
+                title="Add your headshot"
+                description={
+                  <StatusLive aria-live="polite">
+                    No headshot uploaded yet. Organizers publish it beside your session.
+                  </StatusLive>
+                }
+              />
+            )}
+            {/* The label that stays, not a second live region: the outcome is
+                spoken once by the toaster (DEC-014, DEC-019), and this is still
+                the on-page record beside the re-read image. */}
+            {upload.isSuccess ? (
+              <span className="text-sm text-muted-foreground">Headshot updated</span>
+            ) : null}
+            {problem !== null ? <AlertLive>{problem}</AlertLive> : null}
+          </div>
         </CardContent>
       </Card>
     </section>
   )
 }
 
+/**
+ * What the preview is showing, as one value rather than four on/off props.
+ *
+ * The four booleans it replaces (`isPending`, `isDenied`, `isError`, plus the
+ * `objectUrl` presence test) described a single position in one sequence, and
+ * only four of their sixteen combinations were reachable — a shape that is
+ * impossible to test exhaustively and easy to hand a contradiction to
+ * (`react-doctor/no-many-boolean-props`). `isRetrying` stays a flag because it
+ * genuinely is one: a refetch can be in flight underneath any state.
+ */
+type PreviewState = 'loading' | 'denied' | 'error' | 'ready'
+
+function previewState(isPending: boolean, isDenied: boolean, isError: boolean): PreviewState {
+  if (isPending) return 'loading'
+  if (isDenied) return 'denied'
+  return isError ? 'error' : 'ready'
+}
+
 function Preview({
-  isPending,
-  isError,
-  isFetching,
+  state,
+  isRetrying,
   onRetry,
   objectUrl,
 }: {
-  readonly isPending: boolean
-  readonly isError: boolean
-  readonly isFetching: boolean
+  readonly state: PreviewState
+  readonly isRetrying: boolean
   readonly onRetry: () => void
   readonly objectUrl: string | undefined
 }) {
-  if (isPending) {
+  /**
+   * The URI whose bytes the browser refused to decode, remembered so the same
+   * one is never asked for twice.
+   *
+   * An object URL can stop resolving after it was handed over — a revoked
+   * blob, a signature that expired between fetch and paint — and until now
+   * that painted the browser's own broken-image glyph inside our hairline
+   * ring, on the speaker's own portal. The fallback is the placeholder that
+   * already exists for "no photo yet", because from the reader's side those
+   * are the same sentence: there is no picture here.
+   *
+   * It holds the failed URI rather than a boolean so the memory is scoped to
+   * the thing that failed. A fresh upload produces a fresh URL, which does not
+   * match, so a successful retry paints immediately instead of inheriting the
+   * last one's verdict — and a re-render of the broken one asks the network
+   * nothing.
+   */
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+
+  if (state === 'loading') {
     return (
-      <div aria-busy="true">
-        <Skeleton className="h-24 w-24" />
+      <div aria-busy="true" className="grid gap-2">
+        <Skeleton className="size-28 rounded-full" />
         <StatusLive aria-live="polite">Loading your headshot…</StatusLive>
       </div>
     )
   }
-  if (isError) {
+  if (state === 'denied') {
+    return <AlertLive>You do not have permission to view this headshot.</AlertLive>
+  }
+  if (state === 'error') {
     return (
-      <div className="grid gap-2">
+      <div className="grid justify-items-start gap-2">
         <AlertLive>Unable to load your headshot.</AlertLive>
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-6"
-          pending={isFetching}
-          onClick={onRetry}
-        >
-          {isFetching ? 'Trying again…' : 'Try again'}
+        <Button type="button" variant="outline" size="sm" pending={isRetrying} onClick={onRetry}>
+          {isRetrying ? 'Trying again…' : 'Try again'}
         </Button>
       </div>
     )
   }
-  if (objectUrl === undefined) {
-    return <StatusLive aria-live="polite">No headshot uploaded yet.</StatusLive>
+  if (objectUrl === undefined || failedUrl === objectUrl) {
+    // The empty avatar is a real shape, not a gap: the slot exists and is
+    // waiting. It is a filled placeholder rather than a dashed one, because the
+    // dashed frame is the section's one empty-state grammar and it belongs to
+    // the box in the content column, not to the picture frame.
+    return (
+      <span
+        aria-hidden="true"
+        className="grid size-28 place-items-center rounded-full border border-border bg-muted text-xs text-muted-foreground"
+      >
+        No photo
+      </span>
+    )
   }
-  return <img src={objectUrl} alt="Your current headshot" className="h-24 w-24 object-cover" />
+  // A hairline wrapper ring so a light photo cannot bleed into a light card.
+  return (
+    <img
+      src={objectUrl}
+      alt="Your current headshot"
+      onError={() => setFailedUrl(objectUrl)}
+      className="size-28 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
+    />
+  )
 }
 
 function uploadErrorMessage(code: string | null, error: unknown): string {
@@ -189,5 +271,6 @@ function uploadErrorMessage(code: string | null, error: unknown): string {
   if (status === 413) return 'That image is too large — choose an image of 2 MB or less.'
   if (status === 415) return 'That file type is not supported — choose a JPEG, PNG, or WebP image.'
   if (code === 'unauthorized') return 'Your session expired — start again to upload a headshot.'
+  if (code === 'forbidden') return 'You do not have permission to upload a headshot here.'
   return 'Upload failed. Choose the file again to retry.'
 }

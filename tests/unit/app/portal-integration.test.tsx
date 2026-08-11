@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -110,6 +110,35 @@ describe('portal composition', () => {
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent('Your submissions')
+  })
+
+  // V7-M2 / V7-N4, unpinned until now (RV3 NEW-3). A speaker who has just
+  // signed in sees four empty tiles at once — submissions, tasks, headshot,
+  // supporting document — and every one of them used to wear the same InboxIcon,
+  // so four different absences read as one repeated stamp. An icon import is
+  // exactly the kind of fix that drifts back silently, so the distinction is a
+  // contract: four tiles, four different glyphs.
+  it('draws a different glyph on each of the four empty tiles', async () => {
+    fetchHandler = (url) => {
+      if (url === '/api/public/submissions') return jsonResponse(NO_SUBMISSIONS)
+      if (url === '/api/public/tasks') return jsonResponse([])
+      if (url === '/api/public/profile/headshot') {
+        return jsonResponse({ error: { code: 'not_found', message: 'none' } }, 404)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    mountPortal()
+
+    await screen.findByText(/no submissions yet/i)
+    let tiles: readonly Element[] = []
+    await waitFor(() => {
+      tiles = Array.from(document.querySelectorAll('[data-slot="empty-state-icon"]'))
+      expect(tiles).toHaveLength(4)
+    })
+
+    const glyphs = tiles.map((tile) => tile.querySelector('svg')?.innerHTML ?? '')
+    expect(glyphs.every((glyph) => glyph.length > 0)).toBe(true)
+    expect(new Set(glyphs).size).toBe(4)
   })
 
   // Acceptance creates a checklist for EVERY contributor, and a co-speaker owns

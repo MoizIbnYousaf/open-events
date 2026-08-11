@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +9,7 @@ import { MAX_CO_SPEAKERS, normalizeEmail } from '../../../src/domain'
 import CfpCoSpeakers from '../../../src/app/features/public/CfpCoSpeakers'
 import CfpWizard from '../../../src/app/features/public/CfpWizard'
 import { publicDraftQueryKeys } from '../../../src/app/queries/public-drafts'
+import { getAnnouncementSnapshot } from '../../../src/app/lib/announcer'
 
 interface EditorWithCoSpeakers {
   readonly formId: string
@@ -241,11 +242,30 @@ describe('public CFP co-speakers', () => {
       await user.type(screen.getAllByLabelText(/first name/i)[1]!, 'Grace')
       await user.type(screen.getAllByLabelText(/email/i)[1]!, 'grace@example.test')
 
+      // Removing a row discards everything typed into it and cannot be undone,
+      // so the row control opens a confirmation and the removal happens on the
+      // agreement, not on the click.
       await user.click(screen.getByRole('button', { name: /remove co-speaker 1/i }))
+      const confirmation = await screen.findByRole('dialog')
+      expect(confirmation).toHaveTextContent(/cannot be undone/i)
+      await user.click(within(confirmation).getByRole('button', { name: 'Remove' }))
 
       expect(screen.getAllByLabelText(/email/i)).toHaveLength(1)
       expect(screen.getByLabelText(/first name/i)).toHaveValue('Grace')
       expect(screen.getByLabelText(/email/i)).toHaveValue('grace@example.test')
+    })
+
+    it('keeps the row when the removal confirmation is dismissed', async () => {
+      const { user } = await mountToSubmitStep()
+
+      await user.click(screen.getByRole('button', { name: /add co-speaker/i }))
+      await user.type(screen.getByLabelText(/first name/i), 'Ada')
+
+      await user.click(screen.getByRole('button', { name: /remove co-speaker 1/i }))
+      const confirmation = await screen.findByRole('dialog')
+      await user.click(within(confirmation).getByRole('button', { name: /cancel/i }))
+
+      expect(screen.getByLabelText(/first name/i)).toHaveValue('Ada')
     })
 
     it('caps rows at MAX_CO_SPEAKERS with a visible counter and disables add at the cap', async () => {
@@ -346,8 +366,61 @@ describe('public CFP co-speakers', () => {
       await user.type(screen.getAllByLabelText(/email/i)[1]!, 'ADA@example.test')
       await user.click(screen.getByRole('button', { name: /add co-speaker/i }))
       await user.click(screen.getByRole('button', { name: /remove co-speaker 1/i }))
+      await user.click(
+        within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove' }),
+      )
 
       expect(fetchMock.mock.calls.length).toBe(callsAfterLoad)
     })
+  })
+})
+
+describe('public CFP co-speaker row identity and removal', () => {
+  it('names every control by its row as well as its field', async () => {
+    const { user } = await mountToSubmitStep()
+
+    await user.click(screen.getByRole('button', { name: /add co-speaker/i }))
+    await user.click(screen.getByRole('button', { name: /add co-speaker/i }))
+
+    const firstNames = screen.getAllByLabelText(/first name/i)
+    expect(firstNames).toHaveLength(2)
+    expect(firstNames[0]).toHaveAccessibleName('Co-speaker 1 First name')
+    expect(firstNames[1]).toHaveAccessibleName('Co-speaker 2 First name')
+    expect(screen.getAllByLabelText(/email/i)[1]).toHaveAccessibleName('Co-speaker 2 Email')
+    // The visible label is still the last word of the accessible name, so
+    // speech input can say what it can see (WCAG 2.5.3).
+    expect(screen.getAllByLabelText(/last name/i)[0]).toHaveAccessibleName('Co-speaker 1 Last name')
+  })
+
+  it('keeps row naming intact after a row above is removed', async () => {
+    const { user } = await mountToSubmitStep()
+
+    await user.click(screen.getByRole('button', { name: /add co-speaker/i }))
+    await user.type(screen.getByLabelText(/first name/i), 'Ada')
+    await user.click(screen.getByRole('button', { name: /add co-speaker/i }))
+    await user.type(screen.getAllByLabelText(/first name/i)[1]!, 'Grace')
+
+    await user.click(screen.getByRole('button', { name: /remove co-speaker 1/i }))
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove' }),
+    )
+
+    const remaining = screen.getByLabelText(/first name/i)
+    expect(remaining).toHaveValue('Grace')
+    expect(remaining).toHaveAccessibleName('Co-speaker 1 First name')
+  })
+
+  it('announces the removal and moves focus to the section heading', async () => {
+    const { user } = await mountToSubmitStep()
+
+    await user.click(screen.getByRole('button', { name: /add co-speaker/i }))
+    await user.click(screen.getByRole('button', { name: /remove co-speaker 1/i }))
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove' }),
+    )
+
+    await waitFor(() => expect(getAnnouncementSnapshot().message).toBe('Co-speaker 1 removed'))
+    expect(screen.getByRole('heading', { name: 'Co-speakers' })).toHaveFocus()
+    expect(document.activeElement).not.toBe(document.body)
   })
 })

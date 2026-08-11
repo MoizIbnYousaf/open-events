@@ -7,11 +7,13 @@ import { z } from 'zod'
 import { getApiErrorMessage } from '../../api/admin-events'
 import { useAdminLogin } from '../../queries/admin-events'
 import { DEFAULT_EVENT_SLUG } from '../../lib/default-event'
+import { isTourActive } from '../tour/tour-activity'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '../../../components/ui/card'
 import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import { PageHeaderTitle } from '../../../components/ui/page-header'
 import { StatusLive } from '../../../components/ui/status-live'
 
 const loginSchema = z.object({
@@ -36,6 +38,13 @@ export default function AdminLogin() {
   const [formError, setFormError] = useState<string | null>(null)
 
   useEffect(() => {
+    // The one caller this page does not serve: the product tour, which narrates
+    // this screen from its own popover and arrives here by navigating, not by a
+    // person asking for the field. Taking focus then emptied the popover of
+    // keyboard control and sent Escape into the input's scope instead of
+    // dismissing the tour, leaving the tour keyboard-undismissable (F-R4-4).
+    // Focus is only ours to take when the visitor came here to sign in.
+    if (isTourActive()) return
     setFocus('secret')
   }, [setFocus])
 
@@ -78,10 +87,17 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-md px-4 py-16" data-tour="admin-signin">
-      <Card>
+    // The gutter is INSIDE the measure, so the card itself lands at exactly
+    // max-w-md — the width the speaker door already sits at, one column deeper
+    // inside the public shell. The two doors were 416px and 448px wide, which
+    // is close enough to look like a mistake and far enough to see.
+    <div className="mx-auto w-full max-w-[30rem] px-4 py-16" data-tour="admin-signin">
+      <Card className="py-4">
         <CardHeader>
-          <h1 className="font-heading text-base leading-snug font-medium">Admin sign in</h1>
+          {/* The organizer door and the speaker door (`/start`) share this
+              anatomy — one card, one field, one full-width action — so the two
+              entrances to the product read as one family. */}
+          <PageHeaderTitle>Admin sign in</PageHeaderTitle>
           <CardDescription>Sign in to manage the event.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -101,13 +117,21 @@ export default function AdminLogin() {
               ) : null}
             </Field>
             {formError !== null ? <AlertLive>{formError}</AlertLive> : null}
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" pending={login.isPending}>
+            <div className="grid gap-2">
+              {/* Default height, not `lg`. This was the only h-9 control in
+                  the entire product — C0 §3 reserves that step for large and
+                  marketing surfaces — and it sat directly under a 32px input,
+                  so the card had two control heights in three rows. */}
+              <Button type="submit" className="w-full" pending={login.isPending}>
                 {login.isPending ? 'Signing in…' : 'Sign in'}
               </Button>
               {/* The in-flight state next to the control, not only on it: a
                 disabled button's aria-busy is not reliably announced. */}
-              {login.isPending ? <StatusLive aria-live="polite">Signing in…</StatusLive> : null}
+              {login.isPending ? (
+                <StatusLive aria-live="polite" className="text-center text-xs">
+                  Signing in…
+                </StatusLive>
+              ) : null}
             </div>
           </form>
         </CardContent>

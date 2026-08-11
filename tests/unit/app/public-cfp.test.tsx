@@ -322,3 +322,120 @@ describe('public multi-step CFP form', () => {
     )
   })
 })
+
+describe('public CFP field and step affordances', () => {
+  it('advertises requiredness on required questions and leaves optional ones alone', async () => {
+    const user = userEvent.setup()
+    renderCfp()
+
+    await user.click(await screen.findByRole('button', { name: /next/i }))
+
+    const format = await screen.findByLabelText(/format/i)
+    expect(format).toBeRequired()
+    const formatLabel = document.querySelector(`label[for="${format.id}"]`)
+    expect(formatLabel?.parentElement?.querySelector('[data-slot="required-mark"]')).not.toBeNull()
+    // The mark is decoration: it must never leak into the accessible name.
+    expect(format).toHaveAccessibleName('Format')
+
+    const summary = await screen.findByLabelText(/summary/i)
+    expect(summary).not.toBeRequired()
+    const summaryLabel = document.querySelector(`label[for="${summary.id}"]`)
+    expect(summaryLabel?.parentElement?.querySelector('[data-slot="required-mark"]')).toBeNull()
+  })
+
+  it('promotes a conditionally required question to required when the condition fires', async () => {
+    const user = userEvent.setup()
+    renderCfp()
+
+    await user.click(await screen.findByRole('button', { name: /next/i }))
+    expect(await screen.findByLabelText(/summary/i)).not.toBeRequired()
+
+    await user.selectOptions(await screen.findByLabelText(/format/i), 'workshop')
+
+    expect(await screen.findByLabelText(/summary/i)).toBeRequired()
+  })
+
+  it('renders the step heading one size below the page h1, not a copy of it', async () => {
+    const user = userEvent.setup()
+    renderCfp()
+
+    await user.click(await screen.findByRole('button', { name: /next/i }))
+
+    const heading = await screen.findByRole('heading', { name: 'About your proposal' })
+    expect(heading.tagName).toBe('H2')
+    expect(heading).toHaveClass('text-[15px]', 'font-medium', 'font-heading')
+    expect(heading).not.toHaveClass('text-xl')
+  })
+
+  it('draws the stepper connectors only at the widths where the row stays one row', async () => {
+    renderCfp()
+
+    await screen.findByRole('listitem', { name: /welcome/i })
+    const connectors = Array.from(document.querySelectorAll('[data-slot="step-connector"]'))
+    expect(connectors.length).toBeGreaterThan(0)
+    for (const connector of connectors) {
+      expect(connector).toHaveClass('hidden', 'md:block')
+      expect(connector).toHaveAttribute('aria-hidden', 'true')
+    }
+  })
+})
+
+describe('public CFP step with every question hidden', () => {
+  const ALL_HIDDEN_FORM: FormDefinitionDto = {
+    ...PUBLISHED_FORM,
+    pages: [
+      { id: 'p-1', position: 0, kind: 'welcome', title: 'Welcome', content: 'Introduction' },
+      { id: 'p-2', position: 1, kind: 'info', title: 'Proposal information', content: '' },
+      { id: 'p-9', position: 2, kind: 'info', title: 'Extras', content: '' },
+      { id: 'p-4', position: 3, kind: 'submit', title: 'Submit', content: '' },
+    ],
+    elements: [
+      {
+        id: 'e-9',
+        pageId: 'p-9',
+        position: 0,
+        kind: 'question',
+        fieldKey: 'workshop_details',
+        label: 'Workshop details',
+        required: false,
+        maxLength: null,
+        questionType: 'long_text',
+        options: [],
+      },
+    ],
+    conditionRules: [
+      {
+        id: 'r-9',
+        elementId: 'e-9',
+        effect: 'show',
+        position: 0,
+        groups: [
+          {
+            groupIndex: 0,
+            conditions: [{ operator: 'eq', operandKey: 'format', value: 'workshop' }],
+          },
+        ],
+      },
+    ],
+  }
+
+  it('says the step is empty instead of drawing a heading over nothing', async () => {
+    const user = userEvent.setup()
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CfpWizard form={ALL_HIDDEN_FORM} eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />
+      </QueryClientProvider>,
+    )
+
+    await user.click(await screen.findByRole('button', { name: /next/i }))
+    await user.type(await screen.findByRole('textbox', { name: 'Proposal title' }), 'My talk')
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Extras' })).toBeInTheDocument()
+    expect(screen.getByText(/nothing to answer on this step/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/workshop details/i)).not.toBeInTheDocument()
+  })
+})

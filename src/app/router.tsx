@@ -2,6 +2,7 @@
 import { createRouter as createTanStackRouter } from '@tanstack/react-router'
 import { routeTree } from './routeTree.gen'
 import { RouteErrorState } from './CrashStates'
+import { NotFoundState } from './NotFoundState'
 import { reportRouteCrash } from './error-reporting'
 
 export function createRouter() {
@@ -15,6 +16,10 @@ export function createRouter() {
     // SafeFragment and a render throw takes the whole app down to a blank page.
     defaultErrorComponent: RouteErrorState,
     defaultOnCatch: reportRouteCrash,
+    // Without this an unmatched URL renders TanStack's built-in bare "Not
+    // Found" text: no chrome, no way back, nothing announced. A 404 is not an
+    // error, so it gets its own component rather than the crash surface.
+    defaultNotFoundComponent: NotFoundState,
   })
 }
 

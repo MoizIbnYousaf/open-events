@@ -124,6 +124,16 @@ function renderPanel() {
   )
 }
 
+/**
+ * Both sends open a confirmation whose own control carries the label that
+ * actually sends, so the trigger and the confirm can never be confused for one
+ * another. Confirming issues no request of its own — the counts below are the
+ * same counts they always were.
+ */
+async function confirmSend(): Promise<void> {
+  await userEvent.click(await screen.findByRole('button', { name: 'Send the email' }))
+}
+
 describe('communications panel with reminders', () => {
   it('names the resolved audience before anything is sent', async () => {
     renderPanel()
@@ -139,6 +149,9 @@ describe('communications panel with reminders', () => {
     renderPanel()
     const send = await screen.findByRole('button', { name: /send acceptance/i })
     await userEvent.click(send)
+    // The ask counts the resolved audience before any mail is sent.
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/2 recipients/i)
+    await confirmSend()
     await waitFor(() => expect(callsTo(ACCEPTANCE_SEND_PATH, 'POST')).toBe(1))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /send acceptance/i })).toBeDisabled(),
@@ -153,9 +166,11 @@ describe('communications panel with reminders', () => {
   it('sends the reminder separately and history shows both kinds per recipient', async () => {
     renderPanel()
     await userEvent.click(await screen.findByRole('button', { name: /send acceptance/i }))
+    await confirmSend()
     await waitFor(() => expect(callsTo(ACCEPTANCE_SEND_PATH, 'POST')).toBe(1))
     const reminder = await screen.findByRole('button', { name: /send reminder/i })
     await userEvent.click(reminder)
+    await confirmSend()
     await waitFor(() => expect(callsTo(REMINDER_SEND_PATH, 'POST')).toBe(1))
     const historyList = screen.getByRole('list', { name: /send history/i })
     await waitFor(() => expect(within(historyList).getAllByRole('listitem')).toHaveLength(4))
@@ -179,8 +194,13 @@ describe('communications panel with reminders', () => {
     renderPanel()
     const send = await screen.findByRole('button', { name: /send acceptance/i })
     await userEvent.click(send)
-    const pending = await screen.findByRole('button', { name: /sending acceptance/i })
-    expect(pending).toBeDisabled()
+    await confirmSend()
+    // The guard moved onto the control that actually sends: it goes inert while
+    // its own request is in flight, and the trigger behind it says so too.
+    const pending = await screen.findByRole('button', { name: 'Send the email' })
+    expect(pending).toHaveAttribute('aria-disabled', 'true')
+    expect(pending).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByText('Sending acceptance…')).toBeInTheDocument()
     await userEvent.click(pending)
     release?.(
       jsonResponse([
@@ -189,6 +209,23 @@ describe('communications panel with reminders', () => {
       ]),
     )
     await waitFor(() => expect(callsTo(ACCEPTANCE_SEND_PATH, 'POST')).toBe(1))
+  })
+
+  // V1-COMMS-FOCUS: the reminder trigger is disabled for good once the mail is
+  // out, so the dialog's focus restore had nowhere to land but <body>.
+  it('lands focus on the panel heading after the reminder is sent', async () => {
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /send acceptance/i }))
+    await confirmSend()
+    await waitFor(() => expect(callsTo(ACCEPTANCE_SEND_PATH, 'POST')).toBe(1))
+
+    await userEvent.click(await screen.findByRole('button', { name: /send reminder/i }))
+    await confirmSend()
+    await waitFor(() => expect(callsTo(REMINDER_SEND_PATH, 'POST')).toBe(1))
+
+    const heading = screen.getByRole('heading', { name: 'Acceptance' })
+    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 5000 })
+    expect(document.activeElement).not.toBe(document.body)
   })
 
   it('shows a generic error and keeps the reminder usable when the server rejects', async () => {
@@ -202,8 +239,15 @@ describe('communications panel with reminders', () => {
     renderPanel()
     const reminder = await screen.findByRole('button', { name: /send reminder/i })
     await userEvent.click(reminder)
+    await confirmSend()
     const alert = await screen.findByRole('alert')
     expect(alert).not.toHaveTextContent(/raw sql detail/)
+    // The dialog stays open over the failure and repeats it without the server
+    // internals; cancelling leaves the action exactly as usable as before.
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(dialog).toHaveTextContent(/the last attempt failed/i))
+    expect(dialog).not.toHaveTextContent(/raw sql detail/)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('button', { name: /send reminder/i })).toBeEnabled()
   })
 })

@@ -3,12 +3,13 @@ import { toast } from 'sonner'
 
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
-import { Card, CardContent } from '../../../components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader } from '../../../components/ui/card'
 import { Field, FieldControl, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import { Textarea } from '../../../components/ui/textarea'
+import { SectionHeading } from '../../../components/ui/section-heading'
 import { useOwnProfile, useUpdateProfile } from '../../queries/public-profile'
 
 /**
@@ -76,15 +77,15 @@ function ProfileForm({
   }
 
   return (
-    <section aria-labelledby="profile-heading" className="grid gap-3">
-      <h2 id="profile-heading" className="text-lg font-semibold">
-        Your profile
-      </h2>
+    <section aria-labelledby="profile-heading">
       <Card>
+        <CardHeader>
+          <SectionHeading id="profile-heading">Your profile</SectionHeading>
+          <CardDescription>
+            Signed in as <span className="font-medium text-foreground">{initial.email}</span>
+          </CardDescription>
+        </CardHeader>
         <CardContent className="grid gap-3">
-          <p className="text-sm text-muted-foreground">
-            Signed in as <span className="font-medium">{initial.email}</span>
-          </p>
           <form
             noValidate
             className="grid gap-3"

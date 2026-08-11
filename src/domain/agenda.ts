@@ -489,9 +489,42 @@ function bucketByWeek(
 }
 
 /**
+ * The key every derivation here files a session with no track under. A session
+ * is placed in a room at a time; a track is optional, so the aggregate keys the
+ * whole untracked group by the identifier it does not have — the empty string,
+ * exactly as `sharesIdentifier` reads absence above.
+ */
+export const UNTRACKED_GROUP_KEY = ''
+
+/**
+ * The one word the product uses for that group. It is the word the placement
+ * select already offers ("No track"), so the board, the views and the public
+ * programme name the same state the same way.
+ */
+export const UNTRACKED_GROUP_LABEL = 'No track'
+
+/**
+ * What a track group is called, given whatever label the caller could resolve.
+ *
+ * Absence is a real answer and it needs a real word. Rendered as blank space it
+ * is read as a continuation of whatever came before: on the organizer board the
+ * untracked group printed no heading at all, so a screen reader filed its
+ * sessions under the previous track, and on the public schedule the same
+ * emptiness rendered as an empty chip — a badge with nothing in it. Both
+ * surfaces derive their groups from `deriveReq014Views`, so the word lives here
+ * with the grouping rather than being re-invented at each call site.
+ */
+export function trackGroupLabel(label: string): string {
+  return label === UNTRACKED_GROUP_KEY ? UNTRACKED_GROUP_LABEL : label
+}
+
+/**
  * User-facing views derived from the aggregates: list = perTimeSlot flattened
  * in (day, start) order, day = perDay, week = perDay bucketed by ISO week,
  * track = perTrack, and room = perRoom.
+ *
+ * The track view keeps the untracked group as its own bucket under
+ * `UNTRACKED_GROUP_KEY`; `trackGroupLabel` is what names it.
  */
 export function deriveReq014Views(aggregates: AgendaAggregates): Req014Views {
   const timeSlotKeys = Object.keys(aggregates.perTimeSlot).sort()

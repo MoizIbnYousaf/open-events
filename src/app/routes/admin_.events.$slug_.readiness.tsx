@@ -1,18 +1,40 @@
-import { createFileRoute, useParams } from '@tanstack/react-router'
+import { useEffect } from 'react'
+import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 
 import AppShell from '../features/nav/AppShell'
 import ReadinessPage from '../features/admin/ReadinessPage'
+import { ExpiredSessionState } from '../features/admin/AdminStates'
+import { getApiErrorCode } from '../api/admin-events'
+import { useOrganizerReadiness } from '../queries/portal-tasks'
 
 import type {} from '../routeTree.gen'
 
 function ReadinessRoutePage() {
   const params = useParams({ strict: false })
   const slug = params.slug as string | undefined
+  const query = useOrganizerReadiness(slug ?? '')
+  // An expired session is a dead end, and a dead end is a PAGE: rendered inside
+  // the rail it was a card in a shell full of destinations the reader can no
+  // longer open. Bare is what the majority of organizer routes render and what
+  // the AdminStates grammar is drawn for. The observer shares the page's own
+  // query, so asking one level up adds no request.
+  if (query.isError && getApiErrorCode(query.error) === 'unauthorized') {
+    return <ExpiredReadinessSession />
+  }
   return (
     <AppShell slug={slug ?? ''}>
       <ReadinessPage eventSlug={slug ?? ''} />
     </AppShell>
   )
+}
+
+/** Its own component so the router hook runs only when the branch renders. */
+function ExpiredReadinessSession() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    document.title = 'Session expired — SpeakerOps'
+  }, [])
+  return <ExpiredSessionState onLogin={() => void navigate({ to: '/admin' })} />
 }
 
 const readinessRoute = createFileRoute('/admin_/events/$slug_/readiness')({

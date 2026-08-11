@@ -1,20 +1,28 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form'
 import { z } from 'zod'
 
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
-import { announce } from '../../lib/announcer'
 import { useReplaceTaxonomies, useTaxonomies } from '../../queries/admin-events'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
-import { Card, CardContent, CardHeader } from '../../../components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import { EmptyState } from '../../../components/ui/empty-state'
 import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import {
+  PageHeader,
+  PageHeaderActions,
+  PageHeaderContent,
+  PageHeaderDescription,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import type { TaxonomyItemInput, TaxonomyListDto } from '../../../application/dtos/taxonomy.dto'
 import { TAXONOMY_KINDS, type TaxonomyKind } from '../../../domain/taxonomy'
+import { ClipboardIcon } from '../../../components/ui/icons'
 
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState, LoadErrorState } from './AdminStates'
@@ -130,38 +138,43 @@ function TaxonomyEditorScreen() {
 
   if (taxonomyQuery.isPending || taxonomyQuery.data === undefined) {
     return (
-      <Card aria-busy="true" aria-label="Loading taxonomies">
-        <CardContent className="grid gap-3">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-4 w-64" />
-          <StatusLive aria-live="polite">Loading taxonomies…</StatusLive>
-        </CardContent>
-      </Card>
+      <div className="mx-auto w-full max-w-3xl">
+        <Card aria-busy="true" aria-label="Loading taxonomies">
+          <CardContent className="grid gap-3">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <StatusLive aria-live="polite">Loading taxonomies…</StatusLive>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   return (
     <AppShell slug={slug ?? ''}>
-      <div className="grid gap-4">
+      {/* No back link: Taxonomies is a rail destination, so the rail is the way
+          back and says so with `aria-current`. See `BackLink.tsx`. */}
+      <div className="mx-auto grid w-full max-w-3xl gap-3">
         <TaxonomyForm
           key={taxonomyQuery.data.eventId}
           data={taxonomyQuery.data}
           save={save}
           navigateToLogin={() => void navigate({ to: '/admin' })}
         />
-        {/* Exact matching, or the parent path prefix-matches this page and the
-          back link is announced as the current page. */}
-        <Link
-          to="/admin/events/$slug"
-          params={{ slug: slug ?? '' }}
-          activeOptions={{ exact: true }}
-          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-        >
-          Back to event settings
-        </Link>
       </div>
     </AppShell>
   )
+}
+
+/**
+ * A card section title. `CardTitle` renders a div, and each taxonomy kind is
+ * real document structure under the page's single h1 — so the heading level is
+ * handed to the primitive's `render` escape rather than reproduced by a
+ * hand-written h2 wearing a copy of the card's class string.
+ */
+function SectionTitle({ children }: { readonly children: ReactNode }) {
+  return <CardTitle level={2}>{children}</CardTitle>
 }
 
 interface TaxonomyFormProps {
@@ -229,6 +242,16 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
       return
     }
     const originalRows = toRows(data.items)
+    // WHOLE-SET REPLACE: this PUT is the taxonomy, not a patch of it — a row
+    // missing from the payload is a row deleted on the server, along with
+    // whatever a schedule or a submission had pinned to it.
+    //
+    // It is safe to save without asking today only because the form has no way
+    // to drop a row: it adds and it edits, so every save carries the set it was
+    // given back. ANY FUTURE REMOVE UI MUST BRING THE CONSENT RUNG WITH IT —
+    // a save that silently unschedules sessions and unroutes submissions is
+    // exactly the cascade C0 §8 says must name its blast radius before it runs,
+    // and it is the reactivation trigger recorded in confirm-dialog.tsx.
     save.mutate(toItems(parsed.data.rows), {
       onSuccess: (server) => {
         const current = taxonomySchema.safeParse(getValues())
@@ -245,7 +268,8 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
           ),
         })
         setSavedMessage('Saved')
-        announce('Taxonomies saved')
+        // No announce(): the header chip beside the Save button is itself a
+        // live region already saying this (DEC-014, F-R3-13).
       },
       onError: (error) => {
         const code = getApiErrorCode(error)
@@ -267,25 +291,31 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
 
   if (fields.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <h1 className="font-heading text-base leading-snug font-medium">Taxonomies</h1>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          <p className="text-sm text-muted-foreground">
-            No taxonomy items yet — add first item to get started.
-          </p>
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => append({ kind: 'format', key: '', label: '' })}
-            >
-              Add item
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid gap-3">
+        <PageHeader>
+          <PageHeaderContent>
+            <PageHeaderTitle>Taxonomies</PageHeaderTitle>
+            <PageHeaderDescription>
+              The vocabulary every submission is filed under.
+            </PageHeaderDescription>
+          </PageHeaderContent>
+        </PageHeader>
+        {/* An empty state that can act asks for the action: the title is the
+            instruction, the sentence under it says what the instruction buys. */}
+        <EmptyState
+          icon={<ClipboardIcon size={20} />}
+          title="Add your first taxonomy item"
+          description="Formats, tracks and levels are what a speaker picks from and what an organizer files a proposal under."
+        >
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => append({ kind: 'format', key: '', label: '' })}
+          >
+            Add item
+          </Button>
+        </EmptyState>
+      </div>
     )
   }
 
@@ -303,17 +333,54 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
         : null
 
   return (
-    <Card>
-      <CardHeader>
-        <h1 className="font-heading text-base leading-snug font-medium">Taxonomies</h1>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-6" noValidate>
-          {groups.map((group) => (
-            <section key={group.kind} className="grid gap-3">
-              <h2 className="text-base font-semibold">{capitalize(group.kind)}</h2>
+    <form onSubmit={handleSubmit(onSubmit)} className="grid gap-3" noValidate>
+      <PageHeader className="min-h-8">
+        <PageHeaderContent>
+          <PageHeaderTitle>Taxonomies</PageHeaderTitle>
+          <PageHeaderDescription>
+            The vocabulary every submission is filed under.
+          </PageHeaderDescription>
+        </PageHeaderContent>
+        <PageHeaderActions>
+          {/* One stable region for both outcomes, mounted before either has
+              anything to say: a live region created together with its text
+              is not in the accessibility tree when the text arrives, so it
+              announces nothing. The saved chip is cleared at submit, so the
+              in-flight message never overwrites a live one. */}
+          <StatusLive aria-live="polite" className="text-xs">
+            {save.isPending ? 'Saving the taxonomies…' : savedMessage}
+          </StatusLive>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => append({ kind: 'format', key: '', label: '' })}
+          >
+            Add item
+          </Button>
+          <Button type="submit" pending={save.isPending}>
+            {save.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </PageHeaderActions>
+      </PageHeader>
+      {summaryMessage !== null ? <AlertLive>{summaryMessage}</AlertLive> : null}
+      {groups.map((group) => (
+        <Card key={group.kind}>
+          <CardHeader>
+            <SectionTitle>{capitalize(group.kind)}</SectionTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Rows divide on a hairline and share the card's gutters, so a
+                kind with twelve items still reads as one object rather than
+                twelve boxes. Top rule only: a closing rule under the last row
+                left a hairline floating 12px above the card's own border,
+                inside the card's bottom padding, reading as a row that failed
+                to render. */}
+            <ul className="-mx-3 divide-y divide-border border-t border-border">
               {group.indices.map((index) => (
-                <div key={fields[index]?.id ?? index} className="grid gap-2 sm:grid-cols-2">
+                <li
+                  key={fields[index]?.id ?? index}
+                  className="grid gap-2 px-3 py-2 sm:grid-cols-2 sm:gap-3"
+                >
                   <Field invalid={errors.rows?.[index]?.key !== undefined}>
                     <FieldLabel htmlFor={`taxonomy-key-${index}`}>Key</FieldLabel>
                     <Input id={`taxonomy-key-${index}`} {...register(`rows.${index}.key`)} />
@@ -332,35 +399,12 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
                       </FieldError>
                     ) : null}
                   </Field>
-                </div>
+                </li>
               ))}
-            </section>
-          ))}
-          {summaryMessage !== null ? <AlertLive>{summaryMessage}</AlertLive> : null}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-2">
-              <Button type="submit" pending={save.isPending}>
-                {save.isPending ? 'Saving…' : 'Save'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => append({ kind: 'format', key: '', label: '' })}
-              >
-                Add item
-              </Button>
-            </div>
-            {/* One stable region for both outcomes, mounted before either has
-                anything to say: a live region created together with its text
-                is not in the accessibility tree when the text arrives, so it
-                announces nothing. The saved chip is cleared at submit, so the
-                in-flight message never overwrites a live one. */}
-            <StatusLive aria-live="polite">
-              {save.isPending ? 'Saving the taxonomies…' : savedMessage}
-            </StatusLive>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+            </ul>
+          </CardContent>
+        </Card>
+      ))}
+    </form>
   )
 }

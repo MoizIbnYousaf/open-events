@@ -1,7 +1,19 @@
 import * as React from 'react'
+import { mergeProps } from '@base-ui/react/merge-props'
+import { useRender } from '@base-ui/react/use-render'
 
 import { cn } from '../../lib/utils'
+import { SECTION_HEADING_CLASS, type HeadingLevel } from './section-heading'
 
+/**
+ * A resting surface, so it carries NO shadow in either scheme — a hairline
+ * ring is the entire elevation story, and in dark mode the card collapses onto
+ * the canvas colour so the ring is the only thing separating them. Only
+ * overlays (dialog, popover, menu) are allowed to float.
+ *
+ * 12px gutters and a 12px stack rhythm; `size="sm"` tightens to 10px for cards
+ * that sit inside another card's body.
+ */
 function Card({
   className,
   size = 'default',
@@ -12,7 +24,7 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        'group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl',
+        'group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-lg bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-border [--card-spacing:--spacing(3)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(2.5)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg',
         className,
       )}
       {...props}
@@ -25,7 +37,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="card-header"
       className={cn(
-        'group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)',
+        'group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-lg px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)',
         className,
       )}
       {...props}
@@ -33,17 +45,47 @@ function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
-function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
-  return (
-    <div
-      data-slot="card-title"
-      className={cn(
-        'font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm',
-        className,
-      )}
-      {...props}
-    />
-  )
+/**
+ * 15px medium. Headings differentiate from body by SIZE, never by a weight
+ * jump — medium is already the default interface weight, so a title that also
+ * went semibold would only look heavier, not more important.
+ *
+ * Renders a `<div>` by default, because most card titles are labels rather
+ * than document structure and a page full of cards is not a page full of
+ * headings. When a card genuinely IS a section of the page, the caller names
+ * the rank and the recipe is unchanged:
+ *
+ * ```tsx
+ * <CardTitle level={2}>Submissions</CardTitle>
+ * ```
+ *
+ * `level` builds the heading around the children. The older `render={<h2 />}`
+ * spelling said the same thing in a form that reads, on its own, as an empty
+ * `<h2>` — which is exactly what static accessibility checkers make of it.
+ * `render` stays for elements a rank cannot express.
+ *
+ * `useRender` (the same escape `Badge` uses) merges className and props onto
+ * the resolved element, so the heading keeps `data-slot="card-title"` and the
+ * `group-data-[size=sm]` response — the two things a hand-rolled `<h2>` with a
+ * copied class string always loses.
+ */
+function CardTitle({
+  className,
+  level,
+  render,
+  ...props
+}: useRender.ComponentProps<'div'> & { readonly level?: HeadingLevel }) {
+  return useRender({
+    defaultTagName: level === undefined ? 'div' : `h${level}`,
+    props: mergeProps<'div'>(
+      {
+        className: cn(SECTION_HEADING_CLASS, 'group-data-[size=sm]/card:text-sm', className),
+      },
+      props,
+    ),
+    render,
+    state: { slot: 'card-title' },
+  })
 }
 
 function CardDescription({ className, ...props }: React.ComponentProps<'div'>) {
@@ -72,12 +114,13 @@ function CardContent({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
+/** Actions sit behind a top hairline, never behind a tinted bar. */
 function CardFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="card-footer"
       className={cn(
-        'flex items-center rounded-b-xl border-t bg-muted/50 p-(--card-spacing)',
+        'flex items-center gap-2 rounded-b-lg border-t border-border p-(--card-spacing)',
         className,
       )}
       {...props}

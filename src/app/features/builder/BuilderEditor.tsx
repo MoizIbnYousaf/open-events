@@ -5,17 +5,17 @@ import AppShell from '../nav/AppShell'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import type { SaveFormDraftInput } from '../../../application'
+import type { FormVersionSummaryDto, SaveFormDraftInput } from '../../../application'
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
 import {
   adminFormQueryKeys,
   useFormDraft,
+  useFormVersionDetail,
   useFormVersions,
   usePublishForm,
   useUpdateFormDraft,
 } from '../../queries/admin-forms'
 import { useTaxonomies } from '../../queries/admin-events'
-import { announce } from '../../lib/announcer'
 import type { ElementRule, FormElement, RoutingRule } from '../../../domain'
 import {
   DeniedState,
@@ -24,8 +24,10 @@ import {
   LoadErrorState,
 } from '../admin/AdminStates'
 import { AlertLive } from '../../../components/ui/alert-live'
+import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -34,6 +36,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../components/ui/dialog'
+import { EmptyState } from '../../../components/ui/empty-state'
+import { DocumentIcon, DocumentStackIcon } from '../../../components/ui/icons'
+import { linkVariants } from '../../../components/ui/link-variants'
+import {
+  PageHeader,
+  PageHeaderActions,
+  PageHeaderContent,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import {
@@ -65,6 +76,74 @@ function BuilderEditorByForm() {
   return <BuilderEditorScreen key={formId ?? 'no-form'} formId={formId} eventSlug={eventSlug} />
 }
 
+/**
+ * The body that starts a draft on a form that has never had one. The save
+ * route builds the version row itself; the content it stores is whatever
+ * arrives, and an empty form is the honest starting point for one that has
+ * nothing published to copy.
+ */
+const EMPTY_DRAFT_INPUT: SaveFormDraftInput = {
+  pages: [],
+  elements: [],
+  conditionRules: [],
+  routingRules: [],
+}
+
+/**
+ * The version history, which loads and reads the same whether or not the form
+ * has a draft — so the no-draft screen shows it too rather than sending the
+ * operator to a page with nothing on it. Extracted because it is now rendered
+ * from two states, not because it is a reusable widget.
+ */
+function VersionsCard({
+  versions,
+  eventSlug,
+  formId,
+}: {
+  readonly versions: readonly FormVersionSummaryDto[] | undefined
+  readonly eventSlug: string | undefined
+  readonly formId: string | undefined
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Versions</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {versions !== undefined && versions.length > 0 ? (
+          <ul className="-my-1 divide-y divide-border">
+            {versions.map((version) => (
+              <li key={version.id} className="flex items-center justify-between gap-3 py-1.5">
+                <Link
+                  to="/admin/events/$slug/forms/$formId/versions/$versionId"
+                  params={{
+                    slug: eventSlug ?? '',
+                    formId: formId ?? '',
+                    versionId: version.id,
+                  }}
+                  className={linkVariants({ hit: true, className: 'text-sm' })}
+                >
+                  Version {version.version}
+                </Link>
+                {/* Published or draft is the version's lifecycle state. */}
+                <Badge dot variant={version.status === 'published' ? 'secondary' : 'outline'}>
+                  {version.status === 'published' ? 'Published' : 'Draft'}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState
+            icon={<DocumentStackIcon size={20} />}
+            title="Publish your first version"
+            description="Publishing freezes the draft as a numbered version and opens it to speakers."
+          />
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 type SaveErrorState =
   | { readonly kind: 'forbidden' }
   | { readonly kind: 'denied' }
@@ -88,9 +167,26 @@ function BuilderEditorScreen({
   const publish = usePublishForm(eventSlug ?? '', formId ?? '')
 
   const queryDraft = useMemo(
-    () => (draftQuery.data === undefined ? null : dtoToBuilderDraft(draftQuery.data)),
+    () =>
+      draftQuery.data === undefined || draftQuery.data === null
+        ? null
+        : dtoToBuilderDraft(draftQuery.data),
     [draftQuery.data],
   )
+  // Only fetched in the one state that needs it: a form with no draft, where
+  // the frozen published version is what a new draft is forked from. With a
+  // draft on the page the version id is undefined and the query never runs.
+  const latestPublished =
+    (versionsQuery.data ?? [])
+      .filter((version) => version.status === 'published')
+      .sort((left, right) => right.version - left.version)
+      .at(0) ?? null
+  const forkSourceQuery = useFormVersionDetail(
+    eventSlug,
+    formId,
+    draftQuery.data === null ? latestPublished?.id : undefined,
+  )
+  const forkPending = latestPublished !== null && forkSourceQuery.data === undefined
   const [draftOverride, setDraftOverride] = useState<BuilderDraft | null>(null)
   const draft = draftOverride ?? queryDraft
   const setDraft = useCallback(
@@ -111,6 +207,7 @@ function BuilderEditorScreen({
   const [saveError, setSaveError] = useState<SaveErrorState | null>(null)
   const [conflictScope, setConflictScope] = useState<'save' | 'publish' | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [discardOpen, setDiscardOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [retryPending, setRetryPending] = useState(false)
   const [reloadPending, setReloadPending] = useState(false)
@@ -122,9 +219,35 @@ function BuilderEditorScreen({
   const valueRefs = useRef(new Map<string, HTMLInputElement | null>())
   const attemptedSaveRef = useRef<SaveFormDraftInput | null>(null)
 
+  // A form that really is not there renders the Not found page state, and the
+  // tab said "Form builder" over it — the one place the reader is told which
+  // page they are on when the page is not on screen. Both routes to the state
+  // are the same question: the draft read answered 404, or there was no draft
+  // and the versions read answered 404 too (a form with only a published
+  // version is NOT missing; it forks a new draft).
+  const notFound =
+    (draftQuery.isError && draft === null && getApiErrorCode(draftQuery.error) === 'not_found') ||
+    (draft === null &&
+      draftQuery.data === null &&
+      !versionsQuery.isPending &&
+      getApiErrorCode(versionsQuery.error) === 'not_found')
+
+  // The same question one answer further along: a refused read renders
+  // ExpiredSessionState below, and the tab went on saying "Form builder" over
+  // a page the reader was refused. `notFound` keys on `not_found` codes only,
+  // so a 401 fell to the else branch. /agenda, /evaluations and /readiness
+  // already title their expired state; this route was simply not in that set,
+  // which left the product answering one moment two ways.
+  const expired =
+    draftQuery.isError && draft === null && getApiErrorCode(draftQuery.error) === 'unauthorized'
+
   useEffect(() => {
-    document.title = 'Form builder — SpeakerOps'
-  }, [])
+    document.title = notFound
+      ? 'Not found — SpeakerOps'
+      : expired
+        ? 'Session expired — SpeakerOps'
+        : 'Form builder — SpeakerOps'
+  }, [notFound, expired])
 
   useEffect(() => {
     if (!dirty) return
@@ -247,7 +370,25 @@ function BuilderEditorScreen({
     performSave(toSaveInput(draft))
   }
 
-  const performSave = (input: SaveFormDraftInput) => {
+  /**
+   * Forking the published version into a new draft is the same write as any
+   * other save — the route creates the draft version when none exists — so it
+   * goes through the same path rather than inventing a second one. Only the
+   * sentence the operator reads differs, because "Saved" is not what just
+   * happened when there was nothing to save.
+   */
+  const startDraft = () => {
+    if (formId === undefined || forkPending) return
+    const source = forkSourceQuery.data
+    setStatusMessage(null)
+    setSaveError(null)
+    setConflictScope(null)
+    performSave(source === undefined ? EMPTY_DRAFT_INPUT : toSaveInput(dtoToBuilderDraft(source)), {
+      started: true,
+    })
+  }
+
+  const performSave = (input: SaveFormDraftInput, options: { started?: boolean } = {}) => {
     if (formId === undefined) return
     attemptedSaveRef.current = input
     save.mutate(input, {
@@ -257,8 +398,10 @@ function BuilderEditorScreen({
         setDraft(rebound)
         setDirty(false)
         dirtyRef.current = false
-        setStatusMessage('Saved')
-        announce('Form draft saved')
+        // The builder's own StatusLive renders this string and is a live
+        // region, so the announcer would speak one outcome twice (DEC-014,
+        // F-R3-13).
+        setStatusMessage(options.started === true ? 'Draft started' : 'Saved')
         void queryClient.invalidateQueries({
           queryKey: adminFormQueryKeys.versions(formId),
         })
@@ -332,7 +475,7 @@ function BuilderEditorScreen({
     setReloadPending(true)
     try {
       const result = await draftQuery.refetch()
-      if (result.isError || result.data === undefined) {
+      if (result.isError || result.data === undefined || result.data === null) {
         return
       }
       attemptedSaveRef.current = null
@@ -347,7 +490,7 @@ function BuilderEditorScreen({
   }
 
   const discardChanges = () => {
-    if (draftQuery.data === undefined) return
+    if (draftQuery.data === undefined || draftQuery.data === null) return
     attemptedSaveRef.current = null
     setDraft(dtoToBuilderDraft(draftQuery.data))
     setDirty(false)
@@ -364,7 +507,7 @@ function BuilderEditorScreen({
     try {
       const scope = conflictScope
       const result = await draftQuery.refetch()
-      if (result.isError || result.data === undefined) {
+      if (result.isError || result.data === undefined || result.data === null) {
         setConflictScope(scope)
         return
       }
@@ -414,14 +557,67 @@ function BuilderEditorScreen({
     )
   }
 
+  // No draft is a state, not a failure. The route answers 404 for a form whose
+  // only version is published — the shape the seeded demo ships in — and for a
+  // form that does not exist at all. The versions read the page already makes
+  // separates them: a form that is really missing fails that one too.
+  if (draft === null && draftQuery.data === null && !versionsQuery.isPending) {
+    if (getApiErrorCode(versionsQuery.error) === 'not_found') return <DeniedState />
+    return (
+      <AppShell slug={eventSlug ?? ''}>
+        <div className="grid gap-4">
+          <PageHeader>
+            <PageHeaderContent>
+              <PageHeaderTitle>Form builder</PageHeaderTitle>
+            </PageHeaderContent>
+          </PageHeader>
+          <StatusLive aria-live="polite">
+            {save.isPending ? 'Starting the form draft…' : statusMessage}
+          </StatusLive>
+          <EmptyState
+            icon={<DocumentIcon size={20} />}
+            title="Start a new draft"
+            description={
+              latestPublished === null
+                ? 'This form has nothing to edit yet. Starting a draft opens the builder on an empty form.'
+                : `Version ${latestPublished.version} is published and frozen. Starting a draft copies it into a new version you can edit.`
+            }
+          >
+            <Button
+              type="button"
+              size="sm"
+              pending={forkPending || save.isPending}
+              onClick={startDraft}
+            >
+              {save.isPending ? 'Starting…' : 'Start a new draft'}
+            </Button>
+          </EmptyState>
+          {saveError !== null ? (
+            <AlertLive>
+              {saveError.kind === 'forbidden'
+                ? 'Access forbidden.'
+                : saveError.kind === 'denied'
+                  ? 'Not found.'
+                  : saveError.kind === 'expired'
+                    ? 'Your session has expired. Sign in again to continue.'
+                    : saveError.message}
+            </AlertLive>
+          ) : null}
+          <VersionsCard versions={versionsQuery.data} eventSlug={eventSlug} formId={formId} />
+        </div>
+      </AppShell>
+    )
+  }
+
   if (draft === null) {
     return (
       <AppShell slug={eventSlug ?? ''}>
         <Card aria-busy="true" aria-label="Loading form builder">
-          <CardContent className="grid gap-3">
-            <Skeleton className="h-4 w-48" />
-            <Skeleton className="h-4 w-64" />
-            <Skeleton className="h-4 w-64" />
+          <CardContent className="grid gap-2.5">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-8 w-1/2" />
             <StatusLive aria-live="polite">Loading the form builder…</StatusLive>
           </CardContent>
         </Card>
@@ -436,147 +632,150 @@ function BuilderEditorScreen({
   return (
     <AppShell slug={eventSlug ?? ''}>
       <div className="grid gap-4">
-        <Card>
-          <CardHeader>
-            <h1 className="font-heading text-base leading-snug font-medium">Form builder</h1>
-          </CardHeader>
-          <CardContent className="grid gap-6">
-            <PageList
-              pages={draft.content.pages}
-              elements={draft.content.elements}
-              invalidElementId={
-                validationIssue?.kind === 'label' ? validationIssue.elementId : null
-              }
-              onUpdateElement={updateElement}
-              onMoveElement={moveElement}
-              registerLabelRef={registerLabelRef}
-            />
-            <ConditionRuleEditor
-              rules={draft.content.conditionRules}
-              elements={draft.content.elements}
-              invalidConditionKey={
-                validationIssue?.kind === 'condition-value'
-                  ? conditionValueKey(
-                      validationIssue.ruleId,
-                      validationIssue.groupIndex,
-                      validationIssue.conditionIndex,
-                    )
-                  : null
-              }
-              registerValueRef={registerValueRef}
-              onUpdateRule={updateConditionRule}
-            />
-            <RoutingRuleEditor
-              rules={draft.content.routingRules}
-              taxonomyItems={taxonomyItems}
-              taxonomyUnavailable={taxonomyUnavailable}
-              onUpdateRule={updateRoutingRule}
-            />
-            {taxonomyUnavailable ? (
-              <AlertLive>
-                Taxonomy unavailable — open the builder from an event page to choose routing
-                targets.
+        {/* The title, the dirty state and the three verbs that act on the
+            draft live in one strip, so the operator never has to scroll to the
+            bottom of a long form to find Save. */}
+        <PageHeader>
+          <PageHeaderContent>
+            <PageHeaderTitle>Form builder</PageHeaderTitle>
+          </PageHeaderContent>
+          <PageHeaderActions>
+            {/* An annotation on the editor, not a state the form is in: it
+                describes this browser tab, and it disappears the moment the
+                draft is saved. The quietest face, and no state marker. */}
+            {dirty ? <Badge variant="ghost">Unsaved changes</Badge> : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              ref={previewButtonRef}
+              onClick={() => setPreviewOpen(true)}
+            >
+              Preview
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setPublishOpen(true)}>
+              Publish
+            </Button>
+            <Button type="button" size="sm" pending={save.isPending} onClick={saveDraft}>
+              {save.isPending ? 'Saving…' : 'Save'}
+            </Button>
+          </PageHeaderActions>
+        </PageHeader>
+        {/* One stable region for both, mounted before either has anything to
+            say: a live region created together with its text is not in the
+            accessibility tree when the text arrives, so it announces nothing.
+            The in-flight message replaces the status chip on the way out and
+            gives it back on settle. */}
+        <StatusLive aria-live="polite">
+          {save.isPending ? 'Saving the form draft…' : statusMessage}
+        </StatusLive>
+        <div className="grid gap-4">
+          <PageList
+            pages={draft.content.pages}
+            elements={draft.content.elements}
+            invalidElementId={validationIssue?.kind === 'label' ? validationIssue.elementId : null}
+            onUpdateElement={updateElement}
+            onMoveElement={moveElement}
+            registerLabelRef={registerLabelRef}
+          />
+          <ConditionRuleEditor
+            rules={draft.content.conditionRules}
+            elements={draft.content.elements}
+            invalidConditionKey={
+              validationIssue?.kind === 'condition-value'
+                ? conditionValueKey(
+                    validationIssue.ruleId,
+                    validationIssue.groupIndex,
+                    validationIssue.conditionIndex,
+                  )
+                : null
+            }
+            registerValueRef={registerValueRef}
+            onUpdateRule={updateConditionRule}
+          />
+          <RoutingRuleEditor
+            rules={draft.content.routingRules}
+            taxonomyItems={taxonomyItems}
+            taxonomyUnavailable={taxonomyUnavailable}
+            onUpdateRule={updateRoutingRule}
+          />
+          {taxonomyUnavailable ? (
+            <AlertLive>
+              Taxonomy unavailable — open the builder from an event page to choose routing targets.
+            </AlertLive>
+          ) : null}
+          {validationMessage !== null ? <AlertLive>{validationMessage}</AlertLive> : null}
+          {saveError !== null ? (
+            saveError.kind === 'forbidden' ? (
+              <AlertLive>Access forbidden.</AlertLive>
+            ) : saveError.kind === 'denied' ? (
+              <AlertLive>Not found.</AlertLive>
+            ) : saveError.kind === 'expired' ? (
+              <AlertLive>Your session has expired. Sign in again to continue.</AlertLive>
+            ) : (
+              <AlertLive>{saveError.message}</AlertLive>
+            )
+          ) : null}
+          {conflictScope !== null ? (
+            // A recovery card, not a red box: the three ways out are the
+            // point, so they get the room. Every one of them is offered
+            // because none of them is safe to pick for the operator.
+            <div className="grid gap-3 rounded-lg bg-destructive/5 p-3 ring-1 ring-destructive/40">
+              <AlertLive className="border-l-0 pl-0 font-medium">
+                The draft changed elsewhere — reload to see the latest
               </AlertLive>
-            ) : null}
-            {validationMessage !== null ? <AlertLive>{validationMessage}</AlertLive> : null}
-            {saveError !== null ? (
-              saveError.kind === 'forbidden' ? (
-                <AlertLive>Access forbidden.</AlertLive>
-              ) : saveError.kind === 'denied' ? (
-                <AlertLive>Not found.</AlertLive>
-              ) : saveError.kind === 'expired' ? (
-                <AlertLive>Your session has expired. Sign in again to continue.</AlertLive>
-              ) : (
-                <AlertLive>{saveError.message}</AlertLive>
-              )
-            ) : null}
-            {conflictScope !== null ? (
-              <div className="grid gap-2 rounded-lg border border-destructive p-3">
-                <AlertLive>The draft changed elsewhere — reload to see the latest</AlertLive>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    pending={reloadPending}
-                    onClick={() => void reloadLatest()}
-                  >
-                    {reloadPending ? 'Reloading…' : 'Reload latest'}
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={discardChanges}>
-                    Discard my changes
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    pending={retryPending}
-                    onClick={() => void retryAfterReload()}
-                  >
-                    {retryPending ? 'Trying again…' : 'Retry after reload'}
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  ref={previewButtonRef}
-                  onClick={() => setPreviewOpen(true)}
+                  size="sm"
+                  pending={reloadPending}
+                  onClick={() => void reloadLatest()}
                 >
-                  Preview
+                  {reloadPending ? 'Reloading…' : 'Reload latest'}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => setPublishOpen(true)}>
-                  Publish
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDiscardOpen(true)}
+                >
+                  Discard my changes
                 </Button>
-                <Button type="button" pending={save.isPending} onClick={saveDraft}>
-                  {save.isPending ? 'Saving…' : 'Save'}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  pending={retryPending}
+                  onClick={() => void retryAfterReload()}
+                >
+                  {retryPending ? 'Trying again…' : 'Retry after reload'}
                 </Button>
               </div>
-              {/* One stable region for both, mounted before either has anything
-                to say: a live region created together with its text is not in
-                the accessibility tree when the text arrives, so it announces
-                nothing. The in-flight message replaces the status chip on the
-                way out and gives it back on settle. */}
-              <StatusLive aria-live="polite">
-                {save.isPending ? 'Saving the form draft…' : statusMessage}
-              </StatusLive>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Versions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {versionsQuery.data !== undefined && versionsQuery.data.length > 0 ? (
-              <ul className="grid gap-2">
-                {versionsQuery.data.map((version) => (
-                  <li key={version.id} className="flex items-center justify-between gap-3">
-                    <Link
-                      to="/admin/events/$slug/forms/$formId/versions/$versionId"
-                      params={{
-                        slug: eventSlug ?? '',
-                        formId: formId ?? '',
-                        versionId: version.id,
-                      }}
-                      className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                    >
-                      Version {version.version}
-                    </Link>
-                    <span className="text-sm text-muted-foreground">
-                      {version.status === 'published' ? 'Published' : 'Draft'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">No versions yet.</p>
-            )}
-          </CardContent>
-        </Card>
+          ) : null}
+        </div>
+        <VersionsCard versions={versionsQuery.data} eventSlug={eventSlug} formId={formId} />
+        {/* The one control on this page that destroys work with no way back,
+            offered at the exact moment the operator's edits are most valuable:
+            a 409 means the draft they are holding is the only copy of what
+            they typed. So it asks, and the question names what goes. */}
+        <ConfirmDialog
+          open={discardOpen}
+          onOpenChange={setDiscardOpen}
+          title="Discard your changes"
+          description="Your unsaved edits to this draft are thrown away and the version saved elsewhere takes their place. This cannot be undone."
+          // Deliberately NOT the trigger's words. The house rule everywhere
+          // else in the product is that the control which opens the question
+          // and the control which answers it carry different names — so a
+          // click can never land on the wrong one, and a strict selector can
+          // never match two things at once.
+          confirmLabel="Discard them"
+          onConfirm={() => {
+            discardChanges()
+            setDiscardOpen(false)
+          }}
+        />
         <PreviewDialog
           open={previewOpen}
           draft={draft}
@@ -604,11 +803,15 @@ function BuilderEditorScreen({
                   Your changes have not been saved. Leave this page and discard them?
                 </DialogDescription>
               </DialogHeader>
+              {/* Same ladder as every other irreversible step: the quiet way
+                  back sits first, and the button that throws the edits away
+                  carries the destructive weight. Copy and blocker wiring are
+                  unchanged. */}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => blocker.reset()}>
+                <Button type="button" variant="ghost" onClick={() => blocker.reset()}>
                   Stay
                 </Button>
-                <Button type="button" onClick={() => blocker.proceed()}>
+                <Button type="button" variant="destructive" onClick={() => blocker.proceed()}>
                   Leave
                 </Button>
               </DialogFooter>

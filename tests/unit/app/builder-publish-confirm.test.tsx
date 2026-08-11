@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getFormDraft, listFormVersions, publishForm } from '../../../src/app/api/admin-forms'
 import { ThemeProvider } from '../../../src/components/ui/theme-provider'
 import BuilderEditor from '../../../src/app/features/builder/BuilderEditor'
+import VersionDetail from '../../../src/app/features/builder/VersionDetail'
 import PublishConfirmDialog from '../../../src/app/features/builder/PublishConfirmDialog'
 import { routeTree } from '../../../src/app/routeTree.gen'
 import { Route as BuilderFormRoute } from '../../../src/app/routes/admin_.events.$slug_.forms.$formId'
@@ -297,9 +298,12 @@ describe('builder publish confirmation and version history', () => {
     const confirmButton = await screen.findByRole('button', { name: /confirm publish/i })
     await user.click(confirmButton)
 
-    expect(confirmButton).toBeDisabled()
+    expect(confirmButton).toHaveAttribute('aria-disabled', 'true')
+    // Focus is still on the control that was pressed — the dialog is open, and
+    // a natively disabled confirm would have thrown focus out of it.
+    expect(confirmButton).toHaveFocus()
     // The in-flight publish is on the control that was pressed AND in a status
-    // region: aria-busy on a disabled button is not reliably announced.
+    // region: aria-busy alone is not reliably announced.
     expect(confirmButton).toHaveAttribute('aria-busy', 'true')
     // Scoped to the dialog: the editor behind it owns a status region of its
     // own, which is mounted and silent while the publish runs.
@@ -601,5 +605,63 @@ describe('builder publish confirmation and version history', () => {
     await user.click(screen.getByRole('button', { name: /save/i }))
     expect(await screen.findByRole('status')).toHaveTextContent('Saved')
     expect(dispatchBeforeUnload().defaultPrevented).toBe(false)
+  })
+
+  it('separates a version state from an editor annotation on the same strip', async () => {
+    const user = userEvent.setup()
+    await mountBuilder()
+
+    const versionItem = (await screen.findByRole('link', { name: /version 1/i })).closest('li')
+    const versionChip = versionItem?.querySelector('[data-slot="badge"]')
+    // Published or draft is the version's lifecycle state, so it carries the
+    // non-colour state marker.
+    expect(versionChip).toHaveTextContent('Draft')
+    expect(versionChip).toHaveAttribute('data-dot', '')
+
+    const labels = await screen.findAllByLabelText('Label')
+    await user.clear(labels[0]!)
+    await user.type(labels[0]!, 'Dirty title')
+
+    const dirtyChip = await screen.findByText('Unsaved changes', {
+      selector: '[data-slot="badge"]',
+    })
+    // "Unsaved changes" is an annotation about this browser tab, not a state
+    // the form is in — nothing on the server knows about it and it vanishes on
+    // save. So it takes the quietest face and no state marker; wearing the
+    // same chip as Draft made two unrelated facts look like one ladder.
+    expect(dirtyChip).toHaveAttribute('data-variant', 'ghost')
+    expect(dirtyChip).not.toHaveAttribute('data-dot')
+  })
+
+  it('names the version state the same way on the version page as in the list', async () => {
+    const rootRoute = createRootRoute()
+    const detailRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/admin/events/$slug/forms/$formId/versions/$versionId',
+      component: VersionDetail,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([detailRoute]),
+      history: createMemoryHistory({
+        initialEntries: [`/admin/events/${EVENT_SLUG}/forms/${FORM_ID}/versions/${VERSION_ID}`],
+      }),
+    })
+    await router.load()
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    )
+
+    await screen.findByRole('heading', { level: 1, name: /version 1/i })
+    const chip = await screen.findByText('Published', { selector: '[data-slot="badge"]' })
+    // One fact, two screens, one face. A chip that changes shape between the
+    // list and the page it links to is a chip nobody can learn to read.
+    expect(chip).toHaveAttribute('data-dot', '')
   })
 })

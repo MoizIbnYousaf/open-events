@@ -39,7 +39,11 @@ function FieldControl({ className, ...props }: FieldPrimitive.Control.Props) {
  */
 function FieldLabel({ className, ...props }: FieldPrimitive.Label.Props) {
   return (
-    <FieldPrimitive.Label data-slot="field-label" className={cn('text-sm', className)} {...props} />
+    <FieldPrimitive.Label
+      data-slot="field-label"
+      className={cn('text-xs font-medium text-muted-foreground', className)}
+      {...props}
+    />
   )
 }
 
@@ -56,7 +60,7 @@ function FieldTriggerLabel({ className, ...props }: FieldPrimitive.Label.Props) 
       data-slot="field-label"
       nativeLabel={false}
       render={<span />}
-      className={cn('text-sm font-medium', className)}
+      className={cn('text-xs font-medium text-muted-foreground', className)}
       {...props}
     />
   )
@@ -66,7 +70,7 @@ function FieldDescription({ className, ...props }: FieldPrimitive.Description.Pr
   return (
     <FieldPrimitive.Description
       data-slot="field-description"
-      className={cn('text-sm text-muted-foreground', className)}
+      className={cn('text-xs text-muted-foreground', className)}
       {...props}
     />
   )
@@ -83,7 +87,7 @@ function FieldError({ className, match = true, ...props }: FieldPrimitive.Error.
     <FieldPrimitive.Error
       data-slot="field-error"
       match={match}
-      className={cn('text-sm text-destructive', className)}
+      className={cn('border-l-2 border-destructive pl-2 text-sm text-destructive', className)}
       {...props}
     />
   )

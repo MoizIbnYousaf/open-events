@@ -1,6 +1,7 @@
 import { isApplePlatform } from '../../lib/platform'
 import { THEME_LABELS, THEME_PREFERENCES } from '../../lib/theme'
 import { Button } from './button'
+import { Kbd } from './kbd'
 import { useTheme, useThemePreferenceKeys } from './theme-provider'
 
 const SHORTCUT_HINT_MAC = '⇧⌘D'
@@ -13,9 +14,9 @@ function shortcutHint(): string {
 
 /**
  * The visible theme control. Three buttons in a named group rather than a
- * Select: this renders in the root shell on every route, and
- * src/components/ui/select.tsx pulls lucide-react into the entry chunk, which
- * the perf gate budgets against (scripts/perf-check.mjs purity markers).
+ * Select: this renders in the root shell on every route, so it lands in the
+ * entry chunk, and three 24px targets read the current preference at a glance
+ * where a collapsed combobox would hide two thirds of it behind a click.
  *
  * The keyboard chord is discoverable rather than hidden: aria-keyshortcuts
  * carries both chords to assistive tech and the <kbd> carries the primary one
@@ -54,12 +55,7 @@ export function ThemeToggle() {
           </Button>
         ))}
       </div>
-      <kbd
-        aria-hidden="true"
-        className="hidden rounded border border-border px-1 text-[0.65rem] text-muted-foreground sm:inline-flex"
-      >
-        {shortcutHint()}
-      </kbd>
+      <Kbd className="hidden sm:inline-flex">{shortcutHint()}</Kbd>
     </div>
   )
 }

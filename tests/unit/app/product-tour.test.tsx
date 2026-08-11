@@ -8,12 +8,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../../../src/app/query-client'
 import { ThemeProvider } from '../../../src/components/ui/theme-provider'
 import { routeTree } from '../../../src/app/routeTree.gen'
-import { DEFAULT_EVENT_SLUG } from '../../../src/app/lib/default-event'
+import { DEFAULT_EVENT_SLUG, DEFAULT_FORM_SLUG } from '../../../src/app/lib/default-event'
 import { ProductTour, TOUR_TOGGLE_EVENT } from '../../../src/app/features/tour/ProductTour'
-import { TOUR_STEPS } from '../../../src/app/features/tour/tour-steps'
+import { isTourActive } from '../../../src/app/features/tour/tour-activity'
+import {
+  TOUR_ORGANIZER_HOLD,
+  TOUR_SIGN_IN_STEP_INDEX,
+  TOUR_STEPS,
+  publicResumeIndexAfter,
+} from '../../../src/app/features/tour/tour-steps'
 
 const STEP_COUNT = TOUR_STEPS.length
 const DONE_KEY = 'speakerops:tour-done'
+/** The gate waits out the tour's real 2s target poll, then re-checks at 400ms. */
+const TARGET_POLL_MS = 2000
+const HOLD_RECHECK_MS = 400
+const GATE_TIMEOUT = 6000
+const GATE_TEST_TIMEOUT = 20_000
 
 /**
  * jsdom in this project ships no localStorage at all; the tour has to survive
@@ -56,6 +67,46 @@ function mountTour() {
   return { onNavigate, user: userEvent.setup() }
 }
 
+/**
+ * A [data-tour] hook with layout. jsdom lays nothing out and the tour treats a
+ * zero-size rect as "no target", so a stand-in for a rendered organizer rail
+ * has to supply the two DOM facts the tour actually reads.
+ */
+function mountTourTarget(id: string): HTMLElement {
+  const element = document.createElement('div')
+  element.setAttribute('data-tour', id)
+  element.getBoundingClientRect = () =>
+    ({
+      top: 40,
+      left: 8,
+      width: 200,
+      height: 30,
+      right: 208,
+      bottom: 70,
+      x: 8,
+      y: 40,
+      toJSON: () => ({}),
+    }) as DOMRect
+  element.scrollIntoView = () => {}
+  document.body.appendChild(element)
+  return element
+}
+
+/**
+ * Walk a signed-out visitor to the first organizer step and wait for the hold.
+ * Nothing renders a `rail-*` hook here, which is precisely the signed-out
+ * organizer route: it returns a state card instead of its rail.
+ */
+async function holdAtTheOrganizerGate(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await screen.findByRole('dialog')
+  await user.click(screen.getByRole('button', { name: /^next$/i }))
+  await user.click(screen.getByRole('button', { name: /^next$/i }))
+  await waitFor(
+    () => expect(screen.getByRole('dialog')).toHaveAccessibleName(/sign in to continue the tour/i),
+    { timeout: GATE_TIMEOUT },
+  )
+}
+
 beforeEach(() => {
   installStorage()
 })
@@ -73,6 +124,46 @@ describe('tour steps', () => {
     expect(TOUR_STEPS.at(-1)?.id).toBe('schedule')
     const ids = TOUR_STEPS.map((step) => step.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  // R1-B5: the organizer half of the tour is the half a signed-out visitor
+  // cannot see, and every one of those steps has to say so in the data.
+  it('marks every organizer rail step as session-gated and leaves the public loop open', () => {
+    const gated = TOUR_STEPS.filter((step) => step.requiresSession !== undefined)
+    expect(gated.map((step) => step.id)).toEqual([
+      'event-settings',
+      'taxonomies',
+      'submissions',
+      'evaluations',
+      'agenda',
+      'readiness',
+    ])
+    // The gate reads the rail hook as its evidence, so every gated step must
+    // have one to read.
+    for (const step of gated) expect(step.target).toMatch(/^rail-/)
+  })
+
+  // V-B5-COPY, unpinned until now (RV3 NEW-3). The hold used to promise the
+  // tour "picks up right here" after signing in; it does not — it waits on the
+  // reader's Next, which was measured live. A string is the easiest fix to
+  // regress silently, so the instruction the product actually keeps is pinned
+  // here and the promise it does not keep is pinned out.
+  it('tells the held reader to press Next rather than promising to resume itself', () => {
+    expect(TOUR_ORGANIZER_HOLD.body).toContain('then press Next')
+    expect(TOUR_ORGANIZER_HOLD.body).not.toMatch(/picks up|pick up/i)
+    // Both recovery doors the hold offers are named in the same sentence.
+    expect(TOUR_ORGANIZER_HOLD.body).toMatch(/organizer secret/i)
+    expect(TOUR_ORGANIZER_HOLD.body).toMatch(/skip ahead/i)
+  })
+
+  it('derives both recovery doors from the list rather than hard-coding them', () => {
+    expect(TOUR_STEPS[TOUR_SIGN_IN_STEP_INDEX]?.id).toBe('admin-signin')
+    // The resume door skips the routeless palette step: a step with no route of
+    // its own would narrate over whatever denied page is already on screen.
+    const resume = publicResumeIndexAfter(TOUR_SIGN_IN_STEP_INDEX + 1)
+    expect(TOUR_STEPS[resume]?.id).toBe('public-cfp')
+    expect(TOUR_STEPS[resume]?.route).toBeDefined()
+    expect(publicResumeIndexAfter(TOUR_STEPS.length - 1)).toBe(-1)
   })
 })
 
@@ -157,18 +248,27 @@ describe('product tour', () => {
   })
 
   it('finishes with Done on the last step and records completion', async () => {
-    const { user } = mountTour()
-    toggleTour()
-    await screen.findByRole('dialog')
+    // The straight walk through all twelve steps is the signed-in organizer's
+    // walk, so the rail its gated steps look for is on screen throughout.
+    const rails = TOUR_STEPS.filter((step) => step.requiresSession !== undefined).map((step) =>
+      mountTourTarget(step.target ?? ''),
+    )
+    try {
+      const { user } = mountTour()
+      toggleTour()
+      await screen.findByRole('dialog')
 
-    for (let index = 0; index < STEP_COUNT - 1; index += 1) {
-      await user.click(screen.getByRole('button', { name: /^next$/i }))
+      for (let index = 0; index < STEP_COUNT - 1; index += 1) {
+        await user.click(screen.getByRole('button', { name: /^next$/i }))
+      }
+      expect(screen.getByRole('status')).toHaveTextContent(`Step ${STEP_COUNT} of ${STEP_COUNT}`)
+
+      await user.click(screen.getByRole('button', { name: /^done$/i }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(window.localStorage.getItem(DONE_KEY)).toBe('true')
+    } finally {
+      for (const rail of rails) rail.remove()
     }
-    expect(screen.getByRole('status')).toHaveTextContent(`Step ${STEP_COUNT} of ${STEP_COUNT}`)
-
-    await user.click(screen.getByRole('button', { name: /^done$/i }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(window.localStorage.getItem(DONE_KEY)).toBe('true')
   })
 
   it('records completion when the tour is skipped', async () => {
@@ -213,6 +313,148 @@ describe('product tour', () => {
       opener.remove()
     }
   })
+
+  // F-R4-4. The exact repro: tour step 2 lands on /admin, whose secret field
+  // took focus inside a <form>, and Escape then hit the input's scope bail —
+  // leaving the tour keyboard-undismissable.
+  it('closes on Escape while focus sits in a field on the page underneath', async () => {
+    const { user } = mountTour()
+    const form = document.createElement('form')
+    const input = document.createElement('input')
+    input.type = 'password'
+    form.appendChild(input)
+    document.body.appendChild(form)
+    try {
+      toggleTour()
+      await screen.findByRole('dialog')
+
+      input.focus()
+      expect(input).toHaveFocus()
+      await user.keyboard('{Escape}')
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    } finally {
+      form.remove()
+    }
+  })
+
+  // F-R4-4, the other half: the flag AdminLogin reads before taking focus.
+  it('publishes a tour-active flag while it narrates and clears it on close', async () => {
+    const { user } = mountTour()
+    expect(isTourActive()).toBe(false)
+
+    toggleTour()
+    await screen.findByRole('dialog')
+    expect(isTourActive()).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: /skip tour/i }))
+    await waitFor(() => expect(isTourActive()).toBe(false))
+  })
+
+  it(
+    'holds for a sign-in instead of narrating an organizer screen that never rendered',
+    async () => {
+      const { onNavigate, user } = mountTour()
+      toggleTour()
+      await holdAtTheOrganizerGate(user)
+
+      // R1-B5: it entered the first organizer route, found no rail, and stopped
+      // there — the counter stays honest and the forward door is no longer
+      // "Next" into another forbidden page.
+      expect(screen.getByRole('status')).toHaveTextContent(`Step 3 of ${STEP_COUNT}`)
+      expect(screen.queryByRole('button', { name: /^next$/i })).toBeNull()
+      expect(screen.getByRole('button', { name: /back to sign-in/i })).toBeEnabled()
+      expect(screen.getByRole('button', { name: /skip to public screens/i })).toBeInTheDocument()
+      expect(onNavigate).not.toHaveBeenCalledWith(
+        '/admin/events/$slug/taxonomies',
+        expect.anything(),
+      )
+
+      // Signing in makes the rail render. The hold is not a dead end: the tour
+      // picks the step back up by itself.
+      const rail = mountTourTarget('rail-event-settings')
+      try {
+        await waitFor(
+          () => expect(screen.getByRole('dialog')).toHaveAccessibleName(/event settings/i),
+          { timeout: GATE_TIMEOUT },
+        )
+        expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument()
+      } finally {
+        rail.remove()
+      }
+    },
+    GATE_TEST_TIMEOUT,
+  )
+
+  it(
+    'waits rather than holding while the organizer route is still loading',
+    async () => {
+      // A signed-in organizer on a slow connection must never be told to sign
+      // in: the route's own aria-busy skeleton says the answer is not in yet.
+      const skeleton = document.createElement('div')
+      skeleton.setAttribute('aria-busy', 'true')
+      document.body.appendChild(skeleton)
+      const { user } = mountTour()
+      try {
+        toggleTour()
+        await screen.findByRole('dialog')
+        await user.click(screen.getByRole('button', { name: /^next$/i }))
+        await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+        await new Promise((resolve) => setTimeout(resolve, TARGET_POLL_MS + HOLD_RECHECK_MS * 3))
+        expect(screen.getByRole('dialog')).toHaveAccessibleName(/event settings/i)
+
+        // The query settles into a denied state: the skeleton goes, no rail
+        // arrives, and only now is that an answer.
+        skeleton.remove()
+        await waitFor(
+          () =>
+            expect(screen.getByRole('dialog')).toHaveAccessibleName(
+              /sign in to continue the tour/i,
+            ),
+          { timeout: GATE_TIMEOUT },
+        )
+      } finally {
+        skeleton.remove()
+      }
+    },
+    GATE_TEST_TIMEOUT,
+  )
+
+  it(
+    'sends a held tour on to the first public route step, never deeper into the organizer half',
+    async () => {
+      const { onNavigate, user } = mountTour()
+      toggleTour()
+      await holdAtTheOrganizerGate(user)
+
+      await user.click(screen.getByRole('button', { name: /skip to public screens/i }))
+      await waitFor(() =>
+        expect(onNavigate).toHaveBeenLastCalledWith('/cfp/$eventSlug/$formSlug', {
+          eventSlug: DEFAULT_EVENT_SLUG,
+          formSlug: DEFAULT_FORM_SLUG,
+        }),
+      )
+      expect(screen.getByRole('dialog')).toHaveAccessibleName(/call for papers/i)
+    },
+    GATE_TEST_TIMEOUT,
+  )
+
+  it(
+    'sends a held tour back to the organizer door when asked',
+    async () => {
+      const { onNavigate, user } = mountTour()
+      toggleTour()
+      await holdAtTheOrganizerGate(user)
+
+      await user.click(screen.getByRole('button', { name: /back to sign-in/i }))
+      await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith('/admin', undefined))
+      expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer sign-in/i)
+      expect(screen.getByRole('status')).toHaveTextContent(
+        `Step ${TOUR_SIGN_IN_STEP_INDEX + 1} of ${STEP_COUNT}`,
+      )
+    },
+    GATE_TEST_TIMEOUT,
+  )
 
   it('never opens by itself', async () => {
     mountTour()

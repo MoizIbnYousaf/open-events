@@ -1,28 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRouter } from '@tanstack/react-router'
 
 import { getApiErrorCode } from '../../api/admin-events'
-import {
-  publicDraftQueryKeys,
-  recoverPublicSession,
-  type PublicEditorState,
-} from '../../queries/public-drafts'
+import { publicDraftQueryKeys, type PublicEditorState } from '../../queries/public-drafts'
+import type { SaveDenial } from './CfpSaveBar'
 import { useSubmitCfp } from '../../queries/public-submissions'
-import { ExpiredSessionState, ForbiddenState } from '../admin/AdminStates'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
+import { Card, CardContent } from '../../../components/ui/card'
+import { PaperStack } from '../../../components/ui/paper-stack'
+import { TextLink } from '../../../components/ui/link'
 import { StatusLive } from '../../../components/ui/status-live'
 
 interface CfpSubmitProps {
-  readonly formId: string
   readonly formVersionId: string
   readonly onSubmitted?: () => void
+  /**
+   * Raised when the submit is refused for who the reader is rather than for
+   * what they sent. Same contract as the save bar's: rendering a page state
+   * from this slot put a second dead-end card and a second h1 under a wizard
+   * that stayed editable, so the page answers instead — once, honestly.
+   */
+  readonly onDenied: (code: SaveDenial) => void
 }
 
-export default function CfpSubmit({ formId, onSubmitted }: CfpSubmitProps) {
+export default function CfpSubmit({ onSubmitted, onDenied }: CfpSubmitProps) {
   const queryClient = useQueryClient()
-  const router = useRouter({ warn: false })
   const submit = useSubmitCfp()
   const [submitted, setSubmitted] = useState(false)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
@@ -34,12 +37,6 @@ export default function CfpSubmit({ formId, onSubmitted }: CfpSubmitProps) {
   }, [submitted])
 
   const code = getApiErrorCode(submit.error)
-  if (code === 'unauthorized') {
-    return <ExpiredSessionState onLogin={() => recoverPublicSession(queryClient, formId, router)} />
-  }
-  if (code === 'forbidden') {
-    return <ForbiddenState />
-  }
   const bannerCopy =
     code === 'cfp_closed'
       ? 'The call for papers is closed.'
@@ -53,21 +50,59 @@ export default function CfpSubmit({ formId, onSubmitted }: CfpSubmitProps) {
 
   if (submitted) {
     return (
-      <div className="grid gap-2">
-        <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold">
-          Submission received
-        </h1>
-        <StatusLive aria-live="polite">
-          Submission received. Thank you for your proposal.
-        </StatusLive>
-      </div>
+      <Card className="mx-auto w-full max-w-[47rem]">
+        <CardContent className="grid justify-items-center gap-2 py-8 text-center">
+          <PaperStack className="mb-3" />
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="font-heading text-xl leading-tight font-semibold outline-hidden"
+          >
+            Submission received
+          </h1>
+          {/* One line under the title, not two saying the same thing. This
+              panel printed "Your proposal is with the organizers." and then a
+              live region reading "Submission received. Thank you for your
+              proposal." — which repeated the h1 directly above it, so the
+              emotional peak of the speaker journey stuttered. The region stays
+              (it is the confirmation's programmatic signal, and the focused h1
+              is what announces the outcome); what it carries is now the
+              explanation rather than an echo of the title. */}
+          <StatusLive aria-live="polite" className="max-w-sm">
+            Your proposal is with the organizers. Thank you for sending it.
+          </StatusLive>
+          {/* The end of the speaker's errand still needs a door. This card was
+              the only surface in the product with nothing at all to press, and
+              the portal is where the proposal they just sent is listed along
+              with whatever the organizers ask for next.
+
+              A plain anchor, not a router Link: this component renders in test
+              harnesses and previews without a router around it, and a full load
+              is the honest reset here anyway — the portal has to read the
+              submission that has just been created. */}
+          <TextLink href="/portal" className="mt-1">
+            Track it in your speaker portal
+          </TextLink>
+        </CardContent>
+      </Card>
     )
   }
 
   const draftId =
     queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)?.draftId ?? null
+  const unsaved = draftId === null
   return (
     <div className="grid gap-3">
+      {/* A control that is off for a reason the reader cannot see is a dead
+          end with a cursor. The condition is server-derived — there is no
+          saved draft to submit — so the button stays disabled and the sentence
+          says what to press instead. It is bound with aria-describedby so the
+          reason is read with the control, not left to be found by chance. */}
+      {unsaved ? (
+        <p id="cfp-submit-reason" className="text-sm text-muted-foreground">
+          Save your draft first — Submit sends the proposal the organizers have on file.
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         {/* `pending` rather than a bare `disabled`: it is what puts aria-busy
             on the control the speaker actually pressed, and it still makes the
@@ -77,12 +112,17 @@ export default function CfpSubmit({ formId, onSubmitted }: CfpSubmitProps) {
         <Button
           type="button"
           pending={submit.isPending}
-          disabled={draftId === null}
+          disabled={unsaved}
+          aria-describedby={unsaved ? 'cfp-submit-reason' : undefined}
           onClick={() =>
             submit.mutate(undefined, {
               onSuccess: () => {
                 setSubmitted(true)
                 onSubmitted?.()
+              },
+              onError: (error) => {
+                const denial = getApiErrorCode(error)
+                if (denial === 'unauthorized' || denial === 'forbidden') onDenied(denial)
               },
             })
           }

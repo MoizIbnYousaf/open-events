@@ -192,7 +192,10 @@ describe('async pending state', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
     const button = await screen.findByRole('button', { name: /signing in/i })
-    expect(button).toBeDisabled()
+    // Inert, not natively disabled: the browser blurs a control the instant it
+    // gains the disabled attribute, and the reader who pressed this button
+    // would lose their place in the page. aria-disabled keeps the focus.
+    expect(button).toHaveAttribute('aria-disabled', 'true')
     expect(button).toHaveAttribute('aria-busy', 'true')
   })
 
@@ -228,7 +231,7 @@ describe('async pending state', () => {
     const submit = await screen.findByRole('button', { name: 'Submit' })
     await user.click(submit)
     const pendingButton = await screen.findByRole('button', { name: /submitting/i })
-    expect(pendingButton).toBeDisabled()
+    expect(pendingButton).toHaveAttribute('aria-disabled', 'true')
     expect(pendingButton).toHaveAttribute('aria-busy', 'true')
 
     await user.click(pendingButton)

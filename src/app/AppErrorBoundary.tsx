@@ -23,8 +23,8 @@ const GENERIC_COPY = 'This page could not be displayed. Try again, or go back to
  * The fallback lives in this file rather than in a separate module so the
  * recovery control and the callback that drives it can be read together. It
  * ships in the main chunk, so it may only use Card / Button / AlertLive —
- * dialog and select pull lucide-react and would breach the entry-chunk purity
- * budget in scripts/perf-check.mjs.
+ * heavier primitives would spend the entry-chunk gzip budget enforced by
+ * scripts/perf-check.mjs.
  *
  * Copy is fixed and generic: the repo forbids rendering raw server text into
  * the UI. The real error is not hidden, it goes to reportRouteCrash.
@@ -53,7 +53,10 @@ export default class AppErrorBoundary extends Component<
     return (
       <Card className="mx-auto mt-8 w-full max-w-md">
         <CardContent className="grid justify-items-start gap-3">
-          <h1 className="font-heading text-base leading-snug font-medium">Something went wrong</h1>
+          {/* The page-state h1, same as `CrashStates`/`NotFoundState`/
+              `AdminStates`: this card answers the same kind of moment they do
+              and has no reason to be a size smaller (C0 §2). */}
+          <h1 className="font-heading text-xl leading-tight font-semibold">Something went wrong</h1>
           <AlertLive>{GENERIC_COPY}</AlertLive>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" variant="outline" onClick={this.resetErrorBoundary}>

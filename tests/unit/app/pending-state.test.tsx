@@ -69,7 +69,7 @@ describe('CFP submit trigger', () => {
     const user = userEvent.setup()
     render(
       <QueryClientProvider client={queryClient}>
-        <CfpSubmit formId={FORM_ID} formVersionId={VERSION_ID} />
+        <CfpSubmit formVersionId={VERSION_ID} onDenied={() => undefined} />
       </QueryClientProvider>,
     )
 
@@ -85,10 +85,16 @@ describe('CFP submit trigger', () => {
 
     const busy = await screen.findByRole('button', { name: /submitting/i })
     expect(busy).toHaveAttribute('aria-busy', 'true')
-    expect(busy).toBeDisabled()
-    // aria-busy alone is not reliably announced on a disabled control, so the
-    // in-flight state must also exist as a status message — in the same node
-    // that was already mounted.
+    // Inert through aria-disabled, never the native attribute: pending is not
+    // disabled. A control that goes natively disabled while it holds focus is
+    // blurred by the browser, and the speaker who pressed Submit is left on
+    // <body> with aria-busy sitting on an element they are no longer standing
+    // on. Focus stays where it was.
+    expect(busy).toHaveAttribute('aria-disabled', 'true')
+    expect(busy).toHaveFocus()
+    // aria-busy alone is not reliably announced, so the in-flight state must
+    // also exist as a status message — in the same node that was already
+    // mounted.
     expect(region.isConnected).toBe(true)
     expect(region).toHaveTextContent(/submitting/i)
     expect(screen.getByRole('status')).toBe(region)
@@ -108,7 +114,7 @@ describe('CFP submit trigger', () => {
     })
     render(
       <QueryClientProvider client={queryClient}>
-        <CfpSubmit formId={FORM_ID} formVersionId={VERSION_ID} />
+        <CfpSubmit formVersionId={VERSION_ID} onDenied={() => undefined} />
       </QueryClientProvider>,
     )
 
@@ -150,7 +156,7 @@ describe('publish confirmation', () => {
 
     const confirm = screen.getByRole('button', { name: /confirm publish/i })
     expect(confirm).toHaveAttribute('aria-busy', 'true')
-    expect(confirm).toBeDisabled()
+    expect(confirm).toHaveAttribute('aria-disabled', 'true')
     expect(region.isConnected).toBe(true)
     expect(region).toHaveTextContent(/publishing/i)
   })

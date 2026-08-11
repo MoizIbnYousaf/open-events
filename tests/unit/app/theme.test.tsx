@@ -395,6 +395,21 @@ describe('pre-paint theme boot', () => {
     expect(css).not.toContain('color-scheme: light dark')
     expect(css).toMatch(/\.dark \{\n\s*color-scheme: dark;/)
   })
+
+  // R1-M1: from lg up the page toolbar is sticky at the top of #main, which is
+  // the scrolling box — so a control focused below the fold was scrolled to the
+  // box's edge and landed UNDER the toolbar. The stylesheet is where this is
+  // fixed, at zero cost to any chunk, and it is only true above the breakpoint
+  // where the row is actually sticky.
+  it('keeps focus from scrolling under the sticky page toolbar', () => {
+    const css = readSource('src/index.css')
+    expect(css).toMatch(
+      /@media \(min-width: 1024px\) \{\n\s*#main \{\n\s*scroll-padding-top: var\(--navbar-height\);/,
+    )
+    // The offset is the PAGE header's height, and that token is what the row
+    // itself is drawn at — one definition, or the two drift apart.
+    expect(css).toMatch(/--navbar-height: 3\.5rem;/)
+  })
 })
 
 describe('theme control keys', () => {

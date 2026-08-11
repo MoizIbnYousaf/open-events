@@ -20,6 +20,7 @@ import {
   Route as PublicCfpRoute,
 } from '../../../src/app/routes/_public/cfp.$eventSlug.$formSlug'
 import { PublicStartPage, Route as PublicStartRoute } from '../../../src/app/routes/_public/start'
+import { DEFAULT_EVENT_SLUG, DEFAULT_FORM_SLUG } from '../../../src/app/lib/default-event'
 
 const EVENT_SLUG = 'demo-conf-2026'
 const FORM_SLUG = 'cfp'
@@ -307,6 +308,54 @@ describe('public form routes', () => {
     expect(screen.queryByRole('button', { name: /next/i })).not.toBeInTheDocument()
   })
 
+  it('offers a pending-aware retry when the definition GET fails, instead of a dead end', async () => {
+    const user = userEvent.setup()
+    fetchHandler = () => jsonResponse({ error: { code: 'internal', message: 'raw 500 copy' } }, 500)
+    renderPage(<PublicCfpPage eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Unable to load the call for papers.',
+    )
+    expect(document.body.textContent ?? '').not.toContain('raw 500 copy')
+    const retry = screen.getByRole('button', { name: 'Retry' })
+
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === definitionUrl()) return jsonResponse(PUBLISHED_FORM)
+      if (method === 'GET' && url === draftUrl()) {
+        return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await user.click(retry)
+
+    expect(await screen.findByRole('button', { name: /next/i })).toBeInTheDocument()
+  })
+
+  it('starts the journey on the one shared seeded slug pair, never a local copy', async () => {
+    const user = userEvent.setup()
+    fetchHandler = (url, init) => {
+      if ((init?.method ?? 'GET') === 'POST' && url === '/api/public/start') {
+        return jsonResponse({ status: 'accepted' }, 202)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPage(<PublicStartPage />)
+
+    await user.type(screen.getByLabelText(/email/i), 'speaker@example.test')
+    await user.click(screen.getByRole('button', { name: /send|start|link/i }))
+
+    await screen.findByText(/check your email/i)
+    const startCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        requestUrl(input) === '/api/public/start' && (init?.method ?? 'GET') === 'POST',
+    )
+    expect(JSON.parse(String(startCall?.[1]?.body ?? '{}'))).toMatchObject({
+      eventSlug: DEFAULT_EVENT_SLUG,
+      formSlug: DEFAULT_FORM_SLUG,
+    })
+  })
+
   it('getPublishedFormDefinition targets the committed CFP URL via GET with credentials', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
@@ -322,5 +371,48 @@ describe('public form routes', () => {
     })
     expect(definitionCalls).toHaveLength(1)
     expect(definitionCalls[0]?.[1]?.credentials).toBe('include')
+  })
+})
+
+describe('public route titles', () => {
+  beforeEach(() => {
+    document.title = 'Your submissions — SpeakerOps'
+  })
+
+  it('titles the sign-in step instead of keeping the previous page title', async () => {
+    renderPage(<PublicStartPage />)
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(document.title).toBe('Start — SpeakerOps')
+  })
+
+  it('titles the call for papers in every state the URL can reach', async () => {
+    // Not found: no published call for papers behind this slug pair.
+    fetchHandler = (url) =>
+      url === definitionUrl()
+        ? jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+        : jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    renderPage(<PublicCfpPage eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Not found' })).toBeInTheDocument()
+    expect(document.title).toBe('Call for papers — SpeakerOps')
+
+    cleanup()
+    document.title = 'Your submissions — SpeakerOps'
+
+    // The wizard itself.
+    fetchHandler = (url) => {
+      if (url === definitionUrl()) return jsonResponse(PUBLISHED_FORM)
+      if (url === draftUrl()) {
+        return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPage(<PublicCfpPage eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Call for papers' }),
+    ).toBeInTheDocument()
+    expect(document.title).toBe('Call for papers — SpeakerOps')
   })
 })

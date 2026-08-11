@@ -198,6 +198,31 @@ describe('speaker portal', () => {
     expect(items[1]).toHaveTextContent(/accepted/i)
   })
 
+  it('marks each submission chip as a lifecycle state, in both faces', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === PORTAL_URL) {
+        return jsonResponse(SUBMISSIONS_ENVELOPE)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPage()
+    const list = await screen.findByRole('list', { name: /your submissions/i })
+    const items = within(list).getAllByRole('listitem')
+    // Where a proposal stands IS a lifecycle state, so both faces carry the
+    // marker — the non-colour channel that separates a state from a plain
+    // value once the product has spent its colour on one accent. The quieter
+    // of the two is still a state, so it keeps the marker too.
+    const pendingChip = items[0]?.querySelector('[data-slot="badge"]')
+    const acceptedChip = items[1]?.querySelector('[data-slot="badge"]')
+    expect(pendingChip).toHaveAttribute('data-dot', '')
+    expect(acceptedChip).toHaveAttribute('data-dot', '')
+    // The label is the state itself and the marker never replaces it: colour
+    // and shape are both second channels, never the only one.
+    expect(pendingChip).toHaveTextContent(/pending review/i)
+    expect(acceptedChip).toHaveTextContent(/accepted/i)
+  })
+
   it('offers the calendar invite only for an accepted submission', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'

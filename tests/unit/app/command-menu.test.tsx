@@ -26,6 +26,15 @@ import { CommandMenu } from '../../../src/app/features/command/CommandMenu'
 const ROOT = resolve(import.meta.dirname, '../../..')
 const EVENT_SLUG = DEFAULT_EVENT_SLUG
 
+/** The declared rendering order of the palette's groups, as a rank. */
+const GROUP_RANK: Readonly<Record<string, number>> = {
+  Event: 0,
+  Programme: 1,
+  Public: 2,
+  Speaker: 3,
+  Theme: 4,
+}
+
 const EVENT_DTO = {
   id: 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
   slug: EVENT_SLUG,
@@ -81,6 +90,41 @@ function mountAt(path: string) {
   return { router, user: userEvent.setup() }
 }
 
+/**
+ * The real shell arrangement: the palette floats, so its own button is the
+ * phone's door and is `display: none` from `sm` up, and the toolbar carries the
+ * visible one. jsdom applies no stylesheet, so the fold is applied by hand —
+ * that folded-away button is exactly what the closing palette used to hand
+ * focus back to.
+ */
+function mountFloatingAt(path: string) {
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [path] }),
+  })
+  render(
+    <ThemeProvider>
+      <QueryClientProvider client={createQueryClient()}>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <RouterProvider router={router as any} />
+      </QueryClientProvider>
+      <CommandMenu
+        onNavigate={(action) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          void router.navigate({ to: action.to, params: action.params } as any)
+        }
+        floating={true}
+      />
+    </ThemeProvider>,
+  )
+  return { router, user: userEvent.setup() }
+}
+
+function foldAwayFloatingTrigger(): void {
+  const floating = screen.getByRole('button', { name: /command menu/i })
+  floating.style.display = 'none'
+}
+
 async function openPalette(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: /command menu/i }))
   return screen.findByRole('dialog')
@@ -129,6 +173,43 @@ describe('command action model', () => {
     expect(filtered).toHaveLength(1)
     expect(filtered[0]?.label).toBe('Your headshot')
     expect(filterCommandActions(commandActions(), 'nothing-matches-this')).toHaveLength(0)
+  })
+
+  it('ranks the closer match first instead of leaving source order alone', () => {
+    // Both rows live in the Public group, so a group-only filter would return
+    // them in declaration order; the schedule has to win on the label.
+    const ranked = filterCommandActions(commandActions(), 'pub sch').map((a) => a.label)
+    expect(ranked[0]).toBe('Public schedule')
+    expect(ranked.indexOf('Public schedule')).toBeLessThan(
+      ranked.indexOf('Call for papers') === -1 ? ranked.length : ranked.indexOf('Call for papers'),
+    )
+  })
+
+  it('tolerates a skipped letter without matching everything', () => {
+    // A subsequence, not a substring: "rvcm" is how the words get typed at
+    // speed. A query that is not a subsequence of anything still finds nothing.
+    expect(filterCommandActions(commandActions(), 'rvcm').map((a) => a.label)).toEqual([
+      'Review committee',
+    ])
+    expect(filterCommandActions(commandActions(), 'qxz')).toHaveLength(0)
+  })
+
+  it('reports which characters matched so the row can show its reasoning', () => {
+    const [match] = filterCommandActions(commandActions(), 'head')
+    expect(match?.label).toBe('Your headshot')
+    expect(match?.matched.map((index) => match.label[index]).join('')).toBe('head')
+    // An unfiltered list highlights nothing.
+    expect(filterCommandActions(commandActions(), '').every((a) => a.matched.length === 0)).toBe(
+      true,
+    )
+  })
+
+  it('leaves the group order alone no matter how the rows score', () => {
+    const headings = groupCommandActions(filterCommandActions(commandActions(), 'e')).map(
+      (group) => group.heading,
+    )
+    const rank = (heading: string): number => GROUP_RANK[heading] ?? 0
+    expect(headings).toEqual([...headings].sort((a, b) => rank(a) - rank(b)))
   })
 
   it('keeps every action inside exactly one group', () => {
@@ -199,6 +280,53 @@ describe('command menu', () => {
     await waitFor(() => expect(trigger).toHaveFocus())
   })
 
+  it('returns focus to the toolbar trigger when the phone door is folded away', async () => {
+    const { user } = mountFloatingAt('/')
+    const toolbar = await screen.findByRole('button', { name: /Search destinations/ })
+    foldAwayFloatingTrigger()
+
+    // The chord from a fresh page: focus is on <body>, so there is nothing to
+    // "restore" to, and the only registered trigger is `display: none`. Base UI
+    // put the reader back on <body> — at the top of the document, on the
+    // shell's headline accelerator, on every close.
+    expect(document.activeElement).toBe(document.body)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await screen.findByRole('dialog')
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => expect(toolbar).toHaveFocus())
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('returns focus to the visible control that opened it', async () => {
+    const { user } = mountFloatingAt('/')
+    const toolbar = await screen.findByRole('button', { name: /Search destinations/ })
+    foldAwayFloatingTrigger()
+
+    await user.click(toolbar)
+    await screen.findByRole('dialog')
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => expect(toolbar).toHaveFocus())
+  })
+
+  it('puts a navigating reader on the shell trigger, never on the body', async () => {
+    const { router, user } = mountFloatingAt('/')
+    const toolbar = await screen.findByRole('button', { name: /Search destinations/ })
+    foldAwayFloatingTrigger()
+
+    await user.keyboard('{Meta>}k{/Meta}')
+    await screen.findByRole('dialog')
+    await user.keyboard('readiness')
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
+    await user.keyboard('{Enter}')
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/admin/events/${EVENT_SLUG}/readiness`),
+    )
+    await waitFor(() => expect(toolbar).toHaveFocus())
+  })
+
   it('does not hijack the chord while the organizer is typing in a field', async () => {
     const { user } = mountAt('/admin')
 
@@ -221,6 +349,25 @@ describe('command menu', () => {
 
     await user.keyboard('headsh')
     await waitFor(() => expect(options()).toEqual(['Your headshot']))
+  })
+
+  // The box suppresses the user-agent outline because a ring on a control
+  // flush with three clipped popup edges rendered as a stray blue rule. It has
+  // to say it is focused some other way, and the replacement has to stay
+  // inside the border box so nothing can clip or bleed it.
+  it('marks the focused search box with an inset treatment, never a clipped ring', async () => {
+    const { user } = mountAt('/')
+    await openPalette(user)
+
+    const search = screen.getByRole('combobox', { name: /search commands/i })
+    await waitFor(() => expect(search).toHaveFocus())
+
+    const classes = search.className.split(/\s+/)
+    const focusStyles = classes.filter((name) => name.startsWith('focus-visible:'))
+    expect(focusStyles.length).toBeGreaterThan(0)
+    expect(focusStyles.every((name) => !name.includes('ring-2'))).toBe(true)
+    expect(classes).toContain('focus-visible:border-ring')
+    expect(focusStyles.some((name) => name.includes('inset'))).toBe(true)
   })
 
   it('reports an empty result instead of showing nothing at all', async () => {
@@ -247,6 +394,53 @@ describe('command menu', () => {
     expect(search).toHaveAttribute('aria-activedescendant', second?.id ?? '')
     expect(second).toHaveAttribute('aria-selected', 'true')
     expect(first).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('scrolls the active option into view, at nearest, never smoothly', async () => {
+    // The list is capped at 24rem and the palette offers more actions than fit,
+    // so a highlight moved past the fold was announced but invisible.
+    //
+    // jsdom implements no layout and therefore no `scrollIntoView` at all, so
+    // the prototype is stubbed rather than spied — and the stub records `this`,
+    // because WHICH element is scrolled and WITH WHAT are the two facts worth
+    // pinning. `behavior: 'smooth'` in particular must never appear: an
+    // explicit behaviour overrides the element's computed `scroll-behavior`,
+    // which is what the global reduced-motion guard sets.
+    const scrolled: Array<{ target: Element; options?: boolean | ScrollIntoViewOptions }> = []
+    const original: typeof Element.prototype.scrollIntoView | undefined =
+      Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element, options) {
+      scrolled.push({ target: this, options })
+    }
+
+    try {
+      const { user } = mountAt('/')
+      await openPalette(user)
+      expect((await screen.findAllByRole('option')).length).toBeGreaterThan(1)
+
+      await user.keyboard('{ArrowDown}')
+      const second = screen.getAllByRole('option')[1]
+      expect(scrolled.at(-1)?.target).toBe(second)
+
+      // End walks to the option furthest past the fold — the case the fix exists
+      // for.
+      await user.keyboard('{End}')
+      const options = screen.getAllByRole('option')
+      expect(scrolled.at(-1)?.target).toBe(options[options.length - 1])
+
+      expect(scrolled.length).toBeGreaterThanOrEqual(2)
+      for (const call of scrolled) {
+        // `nearest` is what makes scrolling on every keypress safe: a row
+        // already visible does not move the list.
+        expect(call.options).toEqual({ block: 'nearest' })
+      }
+    } finally {
+      if (original === undefined) {
+        delete (Element.prototype as Partial<Element>).scrollIntoView
+      } else {
+        Element.prototype.scrollIntoView = original
+      }
+    }
   })
 
   it('navigates to a real route on Enter, using the keyboard only', async () => {

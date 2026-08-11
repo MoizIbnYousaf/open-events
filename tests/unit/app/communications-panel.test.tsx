@@ -44,6 +44,34 @@ let fetchHandler: (url: string, init?: RequestInit) => Response | Promise<Respon
 let history: (typeof SENT_MESSAGE)[]
 let accepted: boolean
 
+/**
+ * The send-history row for the message the fixtures sent, found by the one
+ * thing about it that is machine-readable.
+ *
+ * The visible text used to BE the raw ISO instant, so these tests asserted the
+ * row was there by looking for that string. It is now formatted for the person
+ * reading it, and the ISO value has moved to where a machine reads it — the
+ * `dateTime` attribute — so that is what identifies the row.
+ */
+function sentHistoryTime(): HTMLTimeElement | null {
+  return document.querySelector<HTMLTimeElement>(`time[datetime="${SENT_MESSAGE.createdAt}"]`)
+}
+
+/**
+ * Both halves of the same contract: the machine instant is kept intact on the
+ * attribute, and the words beside it are an absolute date rather than the wire
+ * format. Absolute rather than relative on purpose — this product is read from
+ * a seeded dataset, where every row of a relative history says the same thing.
+ */
+function expectHumanSendTime(): void {
+  const sentAt = sentHistoryTime()
+  expect(sentAt).not.toBeNull()
+  expect(sentAt).toHaveAttribute('datetime', SENT_MESSAGE.createdAt)
+  expect(sentAt).toHaveTextContent(/May 20, 2026/)
+  expect(sentAt?.textContent).not.toBe(SENT_MESSAGE.createdAt)
+  expect(document.body.textContent ?? '').not.toContain(SENT_MESSAGE.createdAt)
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -69,6 +97,15 @@ function mountPanel() {
       <CommunicationsPanel slug="demo-conf-2026" submissionId={SUBMISSION_ID} />
     </QueryClientProvider>,
   )
+}
+
+/**
+ * Real outbound mail passes through a confirmation now: the trigger opens the
+ * ask, and the dialog's own control is what sends. The two carry different
+ * labels on purpose, so a click can never land on the wrong one.
+ */
+async function confirmSend(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(await screen.findByRole('button', { name: 'Send the email' }))
 }
 
 function defaultHandler(url: string, init?: RequestInit): Response {
@@ -117,6 +154,17 @@ afterEach(() => {
 })
 
 describe('communications panel', () => {
+  // TA6-T2: the organizer's log of the mail already sent used to be
+  // an ISO-8601 instant with a `T` and a `Z`, rendered verbatim beside the
+  // subject line.
+  it('prints the send time for a person and keeps the instant for a machine', async () => {
+    history = [SENT_MESSAGE]
+    mountPanel()
+
+    await screen.findByRole('list', { name: 'Send history' })
+    expectHumanSendTime()
+  })
+
   it('marks the section busy while announcing the loading state', async () => {
     let release: () => void = () => undefined
     const gate = new Promise<void>((resolve) => {
@@ -153,12 +201,18 @@ describe('communications panel', () => {
     mountPanel()
 
     await user.click(await screen.findByRole('button', { name: 'Send acceptance' }))
+    // The ask names the recipient before a real email leaves the building.
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/1 recipient/i)
+    await confirmSend(user)
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Send acceptance' })).toBeDisabled(),
     )
+    // Confirming adds no request of its own: the send is still exactly one.
     expect(callsTo(SEND_PATH, 'POST')).toBe(1)
-    expect(screen.getByText(SENT_MESSAGE.createdAt)).toBeInTheDocument()
+    // And the dialog closes on the server's answer, not on the click.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expectHumanSendTime()
     expect(screen.queryByText(/no acceptance message sent yet/i)).not.toBeInTheDocument()
   })
 
@@ -174,7 +228,9 @@ describe('communications panel', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: 'Send acceptance' }))
-    await waitFor(() => expect(screen.getByText(SENT_MESSAGE.createdAt)).toBeInTheDocument())
+    await confirmSend(user)
+    await waitFor(() => expect(sentHistoryTime()).not.toBeNull())
+    expectHumanSendTime()
 
     // The outcome is spoken by the one always-mounted toaster region. The
     // label the panel keeps afterwards is the durable record, not a second
@@ -210,10 +266,12 @@ describe('communications panel', () => {
     const before = screen.getAllByRole('status')
 
     await user.click(send)
+    await confirmSend(user)
 
     // A live region has to be in the accessibility tree before its text
     // arrives, so the in-flight message must land in a node that was already
-    // there rather than in one created with it.
+    // there rather than in one created with it. The confirmation adds no
+    // region of its own, so the count is the count that was already there.
     const during = screen.getAllByRole('status')
     expect(during).toHaveLength(before.length)
     const region = during.find((node) => /sending the acceptance/i.test(node.textContent ?? ''))
@@ -297,6 +355,43 @@ describe('communications panel', () => {
     expect(screen.getByRole('button', { name: 'Send acceptance' })).toBeDisabled()
   })
 
+  // V8-N1: accepting unmounts the button that was just pressed, so keyboard
+  // focus fell to <body>. The panel heading is the landing place — a place, not
+  // another action.
+  it('lands focus on the panel heading when accepting removes the button', async () => {
+    const user = userEvent.setup()
+    accepted = false
+    mountPanel()
+    await screen.findByText(PREVIEW.subject)
+
+    await user.click(screen.getByRole('button', { name: 'Accept proposal' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Accept proposal' })).not.toBeInTheDocument(),
+    )
+
+    const heading = screen.getByRole('heading', { name: 'Acceptance' })
+    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 5000 })
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  // V1-COMMS-FOCUS: the confirm dialog restores focus to the trigger, and the
+  // trigger is permanently disabled the moment the mail is out.
+  it('lands focus on the panel heading when the send disables its trigger for good', async () => {
+    const user = userEvent.setup()
+    mountPanel()
+
+    await user.click(await screen.findByRole('button', { name: 'Send acceptance' }))
+    await confirmSend(user)
+    await waitFor(() => expect(callsTo(SEND_PATH, 'POST')).toBe(1))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send acceptance' })).toBeDisabled(),
+    )
+
+    const heading = screen.getByRole('heading', { name: 'Acceptance' })
+    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 5000 })
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
   it('surfaces a send failure as an alert and keeps the button usable', async () => {
     const user = userEvent.setup()
     fetchHandler = (url, init) => {
@@ -308,8 +403,16 @@ describe('communications panel', () => {
     mountPanel()
 
     await user.click(await screen.findByRole('button', { name: 'Send acceptance' }))
+    await confirmSend(user)
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // A failure keeps the dialog open over the action that caused it, and says
+    // so inside the dialog — the panel's alert is behind it.
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(dialog).toHaveTextContent(/the last attempt failed/i))
+    expect(within(dialog).getByRole('button', { name: 'Send the email' })).toBeEnabled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('button', { name: 'Send acceptance' })).toBeEnabled()
   })
 })

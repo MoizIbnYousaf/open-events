@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
@@ -11,8 +11,18 @@ import {
   LoadErrorState,
 } from '../admin/AdminStates'
 import AppShell from '../nav/AppShell'
+import BackLink from '../nav/BackLink'
 import { AlertLive } from '../../../components/ui/alert-live'
-import { Card, CardContent, CardHeader } from '../../../components/ui/card'
+import { Badge } from '../../../components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import { EmptyState } from '../../../components/ui/empty-state'
+import { DocumentIcon } from '../../../components/ui/icons'
+import {
+  PageHeader,
+  PageHeaderActions,
+  PageHeaderContent,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 
@@ -60,9 +70,10 @@ function VersionDetailScreen() {
     return (
       <AppShell slug={eventSlug ?? ''}>
         <Card aria-busy="true" aria-label="Loading version">
-          <CardContent className="grid gap-3">
-            <Skeleton className="h-4 w-48" />
+          <CardContent className="grid gap-2.5">
+            <Skeleton className="h-5 w-36" />
             <Skeleton className="h-4 w-64" />
+            <Skeleton className="h-4 w-48" />
             <StatusLive aria-live="polite">Loading version…</StatusLive>
           </CardContent>
         </Card>
@@ -74,43 +85,67 @@ function VersionDetailScreen() {
   return (
     <AppShell slug={eventSlug ?? ''}>
       <div className="grid gap-4">
-        <Card>
-          <CardHeader>
-            <h1 className="font-heading text-base leading-snug font-medium">
-              Version {detail.version}
-            </h1>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <p className="text-sm text-muted-foreground">
-              Status: {detail.status === 'published' ? 'Published' : 'Draft'}
-            </p>
-            {detail.status === 'published' ? (
-              <AlertLive>This version is frozen and cannot be edited.</AlertLive>
-            ) : null}
-            {detail.pages.map((page) => (
-              <section key={page.id} className="grid gap-2">
-                <h2 className="text-base font-semibold">{page.title}</h2>
-                {detail.elements.map((element) =>
-                  element.pageId === page.id ? (
-                    <p key={element.id} className="text-sm">
-                      {element.label ?? ''}
-                    </p>
-                  ) : null,
-                )}
-              </section>
-            ))}
-          </CardContent>
-        </Card>
-        {/* Exact matching, or the builder path prefix-matches this version page
-          and the back link is announced as the current page. */}
-        <Link
+        {/* Exact matching, or the builder path prefix-matches this version
+            page and the back link is announced as the current page. */}
+        <BackLink
           to="/admin/events/$slug/forms/$formId"
           params={{ slug: eventSlug ?? '', formId: formId ?? '' }}
           activeOptions={{ exact: true }}
-          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
         >
           Back to builder
-        </Link>
+        </BackLink>
+        <PageHeader>
+          <PageHeaderContent>
+            <PageHeaderTitle>Version {detail.version}</PageHeaderTitle>
+          </PageHeaderContent>
+          <PageHeaderActions>
+            {/* The same version state the builder list names, wearing the same
+                marker — a chip that changes face between two screens showing
+                one fact is a chip nobody can learn. */}
+            <Badge dot variant={detail.status === 'published' ? 'secondary' : 'outline'}>
+              {detail.status === 'published' ? 'Published' : 'Draft'}
+            </Badge>
+          </PageHeaderActions>
+        </PageHeader>
+        {detail.status === 'published' ? (
+          // Informational, not a failure: a calm inline notice, because being
+          // frozen is what a published version is FOR. It stays a live region
+          // as authored.
+          <AlertLive className="rounded-md border-l-0 bg-muted p-3 pl-3 text-sm text-muted-foreground">
+            This version is frozen and cannot be edited.
+          </AlertLive>
+        ) : null}
+        {detail.pages.length === 0 ? (
+          <EmptyState
+            icon={<DocumentIcon size={20} />}
+            title="Nothing was captured in this version"
+            description="This version was published with no pages, so speakers saw an empty form."
+          />
+        ) : null}
+        {detail.pages.map((page) => (
+          <section key={page.id}>
+            <Card>
+              <CardHeader>
+                <CardTitle level={2}>{page.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="-my-1 divide-y divide-border">
+                  {detail.elements.map((element) =>
+                    element.pageId === page.id ? (
+                      <li key={element.id} className="grid gap-0.5 py-1.5">
+                        <span className="text-sm font-medium">{element.label ?? ''}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {element.fieldKey ?? 'no field key'} ·{' '}
+                          {element.questionType ?? element.kind}
+                        </span>
+                      </li>
+                    ) : null,
+                  )}
+                </ul>
+              </CardContent>
+            </Card>
+          </section>
+        ))}
       </div>
     </AppShell>
   )

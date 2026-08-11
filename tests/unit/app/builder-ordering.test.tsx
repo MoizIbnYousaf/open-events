@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -250,6 +250,18 @@ describe('builder element ordering', () => {
     expect(screen.getAllByRole('button', { name: /move down/i })).toHaveLength(3)
   })
 
+  // Button's size recipe tightens the leading padding through
+  // `has-data-[icon=inline-start]`, which matches a DESCENDANT. The attribute
+  // sat on the button itself, where it matched nothing and the compensation
+  // never applied.
+  it('marks the glyph, not the button, with its inline position', async () => {
+    await mountBuilder()
+
+    const moveUp = (await screen.findAllByRole('button', { name: /move up/i }))[0]!
+    expect(moveUp).not.toHaveAttribute('data-icon')
+    expect(moveUp.querySelector('svg')).toHaveAttribute('data-icon', 'inline-start')
+  })
+
   it('renders elements under their own page and pins page membership in the payload', async () => {
     const user = userEvent.setup()
     await mountBuilder()
@@ -281,6 +293,26 @@ describe('builder element ordering', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent(/moved to position 1/i)
     expect(document.activeElement).toHaveTextContent(/move/i)
+  })
+
+  // V1-N3: the press that lands an element at the boundary is the press that
+  // turns off the control the reader is standing on. Natively disabled means
+  // the browser blurs it; aria-disabled with the tab stop kept means they stay
+  // where they are. jsdom does not reproduce the blur, so the contract that
+  // prevents it is what gets pinned.
+  it('keeps the boundary reorder control in the tab order instead of blurring it', async () => {
+    const user = userEvent.setup()
+    await mountBuilder()
+
+    const downButtons = await screen.findAllByRole('button', { name: /move down/i })
+    const first = downButtons[0]!
+    expect(first).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(first)
+
+    await waitFor(() => expect(first).toHaveAttribute('aria-disabled', 'true'))
+    expect(first).not.toBeDisabled()
+    expect(first).not.toHaveAttribute('tabindex', '-1')
+    expect(document.activeElement).not.toBe(document.body)
   })
 
   it('persists the reordered element order in the full-replace PUT body', async () => {

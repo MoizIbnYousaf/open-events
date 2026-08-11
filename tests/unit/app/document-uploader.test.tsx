@@ -84,7 +84,13 @@ describe('supporting document uploader', () => {
     const copy = document.body.textContent ?? ''
     expect(copy).toMatch(/pdf/i)
     expect(copy).not.toMatch(/slide|pptx|keynote/i)
-    expect(screen.getByLabelText(/supporting document/i, { selector: 'input' })).toBeRequired()
+    // The surrounding copy calls this file optional, so the control must not
+    // claim otherwise: `required` put the input in an invalid state on first
+    // paint with nothing wrong and no user action.
+    expect(screen.getByLabelText(/supporting document/i, { selector: 'input' })).not.toBeRequired()
+    expect(
+      screen.getByLabelText(/supporting document/i, { selector: 'input' }),
+    ).not.toHaveAttribute('aria-invalid')
   })
 
   it('uploads the picked file with its name in the explicit header', async () => {

@@ -297,6 +297,44 @@ describe('evaluations UI', () => {
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
   })
 
+  // R1-M2: both dead ends on this surface were hand-rolled — a card holding a
+  // bare sentence — while every other empty surface in the product is the
+  // shared dashed box with an icon tile, a title and an explanation.
+  it.each([
+    { state: 'empty' as const, title: 'No evaluations yet.', description: /an organizer assigns/i },
+    {
+      state: 'notFound' as const,
+      title: 'Evaluations are not open yet.',
+      description: /no review round taking ratings/i,
+    },
+  ])('renders the $state dead end in the shared empty-state grammar', async (expectation) => {
+    if (expectation.state === 'empty') {
+      await mountPage('empty')
+    } else {
+      fetchHandler = (url, init) => {
+        const method = init?.method ?? 'GET'
+        if (method === 'GET' && url === EVALUATIONS_URL) {
+          return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+        }
+        return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      }
+      await renderPage()
+    }
+
+    await screen.findByText(expectation.title)
+    const empty = document.querySelector('[data-slot="empty-state"]')
+    expect(empty).not.toBeNull()
+    expect(empty?.querySelector('[data-slot="empty-state-icon"]')).not.toBeNull()
+    expect(empty?.querySelector('[data-slot="empty-state-title"]')).toHaveTextContent(
+      expectation.title,
+    )
+    expect(
+      empty?.querySelector('[data-slot="empty-state-description"]')?.textContent ?? '',
+    ).toMatch(expectation.description)
+    // One live region per outcome (DEC-014): the title carries it.
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+  })
+
   it('renders evaluation rows labels-only (session title, rating, comments, updatedAt)', async () => {
     await mountPage('ready')
 
@@ -305,7 +343,13 @@ describe('evaluations UI', () => {
     expect(rendered).toContain(EVALUATION_ROW.sessionTitle)
     expect(rendered).toContain(String(EVALUATION_ROW.rating))
     expect(rendered).toContain(EVALUATION_ROW.comments)
-    expect(rendered).toContain(EVALUATION_ROW.updatedAt)
+    // `updatedAt` is still on the row, but it is no longer SHOWN as the wire
+    // sent it: the visible text is words, and the ISO instant moves to the
+    // `dateTime` attribute where a machine can still recover it exactly.
+    const updated = document.querySelector(`time[datetime="${EVALUATION_ROW.updatedAt}"]`)
+    expect(updated).not.toBeNull()
+    expect(updated?.textContent).toBe('May 13, 2026, 12:00 PM')
+    expect(rendered).not.toContain(EVALUATION_ROW.updatedAt)
     expect(rendered).not.toContain('speaker.a@example.test')
     expect(rendered).not.toContain('contact-1')
   })
@@ -531,6 +575,82 @@ describe('evaluations UI', () => {
     const rendered = document.body.textContent ?? ''
     expect(rendered).toContain('Round 1')
     expect(rendered).toContain('Round one view')
+  })
+
+  it('reads an earlier round in two inks and finally shows when it was recorded', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) {
+        return jsonResponse([
+          {
+            ...UNSCORED_ROW,
+            roundId: 'round-2',
+            roundNumber: 2,
+            roundName: 'Round 2',
+            previousRounds: [
+              {
+                roundNumber: 1,
+                roundName: 'Round 1',
+                rating: 5,
+                comments: 'Round one view',
+                updatedAt: '2026-05-13T12:00:00.000Z',
+              },
+            ],
+          },
+        ])
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await screen.findByRole('heading', { level: 1, name: 'Evaluations' })
+    // Which round and what score is the scannable half, so it carries the
+    // reading ink; the comment is the reading half and stays quiet.
+    const headline = await screen.findByText(/Round 1: Round 1 — rated 5/)
+    expect(headline).toHaveClass('font-medium', 'text-foreground')
+    expect(screen.getByText('Round one view')).toHaveClass('text-muted-foreground')
+
+    // `updatedAt` has always been on the wire and was never rendered: an
+    // evaluator re-scoring in round two could not see when they recorded
+    // round one.
+    const recorded = headline.parentElement?.querySelector('time')
+    expect(recorded).not.toBeNull()
+    expect(recorded).toHaveAttribute('dateTime', '2026-05-13T12:00:00.000Z')
+    const visible = recorded?.textContent ?? ''
+    // The machine instant stays on the attribute. What a person reads is a
+    // date, not an ISO-8601 string with a T and a Z in it.
+    expect(visible).not.toContain('2026-05-13T12:00:00.000Z')
+    expect(visible).toMatch(/2026/)
+
+    // T4-b is rejected: the timestamp is audit content, so it wraps on a
+    // narrow screen and is never hidden by a breakpoint. A phone and a desktop
+    // must announce the same row.
+    expect(recorded?.className ?? '').not.toMatch(/(^|[\s:])hidden\b/)
+  })
+
+  it('marks the round chip as a lifecycle state whether the round is open or closed', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) {
+        return jsonResponse([
+          { ...UNSCORED_ROW, submissionId: 'submission-open' },
+          { ...UNSCORED_ROW, submissionId: 'submission-closed', roundStatus: 'closed' },
+        ])
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await screen.findByRole('heading', { level: 1, name: 'Evaluations' })
+    const chips = Array.from(document.querySelectorAll('[data-slot="badge"]'))
+    expect(chips).toHaveLength(2)
+    // Open or closed is the round's lifecycle state, and it decides whether
+    // anything below the header can still change — so both faces carry the
+    // state marker, not just the tinted one.
+    for (const chip of chips) {
+      expect(chip).toHaveAttribute('data-dot', '')
+    }
+    expect(chips[1]?.textContent).toContain('(closed)')
   })
 
   it('uses the committed query key for usePublicEvaluations', async () => {

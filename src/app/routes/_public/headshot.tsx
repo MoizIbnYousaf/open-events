@@ -2,6 +2,12 @@ import type { ComponentType } from 'react'
 import { useEffect } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 
+import {
+  PageHeader,
+  PageHeaderContent,
+  PageHeaderDescription,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import HeadshotUploader from '../../features/public/HeadshotUploader'
 
 import type {} from '../../routeTree.gen'
@@ -16,8 +22,15 @@ function HeadshotRouteComponent() {
   }, [])
 
   return (
-    <div className="grid gap-4">
-      <h1 className="text-2xl font-semibold">Your headshot</h1>
+    <div className="mx-auto grid w-full max-w-[47rem] gap-5">
+      <PageHeader>
+        <PageHeaderContent>
+          <PageHeaderTitle>Your headshot</PageHeaderTitle>
+          <PageHeaderDescription>
+            The photo organizers publish beside your session.
+          </PageHeaderDescription>
+        </PageHeaderContent>
+      </PageHeader>
       <HeadshotUploader />
     </div>
   )

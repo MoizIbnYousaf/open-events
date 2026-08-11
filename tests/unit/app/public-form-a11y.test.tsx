@@ -246,7 +246,7 @@ describe('public form accessibility', () => {
     })
     render(
       <QueryClientProvider client={queryClient}>
-        <CfpSubmit formId={FORM_ID} formVersionId={VERSION_ID} />
+        <CfpSubmit formVersionId={VERSION_ID} onDenied={() => undefined} />
       </QueryClientProvider>,
     )
 
@@ -288,7 +288,10 @@ describe('public form accessibility', () => {
     const save = await screen.findByRole('button', { name: /save/i })
     expect(save).toBeEnabled()
     await user.click(save)
-    expect(await screen.findByRole('button', { name: /saving/i })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: /saving/i })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
     resolveSave?.(
       jsonResponse({
         id: 'draft-1',

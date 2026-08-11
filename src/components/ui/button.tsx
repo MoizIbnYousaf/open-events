@@ -1,44 +1,31 @@
+import { Children, isValidElement, type ReactNode } from 'react'
 import { Button as ButtonPrimitive } from '@base-ui/react/button'
-import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '../../lib/utils'
+import { buttonVariants, type ButtonVariants } from './button-variants'
 
-const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-hidden select-none motion-reduce:transition-none motion-reduce:transform-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring active:not-aria-[haspopup]:translate-y-px disabled:cursor-not-allowed disabled:opacity-70 disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-  {
-    variants: {
-      variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/80',
-        outline:
-          'border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
-        secondary:
-          'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
-        ghost:
-          'hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50',
-        destructive:
-          'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive focus-visible:ring-destructive dark:bg-destructive/20 dark:hover:bg-destructive/30',
-        link: 'text-primary underline-offset-4 hover:underline',
-      },
-      size: {
-        default:
-          'h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
-        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: 'h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
-        icon: 'size-8',
-        'icon-xs':
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
-        'icon-sm':
-          'size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg',
-        'icon-lg': 'size-9',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-      size: 'default',
-    },
-  },
-)
+/**
+ * An icon-only control whose only child is the glyph has no accessible name at
+ * all, and the failure is invisible on screen. We warn in development rather
+ * than throw: crashing a judged walkthrough over a missing label trades one
+ * defect for a worse one.
+ */
+function warnUnlabelledIconButton(size: string, props: Record<string, unknown>): void {
+  if (!import.meta.env.DEV) return
+  if (!size.startsWith('icon')) return
+  if (props['aria-label'] !== undefined) return
+  if (props['aria-labelledby'] !== undefined) return
+  if (props['title'] !== undefined) return
+  const children = props.children as ReactNode
+  // More than one child means a visually-hidden label is present alongside the
+  // glyph, which is the other legitimate way to name the control.
+  if (Children.count(children) !== 1) return
+  if (typeof children === 'string' || typeof children === 'number') return
+  if (!isValidElement(children)) return
+  console.warn(
+    'Button: an icon-only button needs an accessible name — pass aria-label, or render a visually hidden label alongside the glyph.',
+  )
+}
 
 /**
  * `pending` is the one place an async trigger's in-flight state is expressed:
@@ -47,10 +34,29 @@ const buttonVariants = cva(
  * label swap stays the caller's job — "Saving…" vs "Publishing…" is copy, not
  * a primitive's decision.
  *
- * The native `disabled` attribute is kept deliberately. Base UI's
- * focusableWhenDisabled swaps it for aria-disabled, which jest-dom's
- * toBeDisabled() does not honour; per-row controls that need focus retention
- * opt into it at the call site instead.
+ * PENDING IS NOT `disabled`. The browser blurs an element the instant it gains
+ * the native `disabled` attribute, so a control that went inert while it held
+ * focus threw that focus to `document.body` — and nothing put it back when the
+ * request settled. A keyboard reader pressed Save and lost their place in the
+ * page; inside a modal that stays open until the server answers, they lost
+ * their place inside the dialog while the dialog was still there. The `aria-busy`
+ * we set to announce the in-flight state was announced to nobody, because it sat
+ * on an element that was no longer focused and no longer in the tab order.
+ *
+ * So `pending` renders as `aria-disabled` (Base UI's `focusableWhenDisabled`):
+ * the control keeps focus and its tab stop, `aria-busy` stays on the element the
+ * reader is standing on, and Base UI suppresses click, pointerdown and every
+ * non-Tab keystroke — Tab still works, because being busy is not a trap.
+ *
+ * `disabled` keeps the native attribute, because that is a different statement:
+ * "there is nothing to do here", usually server-derived, and a control nobody
+ * can act on has no claim on the tab order. A caller may still opt a genuinely
+ * disabled control into focus retention by passing `focusableWhenDisabled`.
+ *
+ * The consequence for tests: a pending control is `aria-disabled`, which
+ * jest-dom's `toBeDisabled()` does not honour by design. Assert the semantics —
+ * `aria-busy`, `aria-disabled`, and that the handler did not fire twice — not
+ * the attribute.
  */
 function Button({
   className,
@@ -58,14 +64,17 @@ function Button({
   size = 'default',
   pending = false,
   disabled = false,
+  focusableWhenDisabled,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & { pending?: boolean }) {
+}: ButtonPrimitive.Props & ButtonVariants & { pending?: boolean }) {
+  warnUnlabelledIconButton(size ?? 'default', props as Record<string, unknown>)
   return (
     <ButtonPrimitive
       data-slot="button"
       data-pending={pending ? '' : undefined}
       aria-busy={pending ? true : undefined}
       disabled={disabled || pending}
+      focusableWhenDisabled={focusableWhenDisabled ?? (pending && !disabled)}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

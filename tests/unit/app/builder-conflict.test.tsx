@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -578,7 +578,7 @@ describe('builder draft conflict handling and payload contract', () => {
         expect(retryMutationCalls()).toHaveLength(1)
         // The retry action must be guarded while the refetch is pending: a
         // second click must not schedule another retry.
-        expect(retryButton).toBeDisabled()
+        expect(retryButton).toHaveAttribute('aria-disabled', 'true')
         fireEvent.click(retryButton)
         await vi.runAllTimersAsync()
         expect(retryMutationCalls()).toHaveLength(1)
@@ -605,6 +605,61 @@ describe('builder draft conflict handling and payload contract', () => {
       }
     },
   )
+
+  // R2-1.3(a): discarding throws away unsaved edits during a 409, which is the
+  // moment those edits are the only copy. It gets the plain confirm rung.
+  it('asks before discarding the edits, and keeps them when the question is cancelled', async () => {
+    const user = userEvent.setup()
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
+        return jsonResponse(DRAFT_DTO)
+      }
+      if (
+        method === 'GET' &&
+        url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+      ) {
+        return jsonResponse([])
+      }
+      if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
+        return jsonResponse(TAXONOMY_DTO)
+      }
+      if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
+        return jsonResponse({ error: { code: 'conflict', message: 'Modified concurrently' } }, 409)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountBuilder()
+
+    const labels = await screen.findAllByLabelText('Label')
+    await user.clear(labels[0]!)
+    await user.type(labels[0]!, 'Edited title')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: /discard my changes/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(/cannot be undone/i)
+    // Cancel is the resting choice (C0 §8) and it changes nothing.
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getAllByLabelText('Label')[0]).toHaveValue('Edited title')
+
+    await user.click(screen.getByRole('button', { name: /discard my changes/i }))
+    const confirmDialog = await screen.findByRole('dialog')
+    // The trigger and the answer carry different names on purpose, so a click
+    // — or a strict selector — can never land on the wrong one.
+    expect(within(confirmDialog).queryByRole('button', { name: /discard my changes/i })).toBeNull()
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Discard them' }))
+
+    await waitFor(() => expect(screen.getAllByLabelText('Label')[0]).toHaveValue('Title'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // Confirming adds no request of its own.
+    expect(
+      fetchCalls(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT'),
+    ).toHaveLength(1)
+  })
 
   it('reloads the server draft on conflict instead of silently overwriting', async () => {
     const user = userEvent.setup()
@@ -657,7 +712,11 @@ describe('builder draft conflict handling and payload contract', () => {
           method === 'GET' &&
           url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
         ) {
-          return jsonResponse([])
+          // Both reads sit behind the same session/actor middleware and the
+          // same form lookup, so a denial reaches them together. The versions
+          // answer is what tells a missing form apart from a form that simply
+          // has no draft yet.
+          return jsonResponse({ error: { code: state.code, message: state.heading } }, state.status)
         }
         if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
           return jsonResponse(TAXONOMY_DTO)
@@ -677,6 +736,150 @@ describe('builder draft conflict handling and payload contract', () => {
       }
       cleanup()
     }
+  })
+
+  // R1-B4 / F-R5-14: the seeded demo ships a form whose only version is
+  // published, the draft read answers 404, and the whole builder used to be
+  // replaced by a page-level "Not found" — with no shell, no version list and
+  // no way to start editing.
+  describe('a form with no draft', () => {
+    const PUBLISHED_VERSION_ID = 'f0000000-0000-4000-8000-000000000009'
+    const PUBLISHED_DTO: FormVersionDetailDto = {
+      ...DRAFT_DTO,
+      versionId: PUBLISHED_VERSION_ID,
+      version: 1,
+      status: 'published',
+      contentHash: 'hash-1',
+      publishedAt: '2026-08-01T09:00:00.000Z',
+    }
+
+    function noDraftHandler(overrides: { readonly versions?: Response } = {}) {
+      return (url: string, init?: RequestInit): Response => {
+        const method = init?.method ?? 'GET'
+        if (method === 'GET' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
+          return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+        }
+        if (
+          method === 'GET' &&
+          url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions`
+        ) {
+          return (
+            overrides.versions ??
+            jsonResponse([
+              {
+                id: PUBLISHED_VERSION_ID,
+                formId: FORM_ID,
+                version: 1,
+                status: 'published',
+                publishedAt: '2026-08-01T09:00:00.000Z',
+                updatedAt: '2026-08-01T09:00:00.000Z',
+              },
+            ])
+          )
+        }
+        if (
+          method === 'GET' &&
+          url ===
+            `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/versions/${PUBLISHED_VERSION_ID}`
+        ) {
+          return jsonResponse(PUBLISHED_DTO)
+        }
+        if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
+          return jsonResponse(TAXONOMY_DTO)
+        }
+        if (method === 'PUT' && url === `/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`) {
+          return jsonResponse(reissueContent(JSON.parse(String(init?.body)) as DraftPayload))
+        }
+        return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+      }
+    }
+
+    it('renders the builder shell, the version list and a way to start a draft instead of a not-found page', async () => {
+      fetchHandler = noDraftHandler()
+      await mountBuilder()
+
+      expect(await screen.findByRole('heading', { level: 1, name: 'Form builder' })).toBeVisible()
+      expect(document.querySelector('[data-slot="empty-state-title"]')).toHaveTextContent(
+        'Start a new draft',
+      )
+      expect(screen.getByText(/version 1 is published and frozen/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /start a new draft/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /version 1/i })).toHaveAttribute(
+        'href',
+        `/admin/events/${EVENT_SLUG}/forms/${FORM_ID}/versions/${PUBLISHED_VERSION_ID}`,
+      )
+      expect(screen.queryByText('This page could not be found.')).not.toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('forks the published version into a draft and opens the editor on it', async () => {
+      const user = userEvent.setup()
+      fetchHandler = noDraftHandler()
+      await mountBuilder()
+
+      await user.click(await screen.findByRole('button', { name: /start a new draft/i }))
+
+      const put = fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
+      const body = JSON.parse(String(put?.body)) as DraftPayload
+      expect(body.elements.map((element) => element.label)).toEqual(['Title', 'Abstract'])
+      expect(await screen.findByRole('button', { name: /^save$/i })).toBeInTheDocument()
+      expect(screen.getAllByLabelText('Label')[0]).toHaveValue('Title')
+      expect(screen.getByRole('status')).toHaveTextContent('Draft started')
+    })
+
+    it('starts an empty draft when the form has no published version to copy', async () => {
+      const user = userEvent.setup()
+      fetchHandler = noDraftHandler({ versions: jsonResponse([]) })
+      await mountBuilder()
+
+      await user.click(await screen.findByRole('button', { name: /start a new draft/i }))
+
+      const put = fetchCall(`/api/admin/events/demo-conf-2026/forms/${FORM_ID}/draft`, 'PUT')
+      const body = JSON.parse(String(put?.body)) as DraftPayload
+      expect(body).toEqual({ pages: [], elements: [], conditionRules: [], routingRules: [] })
+    })
+
+    it('still shows the not-found page when the form itself does not exist', async () => {
+      fetchHandler = noDraftHandler({
+        versions: jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404),
+      })
+      await mountBuilder()
+
+      expect(await screen.findByText('Not found')).toBeInTheDocument()
+      expect(screen.queryByText('Start a new draft')).not.toBeInTheDocument()
+      // V-B4-H11: the tab is the one place a reader is told which page they are
+      // on when the page is not on screen, and it said "Form builder".
+      await waitFor(() => expect(document.title).toBe('Not found — SpeakerOps'))
+    })
+
+    it('titles the tab for the builder itself when the form is merely draftless', async () => {
+      fetchHandler = noDraftHandler({ versions: jsonResponse([]) })
+      await mountBuilder()
+
+      await screen.findByRole('button', { name: /start a new draft/i })
+      await waitFor(() => expect(document.title).toBe('Form builder — SpeakerOps'))
+    })
+  })
+
+  // RV3 NEW-1, the same H11 question one answer further along: signed out, the
+  // route renders the expired state correctly and the tab went on naming the
+  // builder. /agenda, /evaluations and /readiness already title this moment.
+  it('titles the tab for the expired session when the draft read is refused', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url.startsWith(`/api/admin/events/${EVENT_SLUG}/forms/${FORM_ID}`)) {
+        return jsonResponse({ error: { code: 'unauthorized', message: 'Session expired' } }, 401)
+      }
+      if (method === 'GET' && url === `/api/admin/events/${EVENT_SLUG}/taxonomies`) {
+        return jsonResponse(TAXONOMY_DTO)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountBuilder()
+
+    expect(await screen.findByText('Session expired')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign in again' })).toBeInTheDocument()
+    await waitFor(() => expect(document.title).toBe('Session expired — SpeakerOps'))
   })
 
   it('shows Saving… and keeps Save disabled while the mutation is pending, then re-enables', async () => {
@@ -712,7 +915,7 @@ describe('builder draft conflict handling and payload contract', () => {
 
     const pendingButton = screen.getByRole('button', { name: /saving/i })
     expect(pendingButton).toHaveTextContent('Saving…')
-    expect(pendingButton).toBeDisabled()
+    expect(pendingButton).toHaveAttribute('aria-disabled', 'true')
 
     resolveSave?.(jsonResponse(DRAFT_DTO))
     await waitFor(() => {

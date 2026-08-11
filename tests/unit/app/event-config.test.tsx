@@ -168,6 +168,29 @@ describe('event config screen', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
   })
 
+  // TA6-S2: two levels of structure need two spacing signals. At 12px between
+  // the cards and 12px between the rows inside them, five bordered cards read
+  // as one undifferentiated column — and the last one used to sit flush
+  // against the bottom of the viewport, which reads as a page cut off rather
+  // than a page that ended.
+  it('breathes wider between its sections than inside them, and ends on a floor', async () => {
+    await mountConfig()
+    await screen.findByLabelText('Venue')
+
+    const card = screen.getByLabelText('Venue').closest('[data-slot="card"]')
+    const stack = card?.closest('.max-w-3xl')
+    expect(stack).not.toBeNull()
+    const tokens = (stack?.className ?? '').split(/\s+/)
+    // Outer rhythm, at both widths, above the p-3/gap-3 card anatomy.
+    expect(tokens).toContain('gap-4')
+    expect(tokens).toContain('lg:gap-6')
+    expect(tokens).not.toContain('gap-3')
+    // The floor under the last card.
+    expect(tokens).toContain('pb-20')
+    // The reading measure is unchanged; this is a vertical change only.
+    expect(tokens).toContain('max-w-3xl')
+  })
+
   it('saves a partial edit with only the changed field and announces Saved', async () => {
     const user = userEvent.setup()
     await mountConfig()
@@ -338,7 +361,7 @@ describe('event config screen', () => {
 
     const saveButton = screen.getByRole('button', { name: /saving/i })
     expect(saveButton).toHaveTextContent('Saving…')
-    expect(saveButton).toBeDisabled()
+    expect(saveButton).toHaveAttribute('aria-disabled', 'true')
 
     resolveSave?.(jsonResponse({ ...EVENT_CONFIG_DTO, venue: 'Hamburg Messe' }))
     await waitFor(() => {

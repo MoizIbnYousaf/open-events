@@ -6,11 +6,23 @@ import type { FormDefinitionDto } from '../../../application'
 import type { AnswerValue, ElementFieldKey } from '../../../domain'
 import { isElementRequiredDto, isElementVisibleDto } from '../../lib/form-engine'
 import { getApiErrorCode } from '../../api/admin-events'
-import { ExpiredSessionState, ForbiddenState } from '../admin/AdminStates'
-import { AlertLive } from '../../../components/ui/alert-live'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import {
+  ExpiredSessionState,
+  ForbiddenState,
+  LoadErrorState,
+  PageState,
+  PaletteHint,
+} from '../admin/AdminStates'
+import { buttonVariants } from '../../../components/ui/button-variants'
+import { Card, CardContent } from '../../../components/ui/card'
 import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import {
+  PageHeader,
+  PageHeaderContent,
+  PageHeaderDescription,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import { StatusLive } from '../../../components/ui/status-live'
 import {
   publicDraftQueryKeys,
@@ -20,7 +32,9 @@ import {
   type PublicEditorState,
 } from '../../queries/public-drafts'
 import CfpCoSpeakers from './CfpCoSpeakers'
-import CfpSaveBar from './CfpSaveBar'
+import { CfpFieldLabelRow } from './CfpFields'
+import CfpReviewSummary from './CfpReviewSummary'
+import CfpSaveBar, { type SaveDenial } from './CfpSaveBar'
 import CfpSubmit from './CfpSubmit'
 import CfpStepper from './CfpStepper'
 import CfpStepRenderer from './CfpStepRenderer'
@@ -33,6 +47,7 @@ interface CfpWizardProps {
 
 /** Proposal title is a universal property, not a form question; see SubmitInput. */
 const TITLE_FIELD_KEY = 'title'
+const TITLE_REQUIRED_MESSAGE = 'Proposal title is required'
 
 function isEmptyAnswer(value: AnswerValue | null | undefined): boolean {
   if (value === null || value === undefined) return true
@@ -71,8 +86,23 @@ export default function CfpWizard({ form }: CfpWizardProps) {
 
   const [stepIndex, setStepIndex] = useState(0)
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({})
+  // The title the speaker is typing RIGHT NOW, ahead of the shared editor
+  // cache. A TanStack cache write reaches this component a task later, so a
+  // controlled input reading straight from the cache re-rendered every
+  // keystroke with the previous value: React reset the DOM value and threw the
+  // caret to the end, and a typo in the middle of a proposal title could not be
+  // be fixed. The buffer is stamped with the draft revision it was typed
+  // against, so the moment the server answers with a newer one — a reload after
+  // a conflict — the keystroke buffer is stale by construction and the
+  // hydrated title wins. No effect, no reset, nothing to keep in sync.
+  const [titleBuffer, setTitleBuffer] = useState<{
+    readonly revision: number
+    readonly value: string
+  } | null>(null)
   const [announcement, setAnnouncement] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  /** A save refused for who the reader is; the page owes it one whole answer. */
+  const [saveDenial, setSaveDenial] = useState<SaveDenial | null>(null)
   const fieldRefs = useRef(new Map<ElementFieldKey, HTMLElement | null>())
   const titleInputRef = useRef<HTMLInputElement | null>(null)
   const lastChangedRef = useRef<ElementFieldKey | null>(null)
@@ -112,6 +142,8 @@ export default function CfpWizard({ form }: CfpWizardProps) {
     () => visibleElements.map((element) => element.fieldKey),
     [visibleElements],
   )
+  /** True where the wizard renders its own title field, above the questions. */
+  const showTitleField = stepIndex === proposalPageIndex && !hasTitleQuestion
   const domIds = useMemo(() => {
     const map: Record<string, string> = {}
     stepElements.forEach((element, index) => {
@@ -154,6 +186,13 @@ export default function CfpWizard({ form }: CfpWizardProps) {
     const draft = draftQuery.data
     const editorBefore = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
     const reloadArmed = editorBefore?.reloadIntent === true
+    // Hydration is server truth arriving at a resting editor: the first probe,
+    // and the deliberate reload after a conflict (which is meant to discard
+    // local edits, so it runs regardless). It must never run over words typed
+    // since — a save acknowledgement writes this cache too, and what it
+    // acknowledges is by definition older than anything typed while the
+    // request was in flight.
+    if (!reloadArmed && editorBefore?.dirty === true) return
     setEditor((current) => ({
       ...current,
       formId: form.formId,
@@ -198,15 +237,22 @@ export default function CfpWizard({ form }: CfpWizardProps) {
   }, [dirty])
 
   // Step change: reset the visibility baseline and focus the first field.
+  // "First" means first in the DOM, and the built-in proposal title is a field
+  // like any other: it used to be left out of the candidate list, so arriving
+  // on the proposal step skipped straight past the first question on the page.
   useEffect(() => {
     if (previousStepRef.current === stepIndex) return
     previousStepRef.current = stepIndex
     prevVisibleRef.current = new Set(visibleFields)
+    if (showTitleField && titleInputRef.current !== null) {
+      titleInputRef.current.focus()
+      return
+    }
     const first = visibleFields[0]
     if (first !== undefined) {
       fieldRefs.current.get(first)?.focus()
     }
-  }, [stepIndex, visibleFields])
+  }, [stepIndex, visibleFields, showTitleField])
 
   // Reveal/hide: clear EVERY newly hidden answer; focus and announce the first
   // revealed field; otherwise return focus to the triggering control.
@@ -261,10 +307,27 @@ export default function CfpWizard({ form }: CfpWizardProps) {
   }
 
   const validateStep = (): boolean => {
+    // Collected in DOM order, because the reader is sent to `issues[0]` and
+    // "the first problem" has to mean the first one on the page. Element issues
+    // used to be gathered first and the title's appended after, so any step
+    // where a question also failed sent focus straight past the title error
+    // sitting above it.
     const issues: { readonly fieldKey: ElementFieldKey; readonly message: string }[] = []
+    const titleQuestionOnStep = stepElements.some((element) => element.fieldKey === TITLE_FIELD_KEY)
+    const titleIsRequired = showTitleField || titleQuestionOnStep
+    const titleMissing = titleIsRequired && editor.title.trim().length === 0
+    if (showTitleField && titleMissing) {
+      issues.push({ fieldKey: TITLE_FIELD_KEY, message: TITLE_REQUIRED_MESSAGE })
+    }
     for (const element of stepElements) {
       if (element.fieldKey === null) continue
       if (!isElementVisibleDto(element, form.conditionRules, answers)) continue
+      if (element.fieldKey === TITLE_FIELD_KEY) {
+        if (titleMissing) {
+          issues.push({ fieldKey: TITLE_FIELD_KEY, message: TITLE_REQUIRED_MESSAGE })
+        }
+        continue
+      }
       if (
         isElementRequiredDto(element, form.conditionRules, answers) &&
         isEmptyAnswer(answers[element.fieldKey])
@@ -272,11 +335,10 @@ export default function CfpWizard({ form }: CfpWizardProps) {
         issues.push({ fieldKey: element.fieldKey, message: 'This field is required' })
       }
     }
-    const titleQuestionOnStep = stepElements.some((element) => element.fieldKey === TITLE_FIELD_KEY)
-    const titleIsRequired =
-      (stepIndex === proposalPageIndex && !hasTitleQuestion) || titleQuestionOnStep
-    if (titleIsRequired && editor.title.trim().length === 0) {
-      issues.push({ fieldKey: TITLE_FIELD_KEY, message: 'Proposal title is required' })
+    // A title question hidden by a condition still owes the submission a title,
+    // so the requirement survives even when no control on the step carries it.
+    if (titleMissing && !issues.some((issue) => issue.fieldKey === TITLE_FIELD_KEY)) {
+      issues.push({ fieldKey: TITLE_FIELD_KEY, message: TITLE_REQUIRED_MESSAGE })
     }
     if (issues.length > 0) {
       const nextErrors: Record<string, string> = {}
@@ -312,25 +374,60 @@ export default function CfpWizard({ form }: CfpWizardProps) {
 
   if (draftQuery.isError) {
     const code = getApiErrorCode(draftQuery.error)
-    if (code === 'unauthorized') {
+    // The draft probe is OPTIONAL — it asks "is there a proposal to resume?".
+    // A refusal on the FIRST ask is the reader having no speaker session at
+    // all: a first-time visitor, or an organizer following their own public
+    // link. The honest answer to the question asked is "no draft", so the call
+    // for papers renders. It used to replace the judged public page with
+    // "Session expired" for a visitor who had never had a session, and with a
+    // bare "Access forbidden" card for the organizer.
+    //
+    // A refusal on a LATER ask is different in kind: the probe answered once,
+    // so there WAS a session and it has since died mid-draft. That reader is
+    // in the middle of a proposal and gets the recovery path, unchanged.
+    const deniedProbe = code === 'unauthorized' || code === 'forbidden'
+    if (!deniedProbe || draftQuery.isRefetchError) {
+      if (code === 'unauthorized') {
+        return (
+          <ExpiredSessionState
+            onLogin={() => recoverPublicSession(queryClient, form.formId, router)}
+          />
+        )
+      }
+      if (code === 'forbidden') {
+        return <ForbiddenState />
+      }
+      // A load failure used to end here: a sentence and nothing to press. The
+      // draft is a GET, so offering the reader the retry costs nothing and is
+      // the difference between a stalled proposal and a second attempt.
       return (
-        <ExpiredSessionState
-          onLogin={() => recoverPublicSession(queryClient, form.formId, router)}
-        />
+        <div className="mx-auto w-full max-w-[47rem]">
+          <LoadErrorState
+            message="Unable to load your draft."
+            pending={draftQuery.isFetching}
+            onRetry={() => void draftQuery.refetch()}
+          />
+        </div>
       )
     }
-    if (code === 'forbidden') {
-      return <ForbiddenState />
-    }
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Something went wrong</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AlertLive>Unable to load your draft.</AlertLive>
-        </CardContent>
-      </Card>
+  }
+
+  // A refused SAVE replaces the page, exactly once. The save bar used to render
+  // a page state into its own slot: a second dead-end card and a second h1
+  // below a wizard that was still editable and could no longer save anything.
+  if (saveDenial === 'forbidden') {
+    return <OrganizerCannotSaveState />
+  }
+  if (saveDenial === 'unauthorized') {
+    // "Expired" is only honest for a reader who had a session to lose. The
+    // draft probe is session-guarded, so an answer of any kind — a draft, or
+    // the 404 that maps to null — proves there was one, and a refusal proves
+    // there was not. A first-time visitor was being told their session had
+    // expired when they had never had one.
+    return draftQuery.isSuccess ? (
+      <ExpiredSessionState onLogin={() => recoverPublicSession(queryClient, form.formId, router)} />
+    ) : (
+      <IdentifyToSaveState />
     )
   }
 
@@ -338,68 +435,141 @@ export default function CfpWizard({ form }: CfpWizardProps) {
 
   const confirmationActive = submitted && currentPage.kind === 'submit'
 
+  // A proposal is prose, so the wizard is a reading column rather than a
+  // full-bleed form: the measure is what keeps a long abstract legible.
   return (
-    <div className="grid gap-6">
+    <div className="mx-auto grid w-full max-w-[47rem] gap-5">
       {confirmationActive ? null : (
         <>
-          <h1 className="text-2xl font-semibold">Call for papers</h1>
-          <CfpStepper
-            steps={steps}
-            currentIndex={stepIndex}
-            onBack={handleBack}
-            onNext={handleNext}
-          />
-          {stepIndex === proposalPageIndex && !hasTitleQuestion ? (
-            <Field invalid={errors.title !== undefined}>
-              <FieldLabel htmlFor="cfp-proposal-title">Proposal title</FieldLabel>
-              <Input
-                id="cfp-proposal-title"
-                ref={titleInputRef}
-                required
-                value={editor.title}
-                maxLength={120}
-                aria-invalid={errors.title !== undefined ? true : undefined}
-                aria-describedby={
-                  errors.title !== undefined ? 'cfp-proposal-title-error' : undefined
-                }
-                onChange={(event) =>
-                  setEditor((current) => ({ ...current, title: event.target.value, dirty: true }))
-                }
-              />
-              {errors.title !== undefined ? (
-                <FieldError id="cfp-proposal-title-error">{errors.title}</FieldError>
-              ) : null}
-            </Field>
+          <PageHeader>
+            <PageHeaderContent>
+              <PageHeaderTitle>Call for papers</PageHeaderTitle>
+              <PageHeaderDescription>
+                Step {stepIndex + 1} of {steps.length} — {currentPage.title}
+              </PageHeaderDescription>
+            </PageHeaderContent>
+          </PageHeader>
+          <CfpStepper steps={steps} currentIndex={stepIndex} />
+          <Card>
+            <CardContent>
+              <CfpStepRenderer
+                page={currentPage}
+                elements={stepElements}
+                conditionRules={form.conditionRules}
+                answers={answers}
+                errors={errors}
+                domIds={domIds}
+                ariaControls={ariaControls}
+                registerFieldRef={registerFieldRef}
+                onChange={handleChange}
+              >
+                {showTitleField ? (
+                  <Field invalid={errors.title !== undefined}>
+                    <CfpFieldLabelRow required>
+                      <FieldLabel htmlFor="cfp-proposal-title">Proposal title</FieldLabel>
+                    </CfpFieldLabelRow>
+                    <Input
+                      id="cfp-proposal-title"
+                      ref={titleInputRef}
+                      required
+                      value={
+                        titleBuffer !== null && titleBuffer.revision === draftQuery.dataUpdatedAt
+                          ? titleBuffer.value
+                          : editor.title
+                      }
+                      maxLength={120}
+                      aria-invalid={errors.title !== undefined ? true : undefined}
+                      aria-describedby={
+                        errors.title !== undefined ? 'cfp-proposal-title-error' : undefined
+                      }
+                      onChange={(event) => {
+                        const next = event.target.value
+                        setTitleBuffer({ revision: draftQuery.dataUpdatedAt, value: next })
+                        setEditor((current) => ({ ...current, title: next, dirty: true }))
+                      }}
+                    />
+                    {errors.title !== undefined ? (
+                      <FieldError id="cfp-proposal-title-error">{errors.title}</FieldError>
+                    ) : null}
+                  </Field>
+                ) : currentPage.kind === 'submit' || currentPage.kind === 'review' ? (
+                  <CfpReviewSummary
+                    form={form}
+                    title={editor.title}
+                    answers={answers}
+                    currentPageId={currentPage.id}
+                  />
+                ) : undefined}
+              </CfpStepRenderer>
+            </CardContent>
+          </Card>
+          {currentPage.kind === 'submit' ? (
+            <CfpCoSpeakers formId={form.formId} formVersionId={form.versionId} />
           ) : null}
-          <CfpStepRenderer
-            page={currentPage}
-            elements={stepElements}
-            conditionRules={form.conditionRules}
-            answers={answers}
-            errors={errors}
-            domIds={domIds}
-            ariaControls={ariaControls}
-            registerFieldRef={registerFieldRef}
-            onChange={handleChange}
+          <CfpSaveBar
+            onBack={stepIndex > 0 ? handleBack : undefined}
+            onNext={stepIndex < steps.length - 1 ? handleNext : undefined}
+            onDenied={setSaveDenial}
           />
-          <CfpSaveBar />
         </>
       )}
       {currentPage.kind === 'submit' ? (
-        <>
-          {confirmationActive ? null : (
-            <CfpCoSpeakers formId={form.formId} formVersionId={form.versionId} />
-          )}
-          <CfpSubmit
-            formId={form.formId}
-            formVersionId={form.versionId}
-            onSubmitted={() => setSubmitted(true)}
-          />
-        </>
+        <CfpSubmit
+          formVersionId={form.versionId}
+          onSubmitted={() => setSubmitted(true)}
+          onDenied={setSaveDenial}
+        />
       ) : null}
       {confirmationActive ? null : announcement !== null ? (
         <StatusLive aria-live="polite">{announcement}</StatusLive>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * A save refused with 401 for a reader whose session never existed: a visitor
+ * who opened the public call for papers and started writing. Nothing expired,
+ * so the card does not claim it did, and it does not pretend the words on the
+ * page were kept anywhere — the whole point of the refusal is that they were
+ * not. The door it names is the one that issues a speaker session.
+ */
+function IdentifyToSaveState() {
+  return (
+    <PageState
+      title="Identify yourself to save your proposal"
+      message="Saving a draft needs a speaker session. Start one from the sign-in page — nothing you have typed here has been stored yet."
+      action={
+        <a href="/start" className={buttonVariants()}>
+          Go to speaker sign-in
+        </a>
+      }
+      hint={<PaletteHint />}
+    />
+  )
+}
+
+/**
+ * A save OR a submit refused with 403: an organizer following their own public
+ * link. They are signed in, just not as a speaker, so a second sign-in is not
+ * the way forward — their own workspace is, and the form they landed on is
+ * theirs.
+ *
+ * One state answers both refusals, so the sentence names the identity rather
+ * than the operation: "cannot hold a speaker's draft" described a save to a
+ * reader who had just pressed Submit.
+ */
+function OrganizerCannotSaveState() {
+  return (
+    <PageState
+      title="This form saves proposals for speakers"
+      message="A proposal belongs to a speaker session, and yours is an organizer one. The call for papers itself is yours to manage from the organizer workspace."
+      action={
+        <a href="/admin" className={buttonVariants()}>
+          Go to the organizer workspace
+        </a>
+      }
+      hint={<PaletteHint />}
+    />
   )
 }

@@ -1,16 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { Controller, useForm, type FieldPath } from 'react-hook-form'
 import { z } from 'zod'
 
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
-import { announce } from '../../lib/announcer'
 import { useEventConfig, useFormsList, useUpdateEventConfig } from '../../queries/admin-events'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../../../components/ui/card'
+import { EmptyState } from '../../../components/ui/empty-state'
 import { Field, FieldError, FieldLabel, FieldTriggerLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import { linkVariants } from '../../../components/ui/link-variants'
+import {
+  PageHeader,
+  PageHeaderActions,
+  PageHeaderContent,
+  PageHeaderDescription,
+  PageHeaderTitle,
+} from '../../../components/ui/page-header'
 import {
   Select,
   SelectContent,
@@ -19,6 +33,7 @@ import {
   SelectValue,
 } from '../../../components/ui/select'
 import { Skeleton } from '../../../components/ui/skeleton'
+import { DocumentStackIcon } from '../../../components/ui/icons'
 import { StatusLive } from '../../../components/ui/status-live'
 import type {
   AdminEventConfigDto,
@@ -133,31 +148,74 @@ function EventConfigScreen() {
 
   if (configQuery.isPending || configQuery.data === undefined) {
     return (
-      <Card aria-busy="true" aria-label="Loading event settings">
-        <CardContent className="grid gap-3">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-4 w-64" />
-          <Skeleton className="h-4 w-64" />
-          <StatusLive aria-live="polite">Loading event settings…</StatusLive>
-        </CardContent>
-      </Card>
+      <div className="mx-auto w-full max-w-3xl">
+        {/* The skeleton takes the shape of the page it precedes — a heading
+            line, then a field stack — so the layout does not jump when the
+            data lands. */}
+        <Card aria-busy="true" aria-label="Loading event settings">
+          <CardContent className="grid gap-3">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-2/3" />
+            <StatusLive aria-live="polite">Loading event settings…</StatusLive>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   return (
     <AppShell slug={slug ?? ''}>
-      <div className="grid gap-4">
+      {/* Forms read at a measure, not at the width of a monitor.
+
+          The gap between the cards is wider than the gap between the rows
+          inside them, because two levels of structure need two spacing
+          signals: at 12px outside and 12px in, five bordered cards read as one
+          undifferentiated column of boxes and the hairlines do all the work
+          alone. The floor underneath is the other half of the same idea — the
+          last card used to sit flush against the bottom of the viewport, which
+          reads as a page that was cut off rather than one that ended. */}
+      <div className="mx-auto grid w-full max-w-3xl gap-4 pb-20 lg:gap-6">
         <EventConfigForm
           key={configQuery.data.id}
           dto={configQuery.data}
           save={save}
-          slug={slug ?? ''}
           navigateToLogin={() => void navigate({ to: '/admin' })}
         />
         <FormsList query={formsQuery} slug={slug ?? ''} />
         <PublicLinks query={formsQuery} slug={slug ?? ''} />
+        <ManageLinks slug={slug ?? ''} />
       </div>
     </AppShell>
+  )
+}
+
+/**
+ * A card section title. `CardTitle` renders a div, and these sections are real
+ * document structure under the page's single h1 — so the heading level is
+ * handed to the primitive's `render` escape rather than reproduced by a
+ * hand-written h2 wearing a copy of the card's class string.
+ */
+function SectionTitle({ children }: { readonly children: ReactNode }) {
+  return <CardTitle level={2}>{children}</CardTitle>
+}
+
+/**
+ * One hairline-separated stack: rows divide, they do not stripe.
+ *
+ * Top rule only. `border-y` drew a closing rule under the last row, and the
+ * card still applied its own 12px bottom padding under that — so every list
+ * card ended with a hairline floating 12px above the card's own border, which
+ * reads as a row that failed to render.
+ */
+function ListRows({ children }: { readonly children: ReactNode }) {
+  return <ul className="-mx-3 divide-y divide-border border-t border-border">{children}</ul>
+}
+
+function ListRow({ children }: { readonly children: ReactNode }) {
+  return (
+    <li className="flex items-center gap-3 px-3 py-2 hover:bg-foreground/[0.03]">{children}</li>
   )
 }
 
@@ -172,11 +230,11 @@ function FormsList({
     return (
       <Card aria-busy="true" aria-label="Loading forms">
         <CardHeader>
-          <CardTitle>Forms</CardTitle>
+          <SectionTitle>Forms</SectionTitle>
         </CardHeader>
-        <CardContent className="grid gap-3">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-4 w-64" />
+        <CardContent className="grid gap-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-4 w-56" />
           <StatusLive aria-live="polite">Loading forms…</StatusLive>
         </CardContent>
       </Card>
@@ -186,20 +244,19 @@ function FormsList({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Forms</CardTitle>
+          <SectionTitle>Forms</SectionTitle>
         </CardHeader>
-        <CardContent className="grid gap-3">
+        <CardContent className="grid justify-items-start gap-3">
           <AlertLive>Unable to load forms.</AlertLive>
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              pending={query.isFetching}
-              onClick={() => void query.refetch()}
-            >
-              {query.isFetching ? 'Trying again…' : 'Retry'}
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            pending={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            {query.isFetching ? 'Trying again…' : 'Retry'}
+          </Button>
         </CardContent>
       </Card>
     )
@@ -209,12 +266,21 @@ function FormsList({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Forms</CardTitle>
+          <SectionTitle>Forms</SectionTitle>
         </CardHeader>
         <CardContent>
-          <StatusLive aria-live="polite" aria-label="No forms">
-            No forms yet.
-          </StatusLive>
+          {/* Nothing here is passive — an organizer cannot create a form from
+              this screen — so the copy stays neutral rather than issuing an
+              instruction the page cannot carry out. */}
+          <EmptyState
+            icon={<DocumentStackIcon size={20} />}
+            title={
+              <StatusLive aria-live="polite" aria-label="No forms" className="text-foreground">
+                No forms yet.
+              </StatusLive>
+            }
+            description="A call-for-papers form is what puts this event in front of speakers."
+          />
         </CardContent>
       </Card>
     )
@@ -222,22 +288,22 @@ function FormsList({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Forms</CardTitle>
+        <SectionTitle>Forms</SectionTitle>
       </CardHeader>
       <CardContent>
-        <ul className="grid gap-2">
+        <ListRows>
           {forms.map((form) => (
-            <li key={form.formId}>
+            <ListRow key={form.formId}>
               <Link
                 to="/admin/events/$slug/forms/$formId"
                 params={{ slug, formId: form.formId }}
-                className="inline-flex min-h-6 min-w-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
+                className={linkVariants({ hit: true })}
               >
                 {form.slug}
               </Link>
-            </li>
+            </ListRow>
           ))}
-        </ul>
+        </ListRows>
       </CardContent>
     </Card>
   )
@@ -261,31 +327,77 @@ function PublicLinks({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Public links</CardTitle>
+        <SectionTitle>Public links</SectionTitle>
       </CardHeader>
       <CardContent>
-        <ul className="grid gap-2">
+        <ListRows>
           {published.map((form) => (
-            <li key={form.formId}>
+            <ListRow key={form.formId}>
               <Link
                 to="/cfp/$eventSlug/$formSlug"
                 params={{ eventSlug: slug, formSlug: form.slug }}
-                className="inline-flex min-h-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
+                className={linkVariants({ hit: true })}
               >
                 Call for papers — {form.slug}
               </Link>
-            </li>
+            </ListRow>
           ))}
-          <li>
+          <ListRow>
             <Link
               to="/schedule/$eventSlug"
               params={{ eventSlug: slug }}
-              className="inline-flex min-h-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
+              className={linkVariants({ hit: true })}
             >
               Public schedule
             </Link>
-          </li>
-        </ul>
+          </ListRow>
+        </ListRows>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * The three sibling organizer surfaces that hang off this event. They are in
+ * the rail too, but the settings page is where an organizer forms their mental
+ * model of what an event owns, so the cross-links live here as well.
+ */
+function ManageLinks({ slug }: { readonly slug: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <SectionTitle>Manage</SectionTitle>
+      </CardHeader>
+      <CardContent>
+        <ListRows>
+          <ListRow>
+            <Link
+              to="/admin/events/$slug/taxonomies"
+              params={{ slug }}
+              className={linkVariants({ hit: true })}
+            >
+              Manage taxonomies
+            </Link>
+          </ListRow>
+          <ListRow>
+            <Link
+              to="/admin/events/$slug/readiness"
+              params={{ slug }}
+              className={linkVariants({ hit: true })}
+            >
+              Speaker readiness
+            </Link>
+          </ListRow>
+          <ListRow>
+            <Link
+              to="/admin/events/$slug/evaluations"
+              params={{ slug }}
+              className={linkVariants({ hit: true })}
+            >
+              Manage review committee
+            </Link>
+          </ListRow>
+        </ListRows>
       </CardContent>
     </Card>
   )
@@ -294,7 +406,6 @@ function PublicLinks({
 interface EventConfigFormProps {
   readonly dto: AdminEventConfigDto
   readonly save: ReturnType<typeof useUpdateEventConfig>
-  readonly slug: string
   readonly navigateToLogin: () => void
 }
 
@@ -303,7 +414,7 @@ type SaveState =
   | { readonly kind: 'denied' }
   | { readonly kind: 'error'; readonly message: string }
 
-function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormProps) {
+function EventConfigForm({ dto, save, navigateToLogin }: EventConfigFormProps) {
   const {
     register,
     control,
@@ -343,7 +454,11 @@ function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormPr
       onSuccess: (server) => {
         reset(toFormValues(server))
         setSavedMessage('Saved')
-        announce('Event settings saved')
+        // No announce(): the header chip beside the Save button IS a live
+        // region, and it is already saying this. Calling the announcer too
+        // spoke one outcome twice (DEC-014, F-R3-13). The chip is the one that
+        // stays — it carries the in-flight state as well, it sits where the
+        // reader's focus already is, and it is what the golden journey reads.
       },
       onError: (error) => {
         const code = getApiErrorCode(error)
@@ -378,12 +493,36 @@ function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormPr
         : null
 
   return (
-    <Card>
-      <CardHeader>
-        <h1 className="font-heading text-base leading-snug font-medium">Event settings</h1>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} className="grid gap-3" noValidate>
+      {/* The page title is chrome: it sits in a row with the action it belongs
+          to, not floating above the content at twice the size. */}
+      <PageHeader className="min-h-8">
+        <PageHeaderContent>
+          <PageHeaderTitle>Event settings</PageHeaderTitle>
+          <PageHeaderDescription>{dto.name}</PageHeaderDescription>
+        </PageHeaderContent>
+        <PageHeaderActions>
+          {/* One stable region for both outcomes, mounted before either has
+              anything to say: a live region created together with its text
+              is not in the accessibility tree when the text arrives, so it
+              announces nothing. The saved chip is cleared at submit, so the
+              in-flight message never overwrites a live one. */}
+          <StatusLive aria-live="polite" className="text-xs">
+            {save.isPending ? 'Saving the event settings…' : savedMessage}
+          </StatusLive>
+          {/* The visible label is the accessible name; a duplicate
+              aria-label only risks the two drifting apart. */}
+          <Button type="submit" pending={save.isPending}>
+            {save.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </PageHeaderActions>
+      </PageHeader>
+      {summaryMessage !== null ? <AlertLive>{summaryMessage}</AlertLive> : null}
+      <Card>
+        <CardHeader>
+          <SectionTitle>Details</SectionTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
           {/*
             Name / Website / Organizer contact / Venue describe the EVENT and
             are published on the public programme, so organization / url /
@@ -402,63 +541,83 @@ function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormPr
               <FieldError id="config-name-error">{errors.name.message}</FieldError>
             ) : null}
           </Field>
-          <Field invalid={errors.timezone !== undefined}>
-            <FieldLabel htmlFor="config-timezone">Timezone</FieldLabel>
-            <Input id="config-timezone" {...register('timezone')} />
-            {errors.timezone !== undefined ? (
-              <FieldError id="config-timezone-error">{errors.timezone.message}</FieldError>
-            ) : null}
-          </Field>
-          <Field>
-            <FieldTriggerLabel id="config-status-label">Status</FieldTriggerLabel>
-            <Controller
-              control={control}
-              name="status"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger aria-labelledby="config-status-label">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EVENT_STATUSES.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </Field>
-          <Field invalid={errors.websiteUrl !== undefined}>
-            <FieldLabel htmlFor="config-website">Website</FieldLabel>
-            <Input id="config-website" autoComplete="off" {...register('websiteUrl')} />
-            {errors.websiteUrl !== undefined ? (
-              <FieldError id="config-website-error">{errors.websiteUrl.message}</FieldError>
-            ) : null}
-          </Field>
-          <Field invalid={errors.organizerContact !== undefined}>
-            <FieldLabel htmlFor="config-contact">Organizer contact</FieldLabel>
-            <Input id="config-contact" autoComplete="off" {...register('organizerContact')} />
-            {errors.organizerContact !== undefined ? (
-              <FieldError id="config-contact-error">{errors.organizerContact.message}</FieldError>
-            ) : null}
-          </Field>
-          <Field invalid={errors.venue !== undefined}>
-            <FieldLabel htmlFor="config-venue">Venue</FieldLabel>
-            <Input id="config-venue" autoComplete="off" {...register('venue')} />
-            {errors.venue !== undefined ? (
-              <FieldError id="config-venue-error">{errors.venue.message}</FieldError>
-            ) : null}
-          </Field>
-          <Field invalid={errors.eventType !== undefined}>
-            <FieldLabel htmlFor="config-type">Event type</FieldLabel>
-            <Input id="config-type" {...register('eventType')} />
-            {errors.eventType !== undefined ? (
-              <FieldError id="config-type-error">{errors.eventType.message}</FieldError>
-            ) : null}
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldTriggerLabel id="config-status-label">Status</FieldTriggerLabel>
+              <Controller
+                control={control}
+                name="status"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    {/* `w-full`: the trigger sizes to its content by
+                        default, so "Status" rendered a 73px control beside a
+                        366px "Event type" input on the same row while every
+                        other control in the card filled its cell. */}
+                    <SelectTrigger className="w-full" aria-labelledby="config-status-label">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EVENT_STATUSES.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </Field>
+            <Field invalid={errors.eventType !== undefined}>
+              <FieldLabel htmlFor="config-type">Event type</FieldLabel>
+              <Input id="config-type" {...register('eventType')} />
+              {errors.eventType !== undefined ? (
+                <FieldError id="config-type-error">{errors.eventType.message}</FieldError>
+              ) : null}
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field invalid={errors.timezone !== undefined}>
+              <FieldLabel htmlFor="config-timezone">Timezone</FieldLabel>
+              <Input id="config-timezone" {...register('timezone')} />
+              {errors.timezone !== undefined ? (
+                <FieldError id="config-timezone-error">{errors.timezone.message}</FieldError>
+              ) : null}
+            </Field>
+            <Field invalid={errors.venue !== undefined}>
+              <FieldLabel htmlFor="config-venue">Venue</FieldLabel>
+              <Input id="config-venue" autoComplete="off" {...register('venue')} />
+              {errors.venue !== undefined ? (
+                <FieldError id="config-venue-error">{errors.venue.message}</FieldError>
+              ) : null}
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field invalid={errors.websiteUrl !== undefined}>
+              <FieldLabel htmlFor="config-website">Website</FieldLabel>
+              <Input id="config-website" autoComplete="off" {...register('websiteUrl')} />
+              {errors.websiteUrl !== undefined ? (
+                <FieldError id="config-website-error">{errors.websiteUrl.message}</FieldError>
+              ) : null}
+            </Field>
+            <Field invalid={errors.organizerContact !== undefined}>
+              <FieldLabel htmlFor="config-contact">Organizer contact</FieldLabel>
+              <Input id="config-contact" autoComplete="off" {...register('organizerContact')} />
+              {errors.organizerContact !== undefined ? (
+                <FieldError id="config-contact-error">{errors.organizerContact.message}</FieldError>
+              ) : null}
+            </Field>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <SectionTitle>Dates</SectionTitle>
+          <CardDescription>
+            Both dates travel together: an event with only one of them is not a date at all.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field invalid={errors.startsAt !== undefined}>
               <FieldLabel htmlFor="config-starts">Starts at</FieldLabel>
               <Input id="config-starts" type="datetime-local" {...register('startsAt')} />
@@ -474,46 +633,9 @@ function EventConfigForm({ dto, save, slug, navigateToLogin }: EventConfigFormPr
               ) : null}
             </Field>
           </div>
-          {summaryMessage !== null ? <AlertLive>{summaryMessage}</AlertLive> : null}
-          <div className="flex items-center justify-between gap-3">
-            {/* The visible label is the accessible name; a duplicate
-                aria-label only risks the two drifting apart. */}
-            <Button type="submit" pending={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save'}
-            </Button>
-            {/* One stable region for both outcomes, mounted before either has
-                anything to say: a live region created together with its text
-                is not in the accessibility tree when the text arrives, so it
-                announces nothing. The saved chip is cleared at submit, so the
-                in-flight message never overwrites a live one. */}
-            <StatusLive aria-live="polite">
-              {save.isPending ? 'Saving the event settings…' : savedMessage}
-            </StatusLive>
-          </div>
-          <Link
-            to="/admin/events/$slug/taxonomies"
-            params={{ slug }}
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Manage taxonomies
-          </Link>
-          <Link
-            to="/admin/events/$slug/readiness"
-            params={{ slug }}
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Speaker readiness
-          </Link>
-          <Link
-            to="/admin/events/$slug/evaluations"
-            params={{ slug }}
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Manage review committee
-          </Link>
-        </form>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </form>
   )
 }
 

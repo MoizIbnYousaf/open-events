@@ -80,6 +80,8 @@ function defaultHandler(url: string): Response {
     return jsonResponse({ eventId: EVENT_CONFIG_DTO.id, submissions: [] })
   }
   if (url === `/api/admin/events/${EVENT_SLUG}/agenda`) return jsonResponse({ sessions: [] })
+  if (url === `/api/admin/events/${EVENT_SLUG}/criteria`) return jsonResponse([])
+  if (url === `/api/admin/events/${EVENT_SLUG}/rounds`) return jsonResponse([])
   if (
     url ===
     `/api/admin/events/demo-conf-2026/forms/${PUBLISHED_FORM.formId}/versions/${PUBLISHED_FORM.publishedVersionId}`
@@ -125,7 +127,10 @@ describe('nav model', () => {
       'Taxonomies',
       'Submissions',
       'Readiness',
-      'Evaluations',
+      // Not "Evaluations": the page this opens is titled Review committee, and
+      // the product has a separate speaker-facing /evaluations surface. One
+      // label for two destinations made the rail contradict the page it opened.
+      'Review committee',
       'Agenda',
     ])
     for (const destination of organizerDestinations(EVENT_SLUG)) {
@@ -186,6 +191,20 @@ describe('rendered navigation', () => {
         expect(router.state.location.pathname).toBe(destination.to.replace('$slug', EVENT_SLUG)),
       )
     }
+  })
+
+  it('names the committee destination after the page it opens', async () => {
+    mountAt(`/admin/events/${EVENT_SLUG}`)
+
+    const nav = await screen.findByRole('navigation', { name: 'Event' })
+    // The rail said "Evaluations" and opened a page titled "Review committee",
+    // while a separate speaker-facing /evaluations surface existed under the
+    // same word. The rail is the label of record; the palette follows it.
+    expect(within(nav).getByRole('link', { name: 'Review committee' })).toHaveAttribute(
+      'href',
+      `/admin/events/${EVENT_SLUG}/evaluations`,
+    )
+    expect(within(nav).queryByRole('link', { name: 'Evaluations' })).toBeNull()
   })
 
   it('marks the current organizer destination', async () => {
@@ -257,14 +276,34 @@ describe('rendered navigation', () => {
     expect(current).toEqual(['Submissions'])
   })
 
-  it('does not claim the event settings back link is the current page', async () => {
-    mountAt(`/admin/events/${EVENT_SLUG}/taxonomies`)
+  // A back link exists ONLY where the rail cannot reach the origin
+  // (`BackLink.tsx`). These two cases are the halves of that rule: a rail
+  // destination must not offer a second, contradicting way back, and a surface
+  // the rail has no vocabulary for must still offer one.
+  it.each([
+    ['taxonomies', 'Taxonomies'],
+    ['evaluations', 'Review committee'],
+  ])('leaves the way back to the rail on the %s rail destination', async (segment, railLabel) => {
+    mountAt(`/admin/events/${EVENT_SLUG}/${segment}`)
 
-    await screen.findByRole('link', { name: 'Back to event settings' })
-    const current = Array.from(document.querySelectorAll('[aria-current="page"]')).map(
-      (node) => node.textContent,
+    // The rail is what marks where the reader is standing, and it lists Event
+    // settings as this page's SIBLING. A content-level "Back to event settings"
+    // would claim the two are parent and child on the same screen.
+    const rail = await screen.findByRole('navigation', { name: 'Event' })
+    await waitFor(() =>
+      expect(document.querySelector('[aria-current="page"]')?.textContent).toBe(railLabel),
     )
-    expect(current).toEqual(['Taxonomies'])
+    expect(within(rail).getByRole('link', { name: 'Event settings' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^Back to/ })).toBeNull()
+  })
+
+  it('keeps the way back on a detail surface the rail cannot reach', async () => {
+    mountAt(
+      `/admin/events/demo-conf-2026/forms/${PUBLISHED_FORM.formId}/versions/${PUBLISHED_FORM.publishedVersionId}`,
+    )
+
+    // No rail row names one version of one form, so the link is the only exit.
+    expect(await screen.findByRole('link', { name: 'Back to builder' })).toBeInTheDocument()
   })
 
   it('does not claim the builder back link is the current page', async () => {

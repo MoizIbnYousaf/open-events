@@ -4,9 +4,12 @@ import { toast } from 'sonner'
 import { isValueEmpty, type AnswerMap, type AnswerValue } from '../../../domain/answers'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
-import { Card, CardContent } from '../../../components/ui/card'
+import { Card, CardContent, CardHeader } from '../../../components/ui/card'
+import { EmptyState } from '../../../components/ui/empty-state'
+import { ClipboardIcon } from '../../../components/ui/icons'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
+import { SectionHeading } from '../../../components/ui/section-heading'
 import { getApiErrorCode } from '../../api/admin-events'
 import { isElementRequiredDto, isElementVisibleDto } from '../../lib/form-engine'
 import {
@@ -104,94 +107,113 @@ export default function TasksPanel() {
   const inFlightTaskId = complete.isPending ? complete.variables : undefined
 
   return (
-    <section aria-label="Your tasks" className="grid gap-3">
-      <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold outline-hidden">
-        Your tasks
-      </h2>
-      {/* The failure's single live region. Focus is still on the control that
-          failed, because it was never moved, so the message is next to it. No
-          announce() beside it: the same sentence in two live regions is spoken
-          twice (DEC-014). */}
-      {complete.isError ? <AlertLive>Unable to complete that task.</AlertLive> : null}
-      {tasks.length === 0 ? (
-        <Card>
+    <section aria-label="Your tasks">
+      <Card>
+        <CardHeader>
+          <SectionHeading ref={headingRef} tabIndex={-1} className="outline-hidden">
+            Your tasks
+          </SectionHeading>
+        </CardHeader>
+        {/* The failure's single live region. Focus is still on the control that
+            failed, because it was never moved, so the message is next to it. No
+            announce() beside it: the same sentence in two live regions is spoken
+            twice (DEC-014). */}
+        {complete.isError ? (
           <CardContent>
-            <StatusLive aria-live="polite">No tasks yet.</StatusLive>
+            <AlertLive>Unable to complete that task.</AlertLive>
           </CardContent>
-        </Card>
-      ) : (
-        <ul className="grid gap-2">
-          {tasks.map((task) => {
-            const label = speakerTaskLabel(task.kind)
-            const done = task.status === 'completed'
-            // The optimistic flip marks the row complete straight away, but the
-            // control the speaker pressed stays mounted until the request
-            // settles: it holds their focus, and it shows the in-flight state
-            // on the thing they actually pressed.
-            const inFlight = inFlightTaskId === task.id
-            return (
-              <li
-                key={task.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
-              >
-                <span className="grid gap-1">
-                  <span className={done ? 'text-sm line-through' : 'text-sm font-medium'}>
-                    {label}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{task.submissionTitle}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {done ? 'Complete' : 'Outstanding'}
-                  </span>
-                  {/* Evidence-backed tasks name where the proof lives; the
+        ) : null}
+        {tasks.length === 0 ? (
+          <CardContent>
+            <EmptyState
+              icon={<ClipboardIcon size={20} />}
+              title="No tasks yet."
+              description="Onboarding tasks appear here once a proposal is accepted."
+            />
+          </CardContent>
+        ) : (
+          <ul className="divide-y divide-border border-t border-border">
+            {tasks.map((task) => {
+              const label = speakerTaskLabel(task.kind)
+              const done = task.status === 'completed'
+              // The optimistic flip marks the row complete straight away, but the
+              // control the speaker pressed stays mounted until the request
+              // settles: it holds their focus, and it shows the in-flight state
+              // on the thing they actually pressed.
+              const inFlight = inFlightTaskId === task.id
+              return (
+                <li
+                  key={task.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5"
+                >
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span
+                      className={
+                        done ? 'text-sm text-muted-foreground line-through' : 'text-sm font-medium'
+                      }
+                    >
+                      {label}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{task.submissionTitle}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {done ? 'Complete' : 'Outstanding'}
+                    </span>
+                    {/* Evidence-backed tasks name where the proof lives; the
                       button below only records completion once it exists. */}
-                  {!done && task.kind === 'submit_bio' ? (
-                    <span className="text-xs text-muted-foreground">
-                      Requires a saved bio in “Your profile” below.
-                    </span>
-                  ) : null}
-                  {!done && task.kind === 'submit_headshot' ? (
-                    <span className="text-xs text-muted-foreground">
-                      Requires an uploaded headshot below.
-                    </span>
-                  ) : null}
-                  {!done && task.kind === 'confirm_participation' ? (
-                    <span className="text-xs text-muted-foreground">
-                      Completed by your explicit confirmation.
-                    </span>
-                  ) : null}
-                </span>
-                {task.kind === 'complete_form' ? (
-                  done ? null : (
-                    <FormTaskEditor task={task} onCompleted={() => headingRef.current?.focus()} />
-                  )
-                ) : done && !inFlight ? null : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-8 px-3"
-                    pending={inFlight}
-                    focusableWhenDisabled
-                    aria-label={
-                      inFlight
-                        ? `Marking complete: ${label} for ${task.submissionTitle}`
-                        : `Mark complete: ${label} for ${task.submissionTitle}`
-                    }
-                    data-task-action="complete"
-                    data-task-id={task.id}
-                    onClick={() => completeTask(task.id, label)}
-                  >
-                    {inFlight
-                      ? 'Marking complete…'
-                      : task.kind === 'confirm_participation'
-                        ? 'I confirm I will participate'
-                        : 'Mark complete'}
-                  </Button>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      )}
+                    {!done && task.kind === 'submit_bio' ? (
+                      <span className="text-xs text-muted-foreground">
+                        Requires a saved bio in “Your profile” below.
+                      </span>
+                    ) : null}
+                    {!done && task.kind === 'submit_headshot' ? (
+                      <span className="text-xs text-muted-foreground">
+                        Requires an uploaded headshot below.
+                      </span>
+                    ) : null}
+                    {!done && task.kind === 'confirm_participation' ? (
+                      <span className="text-xs text-muted-foreground">
+                        Completed by your explicit confirmation.
+                      </span>
+                    ) : null}
+                  </span>
+                  {task.kind === 'complete_form' ? (
+                    done ? null : (
+                      <FormTaskEditor task={task} onCompleted={() => headingRef.current?.focus()} />
+                    )
+                  ) : done && !inFlight ? null : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      pending={inFlight}
+                      focusableWhenDisabled
+                      /* The words on the control lead the accessible name, so
+                         someone driving by voice can say what they can see
+                         (WCAG 2.5.3 Label in Name). The row context still
+                         follows, because three rows otherwise share one name. */
+                      aria-label={
+                        inFlight
+                          ? `Marking complete: ${label} for ${task.submissionTitle}`
+                          : task.kind === 'confirm_participation'
+                            ? `I confirm I will participate — Mark complete: ${label} for ${task.submissionTitle}`
+                            : `Mark complete: ${label} for ${task.submissionTitle}`
+                      }
+                      data-task-action="complete"
+                      data-task-id={task.id}
+                      onClick={() => completeTask(task.id, label)}
+                    >
+                      {inFlight
+                        ? 'Marking complete…'
+                        : task.kind === 'confirm_participation'
+                          ? 'I confirm I will participate'
+                          : 'Mark complete'}
+                    </Button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </Card>
     </section>
   )
 }
@@ -222,7 +244,6 @@ function FormTaskEditor({
       <Button
         type="button"
         variant="outline"
-        className="min-h-8 px-3"
         aria-label={`Fill out form: ${label} for ${task.submissionTitle}`}
         onClick={() => setOpen(true)}
       >
@@ -317,20 +338,10 @@ function FormTaskEditor({
       ))}
       {complete.isError ? <AlertLive>Unable to submit this form.</AlertLive> : null}
       <div className="flex gap-2">
-        <Button
-          type="submit"
-          variant="outline"
-          className="min-h-8 px-3"
-          pending={complete.isPending}
-        >
+        <Button type="submit" variant="outline" pending={complete.isPending}>
           {complete.isPending ? 'Submitting…' : 'Submit form'}
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className="min-h-8 px-3"
-          onClick={() => setOpen(false)}
-        >
+        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
           Close
         </Button>
       </div>

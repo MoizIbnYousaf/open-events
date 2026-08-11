@@ -10,6 +10,7 @@ import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '../../../components/ui/card'
 import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import { PageHeaderTitle } from '../../../components/ui/page-header'
 import { StatusLive } from '../../../components/ui/status-live'
 
 const startSchema = z.object({
@@ -99,9 +100,14 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
   const summary = errorMessage ?? errors.email?.message ?? null
 
   return (
-    <Card data-tour="start-page">
+    <Card className="py-4" data-tour="start-page">
       <CardHeader>
-        <h1 className="font-heading text-base leading-snug font-medium">Start</h1>
+        {/* The organizer door (`/admin`) and this one are meant to read as
+            one family, and a comment over there says so. They did not: that
+            card's title was a `PageHeaderTitle` at 20px/600 and this one was a
+            hand-written h1 at 16px/500. Same primitive, same size, one door
+            grammar. */}
+        <PageHeaderTitle>Start</PageHeaderTitle>
         <CardDescription>Request a link to begin your proposal.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -126,17 +132,22 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
               text — a polite live region has to be in the accessibility tree
               before its content arrives or it announces nothing (DEC-014). */}
           <StatusLive aria-live="polite">{accepted ? 'Check your email' : null}</StatusLive>
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Stacked and full width, the way the organizer door's one control
+              already stands: on a card this narrow a button sized to its own
+              label is a small target floating in a wide row, and the two doors
+              are meant to read as one family. */}
+          <div className="grid gap-3">
             {/* The visible text is the accessible name. The old aria-label
                 said "Start" while the button read "Request a link", which
                 breaks WCAG 2.5.3 Label in Name. */}
-            <Button type="submit" pending={pending}>
+            <Button type="submit" className="w-full" pending={pending}>
               {pending ? 'Sending…' : 'Request a link'}
             </Button>
             {errorMessage !== null ? (
               <Button
                 type="button"
                 variant="outline"
+                className="w-full"
                 pending={pending}
                 onClick={() => onSubmit(getValues())}
               >

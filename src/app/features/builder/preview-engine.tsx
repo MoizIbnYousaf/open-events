@@ -15,9 +15,12 @@ import {
 } from '../../../domain/invariants/submission'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
+import { Checkbox } from '../../../components/ui/checkbox'
 import { StatusLive } from '../../../components/ui/status-live'
 import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import { NativeSelect } from '../../../components/ui/native-select'
+import { Textarea } from '../../../components/ui/textarea'
 import { autocompleteForElement } from '../../lib/autocomplete-purpose'
 
 interface PreviewEngineProps {
@@ -169,15 +172,13 @@ function PreviewField({
   const id = `preview-field-${fieldKey}`
   const errorId = `${id}-error`
   const invalid = error !== undefined
-  const baseFieldClass =
-    'h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none disabled:opacity-50 md:text-sm'
   const errorNode = invalid ? <FieldError id={errorId}>{error}</FieldError> : null
 
   if (element.questionType === 'long_text') {
     return (
       <Field invalid={invalid}>
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
-        <textarea
+        <Textarea
           id={id}
           aria-label={label}
           ref={registerFieldRef(fieldKey)}
@@ -186,26 +187,32 @@ function PreviewField({
           aria-invalid={invalid ? true : undefined}
           aria-describedby={invalid ? errorId : undefined}
           onChange={(event) => onChange(event.target.value)}
-          className={`${baseFieldClass} min-h-24 resize-y`}
         />
         {errorNode}
       </Field>
     )
   }
   if (element.questionType === 'single_choice') {
+    // The same control the speaker will actually meet: `CfpFields` renders a
+    // native select for this question type, and a preview that showed a
+    // composite listbox instead would be previewing a form that does not
+    // exist. Parity is the whole job of this surface, so the platform control
+    // wins over the prettier one — and it takes a real `<label for>` with it.
     return (
       <Field invalid={invalid}>
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
-        <select
+        <NativeSelect
           id={id}
-          aria-label={label}
+          // `HTMLSelectElement` does not structurally satisfy `HTMLElement`
+          // under this lib (its `remove(index)` overload collides with
+          // `ChildNode.remove`), so the shared registrar is narrowed at the
+          // call site exactly as `CfpFields` narrows its own.
           ref={registerFieldRef(fieldKey) as (node: HTMLSelectElement | null) => void}
           required={required}
           value={typeof value === 'string' ? value : ''}
           aria-invalid={invalid ? true : undefined}
           aria-describedby={invalid ? errorId : undefined}
-          onChange={(event) => onChange(event.target.value)}
-          className={baseFieldClass}
+          onChange={(event) => onChange(event.target.value as AnswerValue)}
         >
           <option value="">Select…</option>
           {element.options.map((option) => (
@@ -213,7 +220,7 @@ function PreviewField({
               {option}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         {errorNode}
       </Field>
     )
@@ -222,16 +229,15 @@ function PreviewField({
     const selectedOptions = new Set(Array.isArray(value) ? value : [])
     return (
       <Field invalid={invalid}>
-        <fieldset className="grid gap-1.5">
-          <legend className="text-sm font-medium">{label}</legend>
+        <fieldset className="grid gap-1">
+          <legend className="mb-0.5 text-xs font-medium text-muted-foreground">{label}</legend>
           {element.options.map((option, index) => {
             const selected = selectedOptions.has(option)
             const optionId = `${id}-option-${index}`
             return (
-              <label key={option} htmlFor={optionId} className="flex items-center gap-2 text-sm">
-                <input
+              <label key={option} htmlFor={optionId} className="flex items-center gap-1.5 text-sm">
+                <Checkbox
                   id={optionId}
-                  type="checkbox"
                   required={required && element.options.length > 0 && !selected}
                   checked={selected}
                   aria-invalid={invalid ? true : undefined}

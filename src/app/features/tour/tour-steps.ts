@@ -18,20 +18,46 @@ export interface TourStep {
   readonly params?: Readonly<Record<string, string>>
   /** A [data-tour] hook id; omitted for centered steps. */
   readonly target?: string
+  /**
+   * Set on steps whose surface only exists for a signed-in organizer. The tour
+   * owns no session model and probes nothing: the mark simply tells the overlay
+   * that this step's `target` is *evidence*, not decoration. An organizer route
+   * renders its rail (and therefore its `rail-*` hook) only after the session
+   * check passes — every denied, expired or errored branch returns a state card
+   * instead — so "the hook never appeared" is the same fact as "this visitor is
+   * not seeing the organizer surface", read off the DOM the tour already polls.
+   */
+  readonly requiresSession?: 'organizer'
 }
 
 const eventParams = { slug: DEFAULT_EVENT_SLUG } as const
+
+/**
+ * What the tour says instead of narrating an organizer screen that never
+ * rendered. It names the reason, offers the door back to the one screen that
+ * can fix it, and offers the way on for a visitor who has no secret to type.
+ *
+ * It used to promise the tour "picks up right here" after signing in. It does
+ * not: the tour holds on this step until the reader presses Next, and a
+ * promise the product does not keep is worse than a plain instruction. The
+ * replacement is shorter than what it replaces, which matters — this string is
+ * entry-chunk data.
+ */
+export const TOUR_ORGANIZER_HOLD = {
+  title: 'Sign in to continue the tour',
+  body: 'These screens only render for a signed-in session. Sign in with the organizer secret, then press Next — or skip ahead to the screens anyone can see.',
+} as const
 
 export const TOUR_STEPS: readonly TourStep[] = [
   {
     id: 'welcome',
     title: 'Welcome to SpeakerOps',
-    body: 'SpeakerOps runs a conference programme end to end: the call for papers, evaluation, agenda building, and the public schedule. This tour walks the whole loop in a few steps.',
+    body: 'SpeakerOps runs a conference programme end to end: the call for papers, evaluation, agenda building, and the public schedule. This tour walks the whole loop in a few steps. The organizer half needs a signed-in session; the next step is where you get one.',
   },
   {
     id: 'admin-signin',
     title: 'Organizer sign-in',
-    body: 'Organizers sign in here with your organizer secret. Everything under the admin surface is scoped to a signed-in session.',
+    body: 'Organizers sign in here with the organizer secret. Everything under the admin surface is scoped to that session — sign in now and the tour follows you through it, or skip ahead to the public screens.',
     route: '/admin',
     target: 'admin-signin',
   },
@@ -42,6 +68,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     route: '/admin/events/$slug',
     params: eventParams,
     target: 'rail-event-settings',
+    requiresSession: 'organizer',
   },
   {
     id: 'taxonomies',
@@ -50,6 +77,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     route: '/admin/events/$slug/taxonomies',
     params: eventParams,
     target: 'rail-taxonomies',
+    requiresSession: 'organizer',
   },
   {
     id: 'submissions',
@@ -58,6 +86,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     route: '/admin/events/$slug/submissions',
     params: eventParams,
     target: 'rail-submissions',
+    requiresSession: 'organizer',
   },
   {
     id: 'evaluations',
@@ -66,6 +95,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     route: '/admin/events/$slug/evaluations',
     params: eventParams,
     target: 'rail-evaluations',
+    requiresSession: 'organizer',
   },
   {
     id: 'agenda',
@@ -74,6 +104,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     route: '/admin/events/$slug/agenda',
     params: eventParams,
     target: 'rail-agenda',
+    requiresSession: 'organizer',
   },
   {
     id: 'readiness',
@@ -82,6 +113,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     route: '/admin/events/$slug/readiness',
     params: eventParams,
     target: 'rail-readiness',
+    requiresSession: 'organizer',
   },
   {
     id: 'palette',
@@ -113,3 +145,23 @@ export const TOUR_STEPS: readonly TourStep[] = [
     target: 'schedule-page',
   },
 ]
+
+/**
+ * The organizer door: where a held step sends anyone who wants to fix the hold
+ * rather than route around it. Derived rather than hard-coded so reordering the
+ * list cannot silently point the recovery at the wrong screen.
+ */
+export const TOUR_SIGN_IN_STEP_INDEX = TOUR_STEPS.findIndex((step) => step.id === 'admin-signin')
+
+/**
+ * Where a held tour resumes: the first later step that is BOTH ungated and
+ * route-bearing. Route-bearing matters as much as ungated — a step with no
+ * route inherits whatever page is already on screen, and for a tour held on a
+ * denied organizer route that page is the denied one, which is exactly what the
+ * hold exists to stop narrating over. Returns -1 when no such step is left.
+ */
+export function publicResumeIndexAfter(index: number): number {
+  return TOUR_STEPS.findIndex(
+    (step, at) => at > index && step.requiresSession === undefined && step.route !== undefined,
+  )
+}

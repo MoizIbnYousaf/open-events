@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   Outlet,
@@ -358,6 +359,75 @@ describe('admin shell', () => {
     expect(busySkeleton).toHaveAttribute('aria-busy', 'true')
     expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0)
     expect(screen.queryAllByRole('heading')).toHaveLength(0)
+  })
+
+  it('pins the rail to the content scroller instead of letting it scroll away', async () => {
+    await mountAt(`/admin/events/${EVENT_SLUG}`)
+
+    // jsdom has no layout, so the scroll itself is measured in a browser. What
+    // is pinned here is the geometry the measurement came down to. The rail
+    // declared `lg:sticky` all along and still travelled the full scroll
+    // distance, for two reasons, and BOTH are asserted:
+    //  - the grid is a flex item of the `#main` scroller, and without
+    //    `shrink-0` flex shrinking clamped its BOX to the scrollport height
+    //    while its row ran the length of the page, leaving a sticky child no
+    //    room at all to move inside its containing block;
+    //  - the panel's height subtracted the toolbar but not the toolbar's 1px
+    //    bottom border, so it was one pixel taller than the scrollport and
+    //    could never satisfy `top: 0`.
+    const nav = await screen.findByRole('navigation', { name: 'Event' })
+    const rail = nav.parentElement
+    const grid = rail?.parentElement
+    expect(rail?.className).toContain('lg:sticky')
+    expect(rail?.className).toContain('lg:top-0')
+    expect(rail?.className).toContain('lg:h-[calc(100svh-var(--navbar-height)-1px)]')
+    expect(grid?.className).toContain('min-h-full')
+    expect(grid?.className).toContain('shrink-0')
+    expect(document.getElementById('main')?.contains(nav)).toBe(true)
+  })
+
+  it('lets the keyboard bypass the rail from the skip-link target', async () => {
+    const user = userEvent.setup()
+    await mountAt(`/admin/events/${EVENT_SLUG}`)
+
+    const nav = await screen.findByRole('navigation', { name: 'Event' })
+    const main = document.getElementById('main')
+    // The site skip link lands on `#main`, and the whole rail is rendered
+    // inside it — so "skip to content" used to leave the reader at the top of
+    // the six destination links they had just asked to skip.
+    expect(main?.contains(nav)).toBe(true)
+
+    main?.focus()
+    await user.tab()
+    const skip = screen.getByRole('link', { name: 'Skip navigation' })
+    expect(skip).toHaveFocus()
+
+    const target = document.getElementById(skip.getAttribute('href')?.slice(1) ?? '')
+    expect(target).not.toBeNull()
+    expect(target).toHaveAttribute('tabindex', '-1')
+    expect(target?.contains(nav)).toBe(false)
+    expect(target?.contains(screen.getByRole('heading', { level: 1 }))).toBe(true)
+  })
+
+  it.each([
+    ['ForbiddenState', ForbiddenState],
+    ['DeniedState', DeniedState],
+  ] as const)('closes the %s dead end with the designed state grammar', async (_name, State) => {
+    render(
+      <ThemeProvider>
+        <State />
+      </ThemeProvider>,
+    )
+
+    // C0 §8: a dead end reachable from the product's own links has to be
+    // closed. These two were a title and a sentence in a box with nothing to
+    // press, beside a router 404 that was a fully designed card — same product,
+    // same moment, two faces. They now carry the same three things it does.
+    expect(document.querySelector('[data-slot="paper-stack"]')).not.toBeNull()
+    expect(screen.getByRole('link', { name: 'Go to the start' })).toHaveAttribute('href', '/')
+    expect(screen.getByText(/to search every screen by name/i)).toBeInTheDocument()
+    // The recovery surface renders with no router in scope, deliberately.
+    expect(screen.getByRole('alert')).toBeInTheDocument()
   })
 
   it.each([

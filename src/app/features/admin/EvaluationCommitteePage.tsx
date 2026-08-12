@@ -42,6 +42,7 @@ import {
   usePutRoundScorecard,
   useRemoveCommitteeMember,
   useDistributeRound,
+  useRemindReviewers,
   useRoundPool,
   useRoundScorecard,
   useRunEventRounds,
@@ -204,6 +205,8 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
   const [invalid, setInvalid] = useState(false)
   const [invited, setInvited] = useState<string | null>(null)
   const [pendingRemoval, setPendingRemoval] = useState<CommitteeRosterEntry | null>(null)
+  const remind = useRemindReviewers(slug)
+  const [nudge, setNudge] = useState<string | null>(null)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
   const emailErrorId = 'reviewer-email-error'
 
@@ -326,6 +329,36 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {members.some((member) => member.completedCount < member.assignedCount) ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Beside the counts, because this is the only screen that knows
+                  who is behind. On a mail screen an organizer would have to
+                  cross-reference the roster by hand to write the same list. */}
+              <Button
+                type="button"
+                variant="outline"
+                pending={remind.isPending}
+                onClick={() => {
+                  setNudge(null)
+                  remind.mutate(undefined, {
+                    onSuccess: (result) =>
+                      setNudge(
+                        result.reminded === 0
+                          ? 'Nobody needed a reminder.'
+                          : `Reminded ${result.reminded} reviewer(s) with outstanding reviews.`,
+                      ),
+                  })
+                }}
+              >
+                {remind.isPending ? 'Reminding…' : 'Remind reviewers with outstanding reviews'}
+              </Button>
+              {remind.error != null ? (
+                <AlertLive>Those reminders could not be sent.</AlertLive>
+              ) : null}
+              <StatusLive aria-label="Reminder result">{nudge}</StatusLive>
+            </div>
           ) : null}
 
           <form

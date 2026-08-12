@@ -13,6 +13,7 @@ import {
 } from '../helpers/fixtures'
 import { InMemoryEvaluationRepository } from '../helpers/in-memory-evaluations'
 import {
+  InMemoryCapturedMessageRepository,
   InMemoryContactRepository,
   InMemoryFormVersionRepository,
   InMemorySubmissionRepository,
@@ -45,6 +46,7 @@ let now: string
 let evaluations: InMemoryEvaluationRepository
 let submissions: InMemorySubmissionRepository
 let contacts: InMemoryContactRepository
+let messages: InMemoryCapturedMessageRepository
 let service: EvaluationService
 
 const clock: Clock = { now: () => now }
@@ -70,7 +72,8 @@ beforeEach(() => {
     contact(REVIEWER_ONE_ID, REVIEWER_ONE_EMAIL, 'Reviewer One'),
     contact(REVIEWER_TWO_ID, REVIEWER_TWO_EMAIL, 'Reviewer Two'),
   ])
-  service = new EvaluationService(submissions, contacts, evaluations, clock)
+  messages = new InMemoryCapturedMessageRepository()
+  service = new EvaluationService(submissions, contacts, evaluations, clock, messages)
 })
 
 describe('EvaluationService criteria', () => {

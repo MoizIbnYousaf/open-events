@@ -55,6 +55,7 @@ import {
 import { ApplicationError } from '../errors'
 import type { Clock } from '../ports/clock'
 import type { ContactRepository } from '../ports/contact-repository'
+import type { CapturedMessageRepository } from '../ports/captured-message-repository'
 import type { EvaluationRepository } from '../ports/evaluation-repository'
 import type { SubmissionRepository } from '../ports/submission-repository'
 
@@ -193,6 +194,18 @@ export interface RecuseInput {
   readonly roundId?: EvaluationRoundId
 }
 
+/** Which reviewers to nudge; empty or absent means everyone who is behind. */
+export interface RemindReviewersInput {
+  readonly contactIds?: readonly ContactId[]
+}
+
+/** What the nudge did, in the terms an organizer asked in. */
+export interface RemindReviewersResultDto {
+  readonly reminded: number
+  /** Skipped because they owe nothing — reported, never counted as sent. */
+  readonly upToDate: number
+}
+
 export interface AssignEvaluatorInput {
   readonly evaluatorEmail: string
   /** Defaults to the live round: the highest-numbered open round. */
@@ -241,17 +254,20 @@ export class EvaluationService {
   readonly #contacts: ContactRepository
   readonly #evaluations: EvaluationRepository
   readonly #clock: Clock
+  readonly #messages: CapturedMessageRepository
 
   constructor(
     submissions: SubmissionRepository,
     contacts: ContactRepository,
     evaluations: EvaluationRepository,
     clock: Clock,
+    messages: CapturedMessageRepository,
   ) {
     this.#submissions = submissions
     this.#contacts = contacts
     this.#evaluations = evaluations
     this.#clock = clock
+    this.#messages = messages
   }
 
   /**
@@ -591,6 +607,59 @@ export class EvaluationService {
       considered: submissions.length,
       unassigned,
     }
+  }
+
+  /**
+   * Nudges the reviewers who still owe reviews.
+   *
+   * The roster already knows who is behind — it is the only screen that does —
+   * so the nudge belongs next to the number rather than on a mail screen an
+   * organizer would have to cross-reference by hand.
+   *
+   * Everyone up to date is skipped rather than mailed, and the count of each is
+   * reported: an organizer who nudges a committee that has finished should be
+   * told nobody needed it, not shown a success message that means nothing.
+   *
+   * Unlike an acceptance, a reminder is deliberately repeatable. Nudging twice
+   * is a thing programme chairs do on purpose as a deadline approaches, so the
+   * message is not keyed to a single delivery — the log keeps every nudge, and
+   * when it was sent.
+   */
+  async remindReviewers(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    input: RemindReviewersInput = {},
+  ): Promise<RemindReviewersResultDto> {
+    const roster = await this.#evaluations.listCommitteeRoster(eventId)
+    const only = input.contactIds
+    const chosen =
+      only === undefined || only.length === 0
+        ? roster
+        : roster.filter((member) => only.includes(member.contactId))
+
+    const outstanding = chosen.filter(
+      (member) => member.assignedCount > member.completedCount && member.email !== '',
+    )
+    const now = this.#clock.now()
+    for (const member of outstanding) {
+      const owed = member.assignedCount - member.completedCount
+      await this.#messages.save({
+        id: crypto.randomUUID(),
+        eventId,
+        toEmail: member.email,
+        subject: 'A reminder about the proposals waiting for your review',
+        // The number is the whole point of the message: "you have reviews
+        // outstanding" tells a reviewer nothing they can act on, and "2 of 3"
+        // tells them how much of an evening it will take.
+        body: `You have ${owed} of ${member.assignedCount} review(s) still to complete. Your queue is at /evaluations.`,
+        createdAt: now,
+        kind: 'reminder',
+        // No submission: this is about their queue, not about one proposal —
+        // which is also what tells the two kinds of reminder apart in the log.
+        submissionId: null,
+      })
+    }
+    return { reminded: outstanding.length, upToDate: chosen.length - outstanding.length }
   }
 
   /** The committee members reading in this round. */

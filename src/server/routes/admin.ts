@@ -896,6 +896,34 @@ export async function handlePutRoundPool(context: ServerContext): Promise<Respon
 
 
 /**
+ * POST .../evaluations/committee/remind: nudge the reviewers who still owe
+ * reviews. An empty or absent list means everyone who is behind.
+ */
+export async function handleRemindReviewers(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const contactIds = body.contactIds
+  if (contactIds !== undefined) {
+    if (!Array.isArray(contactIds) || !contactIds.every((id) => typeof id === 'string')) {
+      return validationFailedResponse(context)
+    }
+  }
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(
+    await deps.evaluations.remindReviewers(actor, eventId, {
+      ...(Array.isArray(contactIds) ? { contactIds: contactIds as string[] } : {}),
+    }),
+  )
+}
+
+/**
  * POST .../rounds/:roundId/distribute: shares this round's reading out among
  * its reviewers in one action, within an optional per-reviewer cap and an
  * optional single track.
@@ -1157,6 +1185,13 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handlePutRoundPool,
+  )
+  app.post(
+    '/api/admin/events/:slug/evaluations/committee/remind',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleRemindReviewers,
   )
   app.post(
     '/api/admin/events/:slug/rounds/:roundId/distribute',

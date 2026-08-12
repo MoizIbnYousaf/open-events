@@ -24,6 +24,7 @@ import {
   type RoundConfigInput,
   type RoundCriterionInput,
   distributeRound,
+  remindReviewers,
 } from '../api/admin-evaluations'
 import type { DistributeRoundBody } from '../api/admin-evaluations'
 import type { EventSlug, EvaluationRoundId, SubmissionId } from '../../domain'
@@ -68,6 +69,11 @@ export function useConfigureRound(slug: EventSlug, roundId: string) {
       await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.rounds(slug) })
     },
   })
+}
+
+/** Nudging changes nothing an organizer is looking at, so nothing is refetched. */
+export function useRemindReviewers(slug: EventSlug) {
+  return useServerMutation({ mutationFn: () => remindReviewers(slug) })
 }
 
 /**

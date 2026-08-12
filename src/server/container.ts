@@ -157,6 +157,7 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
       contacts,
       createEvaluationRepository(db),
       clock,
+      createCapturedMessageRepository(db),
     ),
     capturedMessages: new CapturedMessageService(createCapturedMessageRepository(db)),
     documents:

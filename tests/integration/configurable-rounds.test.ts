@@ -1514,3 +1514,107 @@ describe('a round stops taking answers when its window says so', () => {
     expect((await scoreAs(reviewer, submissionId)).status).toBe(200)
   })
 })
+
+/**
+ * Chasing the reviewers who are behind.
+ *
+ * The roster is the only screen that knows who still owes reviews, so the nudge
+ * belongs beside that number rather than on a mail screen an organizer would
+ * have to cross-reference by hand.
+ */
+describe('an organizer nudges the reviewers who are behind', () => {
+  async function remind(cookie: string, body: Record<string, unknown> = {}): Promise<Response> {
+    return app.request(
+      `${COMMITTEE_PATH}/remind`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(cookie),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+      bindings(),
+    )
+  }
+
+  it('mails the reviewer who owes work, and says how much is outstanding', async () => {
+    const organizer = await organizerCookie()
+    await seedAssignedReviewer(organizer, 'behind.reviewer@example.test')
+
+    const result = (await (await remind(organizer)).json()) as {
+      reminded: number
+      upToDate: number
+    }
+
+    expect(result.reminded).toBe(1)
+    // Scoped to the nudge: this reviewer's inbox also holds the magic-link
+    // mail that signed them in, and picking the first row would assert against
+    // whichever message happened to be written first.
+    const mail = await env.DB.prepare(
+      `SELECT subject, body, kind, submission_id FROM captured_messages
+        WHERE to_email = ? AND kind = 'reminder'`,
+    )
+      .bind('behind.reviewer@example.test')
+      .first<{ subject: string; body: string; kind: string; submission_id: string | null }>()
+    expect(mail?.kind).toBe('reminder')
+    // No submission: this reminder is about their queue, which is also what
+    // tells the two kinds of reminder apart in the log.
+    expect(mail?.submission_id).toBeNull()
+    // The number is the point. "You have reviews outstanding" tells a reviewer
+    // nothing they can act on; "1 of 1" tells them how long it will take.
+    expect(mail?.body).toContain('1 of 1')
+  })
+
+  it('skips a reviewer who owes nothing rather than mailing them', async () => {
+    const organizer = await organizerCookie()
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(
+      organizer,
+      'done.reviewer@example.test',
+    )
+    await app.request(
+      '/api/public/evaluations',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(reviewer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ submissionId, rating: 4 }),
+      },
+      bindings(),
+    )
+
+    const result = (await (await remind(organizer)).json()) as {
+      reminded: number
+      upToDate: number
+    }
+
+    // Reported as up to date rather than counted as sent: an organizer nudging
+    // a committee that has finished should be told nobody needed it.
+    expect(result.reminded).toBe(0)
+    expect(result.upToDate).toBeGreaterThanOrEqual(1)
+  })
+
+  it('is organizer-only and same-origin only', async () => {
+    const organizer = await organizerCookie()
+
+    expect((await remind('')).status).toBe(401)
+    const crossOrigin = await app.request(
+      `${COMMITTEE_PATH}/remind`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(organizer),
+          origin: 'https://evil.test',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+      bindings(),
+    )
+    expect(crossOrigin.status).toBe(403)
+  })
+})

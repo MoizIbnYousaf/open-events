@@ -31,6 +31,7 @@ const ROUND_ID = 'round-1'
 const SCORECARD_PATH = `${ROUNDS_PATH}/${ROUND_ID}/scorecard`
 const POOL_PATH = `${ROUNDS_PATH}/${ROUND_ID}/pool`
 const DISTRIBUTE_PATH = `${ROUNDS_PATH}/${ROUND_ID}/distribute`
+const REMIND_PATH = `${COMMITTEE_PATH}/remind`
 
 interface RoundBody {
   id: string
@@ -55,7 +56,8 @@ const SEATED = [
     email: 'reviewer.one@example.test',
     name: 'Reviewer One',
     addedAt: '2026-05-20T09:00:00.000Z',
-    assignedCount: 0,
+    // Behind on their reading, which is what the nudge control keys off.
+    assignedCount: 2,
     completedCount: 0,
   },
   {
@@ -112,6 +114,9 @@ function defaultHandler(url: string, init?: RequestInit): Response {
       id: `criterion-${index}`,
     }))
     return jsonResponse(scorecard)
+  }
+  if (method === 'POST' && url === REMIND_PATH) {
+    return jsonResponse({ reminded: 2, upToDate: 1 })
   }
   if (method === 'POST' && url === DISTRIBUTE_PATH) {
     return jsonResponse({ assigned: 6, reviewers: 3, considered: 4, unassigned: 1 })
@@ -425,5 +430,20 @@ describe('an organizer shares the round out from the committee page', () => {
     // The shortfall is stated. A cap set too low is invisible in a green tick,
     // and an organizer who is not told will believe the round is fully staffed.
     expect(await screen.findByText(/1 proposal\(s\) still need a reader/i)).toBeInTheDocument()
+  })
+})
+
+describe('an organizer chases the reviewers who are behind', () => {
+  it('offers the nudge beside the counts, and reports what it did', async () => {
+    const user = userEvent.setup()
+    mountCommittee()
+
+    await user.click(
+      await screen.findByRole('button', { name: /remind reviewers with outstanding reviews/i }),
+    )
+
+    // Named numbers, not a bare success: an organizer nudging a committee that
+    // has already finished should be told nobody needed it.
+    expect(await screen.findByText(/reminded 2 reviewer\(s\)/i)).toBeInTheDocument()
   })
 })

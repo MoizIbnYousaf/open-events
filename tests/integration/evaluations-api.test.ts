@@ -79,6 +79,9 @@ interface RowBody {
   readonly comments: string | null
   readonly updatedAt: string | null
   readonly previousRounds: readonly PreviousRoundBody[]
+  /** Whose proposal it is, and whether this round hides that (0017). */
+  readonly speakerName: string | null
+  readonly anonymized: boolean
 }
 
 interface CriterionSummaryBody {
@@ -130,6 +133,12 @@ function unscoredRow(overrides: Partial<RowBody> = {}): RowBody {
     comments: null,
     updatedAt: null,
     previousRounds: [],
+    // Whose proposal it is, and whether the round hides that. A round nobody
+    // has made blind names the speaker; migration 0017 added both fields.
+    // The seeded speaker contact has no display name, so the email is the
+    // identifying fact the product actually holds for them.
+    speakerName: SPEAKER_EMAIL,
+    anonymized: false,
     ...overrides,
   }
 }

@@ -31,6 +31,26 @@ export interface EvaluationRow {
   readonly comments: string | null
   readonly updatedAt: string | null
   readonly previousRounds: readonly EvaluationPreviousRound[]
+  /**
+   * The round's own questions, when it has any. Absent on a round using the
+   * single rating it always had, which is how the form knows which of the two
+   * it is rendering.
+   */
+  readonly criteria?: readonly EvaluationRowCriterion[]
+  /** Whose proposal this is — absent in a blind round, where nobody may know. */
+  readonly speakerName?: string | null
+  readonly anonymized?: boolean
+}
+
+/** One question on the reviewer's form, with whatever they have answered. */
+export interface EvaluationRowCriterion {
+  readonly id: string
+  readonly label: string
+  readonly kind: 'rating' | 'select' | 'text'
+  readonly weight: number | null
+  readonly scale: { readonly min: number; readonly max: number } | null
+  readonly options: readonly string[] | null
+  readonly value: number | string | null
 }
 
 /**
@@ -39,8 +59,11 @@ export interface EvaluationRow {
  */
 export interface SubmitEvaluationInput {
   readonly submissionId: string
-  readonly rating: number
+  /** The single rating, on a round that has no questions of its own. */
+  readonly rating?: number
   readonly comments?: string
+  /** One entry per question, on a round that carries a scorecard. */
+  readonly answers?: readonly { readonly criterionId: string; readonly value: unknown }[]
 }
 
 /**

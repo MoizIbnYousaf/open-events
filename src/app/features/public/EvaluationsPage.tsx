@@ -5,7 +5,14 @@ import { useRouter } from '@tanstack/react-router'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../../../components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '../../../components/ui/card'
 import { Field, FieldLabel } from '../../../components/ui/field'
 import { NativeSelect } from '../../../components/ui/native-select'
 import {
@@ -29,6 +36,7 @@ import {
   usePublicEvaluations,
   useSubmitEvaluation,
   type EvaluationRow,
+  type EvaluationRowCriterion,
 } from '../../queries/public-evaluations'
 import { ExpiredSessionState, ForbiddenState } from '../admin/AdminStates'
 
@@ -205,6 +213,181 @@ function SummaryRow({ label, value }: { readonly label: string; readonly value: 
  * rating-only edit safe: the justification the evaluator already wrote is on
  * screen and travels back with the rating instead of being silently dropped.
  */
+/**
+ * Who wrote the proposal, or the fact that the reviewer may not know.
+ *
+ * Blind review is a rule, not missing data — a reviewer who simply sees no name
+ * cannot tell which it is, and would reasonably wonder whether something failed
+ * to load. So the round says so.
+ */
+function SpeakerLine({ row }: { readonly row: EvaluationRow }) {
+  if (row.anonymized === true) {
+    return (
+      <CardDescription>Blind review — the speaker is not shown in this round.</CardDescription>
+    )
+  }
+  if (row.speakerName === null || row.speakerName === undefined || row.speakerName === '') {
+    return null
+  }
+  return <CardDescription>{`Proposed by ${row.speakerName}`}</CardDescription>
+}
+
+/**
+ * The form for a round that asks its own questions.
+ *
+ * One control per question, of the kind the question is: a rating on its scale,
+ * a choice among the options the organizer set, prose in a box. Rendering all
+ * three as text fields would make the values round-trip and make the form
+ * unusable, which is the failure this whole slice exists to correct.
+ *
+ * Every field is seeded from what is already stored, so returning to a review
+ * shows the answers rather than a blank form the reviewer has to fill twice.
+ */
+function TypedEvaluationCard({
+  row,
+  criteria,
+  onAuthFailure,
+}: {
+  readonly row: EvaluationRow
+  readonly criteria: readonly EvaluationRowCriterion[]
+  readonly onAuthFailure: (code: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const submit = useSubmitEvaluation()
+  const [values, setValues] = useState<Record<string, number | string | null>>(() =>
+    Object.fromEntries(criteria.map((criterion) => [criterion.id, criterion.value])),
+  )
+  const [submittedMessage, setSubmittedMessage] = useState<string | null>(null)
+  const closed = row.roundStatus === 'closed'
+
+  const handleSubmit = () => {
+    if (submit.isPending) return
+    setSubmittedMessage(null)
+    // Only answered questions travel: an untouched field is not an answer of
+    // "nothing", and sending one would store a blank the reviewer never gave.
+    const answers = criteria.flatMap((criterion) => {
+      const value = values[criterion.id]
+      if (value === null || value === undefined || value === '') return []
+      return [{ criterionId: criterion.id, value }]
+    })
+    submit.mutate(
+      { submissionId: row.submissionId, answers },
+      {
+        onSuccess: () => {
+          setSubmittedMessage('Review saved')
+          submit.reset()
+          void queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all })
+        },
+        onError: (error) => {
+          setSubmittedMessage(null)
+          const code = getApiErrorCode(error)
+          if (code === 'unauthorized' || code === 'forbidden') onAuthFailure(code)
+        },
+      },
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle className="min-w-0 flex-1">{row.sessionTitle}</CardTitle>
+          <Badge dot variant={closed ? 'outline' : 'secondary'}>
+            {`Round ${row.roundNumber}: ${row.roundName}${closed ? ' (closed)' : ''}`}
+          </Badge>
+        </div>
+        <SpeakerLine row={row} />
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {criteria.map((criterion) => {
+          const fieldId = `criterion-${criterion.id}`
+          const value = values[criterion.id]
+          return (
+            <Field key={criterion.id}>
+              <FieldLabel htmlFor={fieldId}>
+                {criterion.label}
+                {/* The weight is part of the question: a reviewer deciding how
+                    much care to spend is entitled to know what counts. */}
+                {criterion.kind === 'rating' && criterion.weight !== null
+                  ? ` (weight ${criterion.weight})`
+                  : ''}
+              </FieldLabel>
+              {criterion.kind === 'rating' ? (
+                <NativeSelect
+                  id={fieldId}
+                  disabled={closed}
+                  value={value === null || value === undefined ? '' : String(value)}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      [criterion.id]:
+                        event.target.value === '' ? null : Number(event.target.value),
+                    }))
+                  }
+                >
+                  <option value="">Not rated</option>
+                  {ratingChoices(criterion).map((choice) => (
+                    <option key={choice} value={String(choice)}>
+                      {choice}
+                    </option>
+                  ))}
+                </NativeSelect>
+              ) : criterion.kind === 'select' ? (
+                <NativeSelect
+                  id={fieldId}
+                  disabled={closed}
+                  value={value === null || value === undefined ? '' : String(value)}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      [criterion.id]: event.target.value === '' ? null : event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Not chosen</option>
+                  {(criterion.options ?? []).map((option: string) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </NativeSelect>
+              ) : (
+                <Textarea
+                  id={fieldId}
+                  rows={3}
+                  disabled={closed}
+                  value={value === null || value === undefined ? '' : String(value)}
+                  onChange={(event) =>
+                    setValues((current) => ({ ...current, [criterion.id]: event.target.value }))
+                  }
+                />
+              )}
+            </Field>
+          )
+        })}
+
+        {submit.error != null ? (
+          <AlertLive>That review could not be saved. Check the answers and try again.</AlertLive>
+        ) : null}
+        <StatusLive aria-label="Review save state">{submittedMessage}</StatusLive>
+      </CardContent>
+      <CardFooter>
+        <Button type="button" pending={submit.isPending} disabled={closed} onClick={handleSubmit}>
+          {submit.isPending ? 'Saving…' : 'Save review'}
+        </Button>
+      </CardFooter>
+    </Card>
+  )
+}
+
+/** The rungs a rating offers, from its own scale rather than a fixed 1–5. */
+function ratingChoices(criterion: EvaluationRowCriterion): readonly number[] {
+  const scale = criterion.scale ?? { min: 1, max: 5 }
+  const choices: number[] = []
+  for (let value = scale.min; value <= scale.max; value += 1) choices.push(value)
+  return choices
+}
+
 function EvaluationCard({
   row,
   onAuthFailure,
@@ -264,6 +447,13 @@ function EvaluationCard({
         },
       },
     )
+  }
+
+  // A round that asks its own questions gets its own form. The legacy single
+  // rating stays exactly as it was for every round that has none, so nothing an
+  // evaluator already knows how to use changes underneath them.
+  if (row.criteria !== undefined && row.criteria.length > 0) {
+    return <TypedEvaluationCard row={row} criteria={row.criteria} onAuthFailure={onAuthFailure} />
   }
 
   return (

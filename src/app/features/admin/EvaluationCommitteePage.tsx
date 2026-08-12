@@ -14,6 +14,9 @@ import {
 } from '../../../components/ui/card'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { ClipboardIcon } from '../../../components/ui/icons'
+import { NativeSelect } from '../../../components/ui/native-select'
+import { Textarea } from '../../../components/ui/textarea'
+import { SectionHeading } from '../../../components/ui/section-heading'
 import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import {
@@ -29,13 +32,22 @@ import type { EventSlug } from '../../../domain'
 import {
   useAddCommitteeMember,
   useCommittee,
+  useConfigureRound,
+  usePutRoundPool,
+  usePutRoundScorecard,
+  useRoundPool,
+  useRoundScorecard,
   useDefineEvaluationCriteria,
   useEvaluationCriteria,
   useEvaluationRounds,
   useRemoveCommitteeMember,
   useRunEventRounds,
 } from '../../queries/admin-evaluations'
-import type { CommitteeRosterEntry } from '../../api/admin-evaluations'
+import type {
+  CommitteeRosterEntry,
+  RoundCriterion,
+  RoundCriterionInput,
+} from '../../api/admin-evaluations'
 import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
@@ -92,6 +104,11 @@ function EvaluationCommitteeScreen() {
   const slug = params.slug as EventSlug | undefined
   const criteria = useEvaluationCriteria(slug)
   const rounds = useEvaluationRounds(slug)
+  // Read once here and handed down: the round editors offer the committee as
+  // the pool to choose from, and a second fetch per round would ask the same
+  // question many times over.
+  const committee = useCommittee(slug)
+  const committeeRoster = committee.data ?? []
 
   useEffect(() => {
     document.title = 'Review committee — SpeakerOps'
@@ -155,7 +172,7 @@ function EvaluationCommitteeScreen() {
       <CommitteeHeading />
       <ReviewersSection slug={slug} />
       <CriteriaSection slug={slug} defined={criteria.data ?? []} />
-      <RoundsSection slug={slug} rounds={rounds.data ?? []} />
+      <RoundsSection slug={slug} rounds={rounds.data ?? []} committee={committeeRoster} />
     </div>
   )
 }
@@ -537,15 +554,335 @@ interface ListedRound {
   readonly number: number
   readonly name: string
   readonly status: 'open' | 'closed'
+  /** The round's own configuration; null/false on one nobody has set. */
+  readonly opensAt: string | null
+  readonly closesAt: string | null
+  readonly anonymize: boolean
 }
 
 /** The rounds, and the two moves an organizer can make on them. */
+/**
+ * One round's own settings, scorecard and reviewers.
+ *
+ * A round used to be a number, a name and open-or-closed, sharing one rubric
+ * with every other round of the event — so a shortlisting pass and a final pass
+ * could not ask different questions. Everything a round can differ in now lives
+ * here, under the round it belongs to rather than on a separate screen where an
+ * organizer would have to remember which round they were editing.
+ */
+function RoundEditor({
+  slug,
+  round,
+  committee,
+}: {
+  readonly slug: EventSlug
+  readonly round: ListedRound
+  readonly committee: readonly CommitteeRosterEntry[]
+}) {
+  const configure = useConfigureRound(slug, round.id)
+  const scorecard = useRoundScorecard(slug, round.id)
+  const saveScorecard = usePutRoundScorecard(slug, round.id)
+  const pool = useRoundPool(slug, round.id)
+  const savePool = usePutRoundPool(slug, round.id)
+
+  const [name, setName] = useState(round.name)
+  const [opensAt, setOpensAt] = useState(toLocalInput(round.opensAt))
+  const [closesAt, setClosesAt] = useState(toLocalInput(round.closesAt))
+  const [anonymize, setAnonymize] = useState(round.anonymize === true)
+
+  const [draft, setDraft] = useState<RoundCriterionInput[]>([])
+  const [label, setLabel] = useState('')
+  const [kind, setKind] = useState<'rating' | 'select' | 'text'>('rating')
+  const [weight, setWeight] = useState('1')
+  const [choices, setChoices] = useState('')
+  const [selected, setSelected] = useState<readonly string[] | null>(null)
+
+  // The saved scorecard is the starting point for editing it; the local draft
+  // only takes over once the organizer has actually changed something.
+  const questions = draft.length > 0 ? draft : (scorecard.data ?? []).map(toCriterionInput)
+  const pooled = selected ?? (pool.data ?? []).map((entry) => entry.contactId)
+
+  return (
+    <section aria-labelledby={`round-${round.id}-heading`} className="grid gap-3">
+      <SectionHeading id={`round-${round.id}-heading`}>
+        {`Round ${round.number}: ${round.name}`}
+      </SectionHeading>
+
+      <Card>
+        <CardContent className="grid gap-3">
+          <Field>
+            <FieldLabel htmlFor={`round-${round.id}-name`}>Round name</FieldLabel>
+            <Input
+              id={`round-${round.id}-name`}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+          {/* Local wall-clock in, canonical UTC out. The organizer types the
+              time they mean; the wire carries the instant every other surface
+              in this product speaks. */}
+          <Field>
+            <FieldLabel htmlFor={`round-${round.id}-opens`}>Reviewing opens</FieldLabel>
+            <Input
+              id={`round-${round.id}-opens`}
+              type="datetime-local"
+              value={opensAt}
+              onChange={(event) => setOpensAt(event.target.value)}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`round-${round.id}-closes`}>Reviewing closes</FieldLabel>
+            <Input
+              id={`round-${round.id}-closes`}
+              type="datetime-local"
+              value={closesAt}
+              onChange={(event) => setClosesAt(event.target.value)}
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={anonymize}
+              onChange={(event) => setAnonymize(event.target.checked)}
+            />
+            Hide reviewer identities (blind review)
+          </label>
+          {configure.error != null ? (
+            <AlertLive>That round could not be saved. Check the dates and try again.</AlertLive>
+          ) : null}
+          <div>
+            <Button
+              type="button"
+              pending={configure.isPending}
+              onClick={() =>
+                configure.mutate({
+                  name,
+                  opensAt: toInstant(opensAt),
+                  closesAt: toInstant(closesAt),
+                  anonymize,
+                })
+              }
+            >
+              {configure.isPending ? 'Saving…' : 'Save round'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle level={3}>Scorecard</CardTitle>
+          <CardDescription>
+            What reviewers are asked in this round. Only a rating is averaged — a choice and a
+            note are recorded and shown, but there is no honest way to average them.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {questions.length === 0 ? (
+            <EmptyState
+              icon={<ClipboardIcon aria-hidden />}
+              title="No questions yet"
+              description="Reviewers see the event's default rating until this round asks something of its own."
+            />
+          ) : (
+            <ul className="grid gap-1" aria-label="Scorecard questions">
+              {questions.map((question, index) => (
+                <li
+                  key={`${question.label}-${index}`}
+                  className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                >
+                  <span>{question.label}</span>
+                  <Badge variant="outline">
+                    {question.kind === 'rating'
+                      ? `Rating · weight ${question.weight ?? 1}`
+                      : question.kind === 'select'
+                        ? 'Choice'
+                        : 'Free text'}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <Field>
+            <FieldLabel htmlFor={`round-${round.id}-question`}>Question</FieldLabel>
+            <Input
+              id={`round-${round.id}-question`}
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`round-${round.id}-kind`}>Answer type</FieldLabel>
+            <NativeSelect
+              id={`round-${round.id}-kind`}
+              value={kind}
+              onChange={(event) => setKind(event.target.value as 'rating' | 'select' | 'text')}
+            >
+              <option value="rating">Rating</option>
+              <option value="select">Choice</option>
+              <option value="text">Free text</option>
+            </NativeSelect>
+          </Field>
+          {/* Only a rating is offered a weight. Showing the field for a choice
+              or a note would invite an organizer to set a number nothing can
+              use, and the server would then have to refuse what the form
+              suggested. */}
+          {kind === 'rating' ? (
+            <Field>
+              {/* "Rating weight", not "Weight": the event-level rubric above
+                  has a Weight field too, and two identically named controls on
+                  one page are ambiguous to anyone navigating by label. */}
+              <FieldLabel htmlFor={`round-${round.id}-weight`}>Rating weight</FieldLabel>
+              <Input
+                id={`round-${round.id}-weight`}
+                type="number"
+                min={1}
+                value={weight}
+                onChange={(event) => setWeight(event.target.value)}
+              />
+            </Field>
+          ) : null}
+          {kind === 'select' ? (
+            <Field>
+              <FieldLabel htmlFor={`round-${round.id}-choices`}>Choices (one per line)</FieldLabel>
+              <Textarea
+                id={`round-${round.id}-choices`}
+                rows={3}
+                value={choices}
+                onChange={(event) => setChoices(event.target.value)}
+              />
+            </Field>
+          ) : null}
+          {saveScorecard.error != null ? (
+            <AlertLive>That scorecard could not be saved.</AlertLive>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (label.trim() === '') return
+                setDraft([
+                  ...questions,
+                  {
+                    label: label.trim(),
+                    kind,
+                    weight: kind === 'rating' ? Number(weight) : null,
+                    ...(kind === 'rating' ? { scale: { min: 1, max: 5 } } : {}),
+                    ...(kind === 'select'
+                      ? {
+                          options: choices
+                            .split('\n')
+                            .map((choice) => choice.trim())
+                            .filter((choice) => choice !== ''),
+                        }
+                      : {}),
+                  },
+                ])
+                setLabel('')
+                setChoices('')
+              }}
+            >
+              Add question
+            </Button>
+            <Button
+              type="button"
+              pending={saveScorecard.isPending}
+              onClick={() => saveScorecard.mutate(questions)}
+            >
+              {saveScorecard.isPending ? 'Saving…' : 'Save scorecard'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle level={3}>Reviewers in this round</CardTitle>
+          <CardDescription>
+            Which committee members read this time. Everyone here holds a seat — the seat is what
+            grants access, and this narrows it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {committee.length === 0 ? (
+            <CardDescription>Add reviewers above before pooling them into a round.</CardDescription>
+          ) : (
+            <ul className="grid gap-1" aria-label="Reviewers in this round">
+              {committee.map((member) => (
+                <li key={member.contactId}>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={pooled.includes(member.contactId)}
+                      onChange={(event) =>
+                        setSelected(
+                          event.target.checked
+                            ? [...pooled, member.contactId]
+                            : pooled.filter((id) => id !== member.contactId),
+                        )
+                      }
+                    />
+                    {member.name || member.email}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          {savePool.error != null ? (
+            <AlertLive>Those reviewers could not be saved to this round.</AlertLive>
+          ) : null}
+          <div>
+            <Button
+              type="button"
+              pending={savePool.isPending}
+              onClick={() => savePool.mutate(pooled)}
+            >
+              {savePool.isPending ? 'Saving…' : 'Save reviewers'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
+  )
+}
+
+/**
+ * A stored instant as a `datetime-local` value, or blank when there is none.
+ *
+ * Tolerates an absent field as well as a null one. A payload from a build that
+ * predates these columns should render an empty date box, not take the whole
+ * committee page down with it — a crash here blanks every other control on the
+ * screen too.
+ */
+function toLocalInput(instant: string | null | undefined): string {
+  return typeof instant === 'string' ? instant.slice(0, 16) : ''
+}
+
+/** A `datetime-local` value as the canonical instant the wire carries. */
+function toInstant(local: string): string | null {
+  return local === '' ? null : `${local}:00.000Z`
+}
+
+function toCriterionInput(criterion: RoundCriterion): RoundCriterionInput {
+  return {
+    label: criterion.label,
+    kind: criterion.kind,
+    weight: criterion.weight,
+    scale: criterion.scale,
+    options: criterion.options,
+  }
+}
+
 function RoundsSection({
   slug,
   rounds,
+  committee,
 }: {
   readonly slug: EventSlug
   readonly rounds: readonly ListedRound[]
+  readonly committee: readonly CommitteeRosterEntry[]
 }) {
   const run = useRunEventRounds(slug)
   const [confirmRound, setConfirmRound] = useState<'open' | 'close' | null>(null)
@@ -561,7 +898,8 @@ function RoundsSection({
   const nextNumber = rounds.reduce((best, round) => Math.max(best, round.number), 0) + 1
 
   return (
-    <Card>
+    <div className="grid gap-4">
+      <Card>
       <CardHeader>
         <CardTitle level={2} ref={headingRef} tabIndex={-1} className="outline-hidden">
           Review rounds
@@ -671,6 +1009,14 @@ function RoundsSection({
           }
         />
       </CardFooter>
-    </Card>
+      </Card>
+
+      {/* Each round's own settings, scorecard and reviewers, under the round
+          they belong to rather than on a separate screen where an organizer
+          would have to remember which round they were editing. */}
+      {rounds.map((round) => (
+        <RoundEditor key={round.id} slug={slug} round={round} committee={committee} />
+      ))}
+    </div>
   )
 }

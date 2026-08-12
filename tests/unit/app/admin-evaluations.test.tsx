@@ -32,6 +32,9 @@ const ROUND_ONE = {
   number: 1,
   name: 'Round 1',
   status: 'closed',
+  opensAt: null,
+  closesAt: null,
+  anonymize: false,
 } as const
 
 const ROUND_TWO = {
@@ -40,6 +43,9 @@ const ROUND_TWO = {
   number: 2,
   name: 'Round 2',
   status: 'open',
+  opensAt: null,
+  closesAt: null,
+  anonymize: false,
 } as const
 
 const ASSIGNMENT = {
@@ -140,6 +146,15 @@ function mountPanel() {
 
 function defaultHandler(url: string, init?: RequestInit): Response {
   const method = init?.method ?? 'GET'
+  // The committee page now also reads its roster and, per round, that round's
+  // scorecard and reviewer pool. A stub that answers none of them puts the page
+  // in its error state and every assertion below measures that instead.
+  if (method === 'GET' && url === `/api/admin/events/${SLUG}/evaluations/committee`) {
+    return jsonResponse([])
+  }
+  if (method === 'GET' && /\/rounds\/[^/]+\/(scorecard|pool)$/.test(url)) {
+    return jsonResponse([])
+  }
   if (method === 'GET' && url === ROUNDS_PATH) return jsonResponse([ROUND_ONE, ROUND_TWO])
   if (method === 'GET' && url === ASSIGNMENTS_PATH) return jsonResponse([ASSIGNMENT])
   if (method === 'GET' && url === SUMMARY_PATH) return jsonResponse(SUMMARY)
@@ -492,8 +507,10 @@ describe('organizer review committee page', () => {
 
     await screen.findByText('Overall fit')
     await user.type(screen.getByLabelText(/criterion name/i), 'Speaker experience')
-    await user.clear(screen.getByLabelText(/weight/i))
-    await user.type(screen.getByLabelText(/weight/i), '3')
+    // Exact: the round scorecard below has a "Rating weight" of its own, and
+    // this test is about the EVENT rubric's weight.
+    await user.clear(screen.getByLabelText('Weight'))
+    await user.type(screen.getByLabelText('Weight'), '3')
     await user.click(screen.getByRole('button', { name: /add criterion/i }))
 
     await waitFor(() => expect(callsTo(CRITERIA_PATH, 'POST')).toBe(1))

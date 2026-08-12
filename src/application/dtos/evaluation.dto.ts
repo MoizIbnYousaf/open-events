@@ -117,6 +117,14 @@ export interface EvaluationRowDto {
    * three things" from "this round asks the one thing it always did".
    */
   readonly criteria?: readonly EvaluationRowCriterionDto[]
+  /**
+   * Whose proposal this is — null in a blind round, where the reviewer is not
+   * meant to know. Withheld on the SERVER rather than hidden by the screen: a
+   * name that reaches the browser has been disclosed whatever the CSS says.
+   */
+  readonly speakerName?: string | null
+  /** True when this round is blind, so the surface can say why the name is absent. */
+  readonly anonymized?: boolean
 }
 
 /** One question on a reviewer's form, with whatever they have answered so far. */

@@ -138,3 +138,83 @@ export function getEvaluationSummary(
     `/api/admin/events/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(submissionId)}/evaluation-summary`,
   )
 }
+
+/** One question on a round's scorecard, as the organizer surface reads it. */
+export interface RoundCriterion {
+  readonly id: string
+  readonly label: string
+  readonly kind: 'rating' | 'select' | 'text'
+  readonly weight: number | null
+  readonly position: number
+  readonly scale: { readonly min: number; readonly max: number } | null
+  readonly options: readonly string[] | null
+}
+
+/** A proposed question; the id and position are the server's to assign. */
+export interface RoundCriterionInput {
+  readonly label: string
+  readonly kind: 'rating' | 'select' | 'text'
+  readonly weight: number | null
+  readonly scale?: { readonly min: number; readonly max: number } | null
+  readonly options?: readonly string[] | null
+}
+
+export interface RoundConfigInput {
+  readonly name: string
+  readonly opensAt: string | null
+  readonly closesAt: string | null
+  readonly anonymize: boolean
+}
+
+function roundPath(slug: EventSlug, roundId: string): string {
+  return `/api/admin/events/${encodeURIComponent(slug)}/rounds/${encodeURIComponent(roundId)}`
+}
+
+/** PUT the round's name, window and blindness. */
+export function configureRound(
+  slug: EventSlug,
+  roundId: string,
+  config: RoundConfigInput,
+): Promise<unknown> {
+  return requestJson(roundPath(slug, roundId), {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  })
+}
+
+export function getRoundScorecard(
+  slug: EventSlug,
+  roundId: string,
+): Promise<readonly RoundCriterion[]> {
+  return requestJson(`${roundPath(slug, roundId)}/scorecard`)
+}
+
+/** Replaces the round's questions wholesale, as the screen edits them. */
+export function putRoundScorecard(
+  slug: EventSlug,
+  roundId: string,
+  criteria: readonly RoundCriterionInput[],
+): Promise<readonly RoundCriterion[]> {
+  return requestJson(`${roundPath(slug, roundId)}/scorecard`, {
+    method: 'PUT',
+    body: JSON.stringify({ criteria }),
+  })
+}
+
+export function getRoundPool(
+  slug: EventSlug,
+  roundId: string,
+): Promise<readonly { readonly contactId: string }[]> {
+  return requestJson(`${roundPath(slug, roundId)}/pool`)
+}
+
+export function putRoundPool(
+  slug: EventSlug,
+  roundId: string,
+  contactIds: readonly string[],
+): Promise<readonly { readonly contactId: string }[]> {
+  return requestJson(`${roundPath(slug, roundId)}/pool`, {
+    method: 'PUT',
+    body: JSON.stringify({ contactIds }),
+  })
+}

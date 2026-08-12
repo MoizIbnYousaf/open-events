@@ -1010,9 +1010,12 @@ export class EvaluationService {
     ])
     const round = rounds.find((candidate) => candidate.id === assignment.roundId)
     const byCriterion = new Map(stored.map((score) => [score.criterionId, score]))
+    const speakerName = await this.#speakerNameFor(submission, round)
     return {
       submissionId: assignment.submissionId,
       sessionTitle: submission?.title ?? '',
+      speakerName,
+      anonymized: round?.anonymize === true,
       roundId: assignment.roundId,
       roundNumber: round?.number ?? 0,
       roundName: round?.name ?? '',
@@ -1041,6 +1044,24 @@ export class EvaluationService {
         }
       }),
     }
+  }
+
+  /**
+   * Whose proposal a reviewer is holding — or nothing at all in a blind round.
+   *
+   * Withheld HERE, on the server, rather than left to the screen to hide. A
+   * name that reaches the browser has been disclosed however carefully it is
+   * styled, and the whole point of a blind round is that the reviewer cannot
+   * know. The round decides, so the same proposal is named in an open round and
+   * anonymous in a blind one without either surface having to remember.
+   */
+  async #speakerNameFor(
+    submission: { readonly ownerContactId: ContactId } | null,
+    round: EvaluationRound | undefined,
+  ): Promise<string | null> {
+    if (submission === null || round === undefined || round.anonymize) return null
+    const owner = await this.#contacts.findById(submission.ownerContactId)
+    return owner?.name ?? null
   }
 
   /** Forbidden unless this contact sits on the event's review committee. */
@@ -1136,6 +1157,8 @@ export class EvaluationService {
     return {
       submissionId: assignment.submissionId,
       sessionTitle: submission?.title ?? '',
+      speakerName: await this.#speakerNameFor(submission, round),
+      anonymized: round?.anonymize === true,
       roundId: assignment.roundId,
       roundNumber: round?.number ?? 0,
       roundName: round?.name ?? '',

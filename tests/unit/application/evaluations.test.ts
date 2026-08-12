@@ -314,6 +314,10 @@ describe('EvaluationService evaluator scoping', () => {
         comments: null,
         updatedAt: null,
         previousRounds: [],
+        // A round nobody has made blind names the speaker; this double holds
+        // no contact for the owner, so there is no name to give.
+        speakerName: null,
+        anonymized: false,
       },
     ])
     expect(rows.map((row) => row.submissionId)).not.toContain(otherSubmission.id)
@@ -369,6 +373,8 @@ describe('EvaluationService scoring', () => {
       comments: 'Strong fit',
       updatedAt: FIXED_NOW,
       previousRounds: [],
+      speakerName: null,
+      anonymized: false,
     })
     expect(await service.listOwnEvaluations(actor)).toEqual([row])
   })
@@ -631,6 +637,8 @@ describe('EvaluationService multi-round evaluator rows', () => {
             updatedAt: FIXED_NOW,
           },
         ],
+        speakerName: null,
+        anonymized: false,
       },
     ])
     expect(new Set(rows.map((row) => row.submissionId)).size).toBe(rows.length)

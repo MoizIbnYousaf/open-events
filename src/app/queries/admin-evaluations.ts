@@ -4,6 +4,13 @@ import { useServerMutation } from '../../../adapters/tanstack-react-query'
 
 import {
   addCommitteeMember,
+  configureRound,
+  getRoundPool,
+  getRoundScorecard,
+  putRoundPool,
+  putRoundScorecard,
+  type RoundConfigInput,
+  type RoundCriterionInput,
   assignEvaluator,
   closeEvaluationRound,
   defineEvaluationCriteria,
@@ -26,6 +33,61 @@ export const adminEvaluationQueryKeys = {
     ['admin', 'submissions', submissionId, 'assignments'] as const,
   summary: (submissionId: SubmissionId) =>
     ['admin', 'submissions', submissionId, 'evaluation-summary'] as const,
+}
+
+export const roundConfigQueryKeys = {
+  scorecard: (slug: EventSlug, roundId: string) =>
+    ['admin', 'events', slug, 'rounds', roundId, 'scorecard'] as const,
+  pool: (slug: EventSlug, roundId: string) =>
+    ['admin', 'events', slug, 'rounds', roundId, 'pool'] as const,
+}
+
+export function useRoundScorecard(slug: EventSlug, roundId: string) {
+  return useQuery({
+    queryKey: roundConfigQueryKeys.scorecard(slug, roundId),
+    queryFn: () => getRoundScorecard(slug, roundId),
+  })
+}
+
+export function useRoundPool(slug: EventSlug, roundId: string) {
+  return useQuery({
+    queryKey: roundConfigQueryKeys.pool(slug, roundId),
+    queryFn: () => getRoundPool(slug, roundId),
+  })
+}
+
+/** Configuring a round changes what the rounds list shows, so it refetches. */
+export function useConfigureRound(slug: EventSlug, roundId: string) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: (config: RoundConfigInput) => configureRound(slug, roundId, config),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.rounds(slug) })
+    },
+  })
+}
+
+export function usePutRoundScorecard(slug: EventSlug, roundId: string) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: (criteria: readonly RoundCriterionInput[]) =>
+      putRoundScorecard(slug, roundId, criteria),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: roundConfigQueryKeys.scorecard(slug, roundId),
+      })
+    },
+  })
+}
+
+export function usePutRoundPool(slug: EventSlug, roundId: string) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: (contactIds: readonly string[]) => putRoundPool(slug, roundId, contactIds),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: roundConfigQueryKeys.pool(slug, roundId) })
+    },
+  })
 }
 
 export function useCommittee(slug: EventSlug | undefined) {

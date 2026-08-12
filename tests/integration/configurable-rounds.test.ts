@@ -228,8 +228,9 @@ describe('migration safety', () => {
     ).run()
 
     await expect(
-      env.DB.prepare("UPDATE evaluation_rounds SET status = 'open' WHERE id = 'round-closed-test'")
-        .run(),
+      env.DB.prepare(
+        "UPDATE evaluation_rounds SET status = 'open' WHERE id = 'round-closed-test'",
+      ).run(),
     ).rejects.toThrow()
   })
 
@@ -396,8 +397,12 @@ describe('a round carries its own mixed-type scorecard', () => {
       { label: 'Final call', kind: 'rating', weight: 5, position: 0, scale: { min: 1, max: 3 } },
     ])
 
-    const firstCard = (await (await getScorecard(organizer, first)).json()) as readonly CriterionBody[]
-    const secondCard = (await (await getScorecard(organizer, second)).json()) as readonly CriterionBody[]
+    const firstCard = (await (
+      await getScorecard(organizer, first)
+    ).json()) as readonly CriterionBody[]
+    const secondCard = (await (
+      await getScorecard(organizer, second)
+    ).json()) as readonly CriterionBody[]
     expect(firstCard.length).toBe(3)
     expect(secondCard.length).toBe(1)
     expect(secondCard[0]?.label).toBe('Final call')
@@ -413,7 +418,9 @@ describe('a round carries its own mixed-type scorecard', () => {
       { label: 'Only this', kind: 'rating', weight: 2, position: 0, scale: { min: 1, max: 5 } },
     ])
 
-    const criteria = (await (await getScorecard(organizer, roundId)).json()) as readonly CriterionBody[]
+    const criteria = (await (
+      await getScorecard(organizer, roundId)
+    ).json()) as readonly CriterionBody[]
     expect(criteria.map((criterion) => criterion.label)).toEqual(['Only this'])
   })
 
@@ -422,14 +429,18 @@ describe('a round carries its own mixed-type scorecard', () => {
     const roundId = await liveRoundId(organizer)
 
     expect(
-      (await putScorecard(organizer, roundId, [
-        { label: 'Empty choice', kind: 'select', weight: 1, position: 0, options: [] },
-      ])).status,
+      (
+        await putScorecard(organizer, roundId, [
+          { label: 'Empty choice', kind: 'select', weight: 1, position: 0, options: [] },
+        ])
+      ).status,
     ).toBe(400)
     expect(
-      (await putScorecard(organizer, roundId, [
-        { label: 'Backwards', kind: 'rating', weight: 1, position: 0, scale: { min: 5, max: 1 } },
-      ])).status,
+      (
+        await putScorecard(organizer, roundId, [
+          { label: 'Backwards', kind: 'rating', weight: 1, position: 0, scale: { min: 5, max: 1 } },
+        ])
+      ).status,
     ).toBe(400)
   })
 
@@ -438,9 +449,11 @@ describe('a round carries its own mixed-type scorecard', () => {
     const roundId = await liveRoundId(organizer)
 
     expect(
-      (await putScorecard(organizer, roundId, [
-        { label: 'Mystery', kind: 'telepathy', weight: 1, position: 0 },
-      ])).status,
+      (
+        await putScorecard(organizer, roundId, [
+          { label: 'Mystery', kind: 'telepathy', weight: 1, position: 0 },
+        ])
+      ).status,
     ).toBe(400)
   })
 
@@ -511,9 +524,52 @@ describe('a reviewer scores against the round scorecard', () => {
     const roundId = await liveRoundId(organizer)
     await putScorecard(organizer, roundId, SCORECARD)
     const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
-    const criteria = (await (await getScorecard(organizer, roundId)).json()) as readonly CriterionBody[]
+    const criteria = (await (
+      await getScorecard(organizer, roundId)
+    ).json()) as readonly CriterionBody[]
     return { organizer, reviewer, submissionId, roundId, criteria }
   }
+
+  it('withholds the speaker’s name from a reviewer when the round is blind', async () => {
+    const { organizer, reviewer, roundId } = await setUp()
+
+    // Named first: the assertion below is only meaningful if the name was
+    // reaching the reviewer in the first place. Without this the test would
+    // pass against a queue that never carried a name at all.
+    const named = (await (
+      await app.request(
+        '/api/public/evaluations',
+        { headers: { cookie: cookieHeader(reviewer) } },
+        bindings(),
+      )
+    ).json()) as readonly QueueRow[]
+    expect(named[0]?.speakerName).not.toBeNull()
+    expect(named[0]?.anonymized).toBe(false)
+
+    // A name is required on this PUT, so a partial body is refused — send the
+    // whole round, as the editor does.
+    const configured = await configureRound(organizer, roundId, {
+      name: 'Round 1',
+      opensAt: null,
+      closesAt: null,
+      anonymize: true,
+    })
+    expect(configured.status).toBe(200)
+
+    const blind = (await (
+      await app.request(
+        '/api/public/evaluations',
+        { headers: { cookie: cookieHeader(reviewer) } },
+        bindings(),
+      )
+    ).json()) as readonly QueueRow[]
+    // Read from the REVIEWER's own queue, not from a fixture: the redaction was
+    // previously "proved" by a test that handed in a null name, so deleting the
+    // server-side check left the suite green while the name shipped to a blind
+    // reviewer.
+    expect(blind[0]?.speakerName).toBeNull()
+    expect(blind[0]?.anonymized).toBe(true)
+  })
 
   it('renders every configured field, with its type and its choices', async () => {
     const { reviewer } = await setUp()
@@ -578,6 +634,40 @@ describe('a reviewer scores against the round scorecard', () => {
       'AI Engineering',
       'Tighten the middle third.',
     ])
+  })
+
+  it('lets the organizer edit the scorecard after a reviewer has answered it', async () => {
+    const { organizer, reviewer, submissionId, criteria, roundId } = await setUp()
+    await app.request(
+      '/api/public/evaluations',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(reviewer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          submissionId,
+          answers: [{ criterionId: criteria[0]?.id, value: 4 }],
+        }),
+      },
+      bindings(),
+    )
+
+    // Saving the scorecard replaces its questions wholesale. Recorded answers
+    // reference those question rows, so without a cascade the replace is refused
+    // by the foreign key and the scorecard becomes PERMANENTLY uneditable the
+    // moment the first reviewer answers it — exactly when an organizer is most
+    // likely to want to fix a typo in a question.
+    const edited = await putScorecard(organizer, roundId, [
+      { label: 'Originality of the idea', kind: 'rating', weight: 2, scale: { min: 1, max: 5 } },
+    ])
+    expect(edited.status).toBe(200)
+    const reread = (await (await getScorecard(organizer, roundId)).json()) as readonly {
+      label: string
+    }[]
+    expect(reread[0]?.label).toBe('Originality of the idea')
   })
 
   it('edits an answer rather than accumulating a second one', async () => {
@@ -779,7 +869,10 @@ describe('a round has its own reviewer pool', () => {
     )
   }
 
-  async function getPool(cookie: string, roundId: string): Promise<readonly { contactId: string }[]> {
+  async function getPool(
+    cookie: string,
+    roundId: string,
+  ): Promise<readonly { contactId: string }[]> {
     const response = await app.request(
       `${ROUNDS_PATH}/${roundId}/pool`,
       { headers: { cookie: cookieHeader(cookie) } },

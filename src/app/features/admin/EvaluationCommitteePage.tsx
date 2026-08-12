@@ -813,7 +813,13 @@ function RoundEditor({
               checked={anonymize}
               onChange={(event) => setAnonymize(event.target.checked)}
             />
-            Hide reviewer identities (blind review)
+            {/* What this actually does. It read "Hide reviewer identities",
+                which is the opposite promise: the server withholds the
+                SPEAKER's name from reviewers and hides no reviewer from
+                anyone. An organizer running a double-blind committee would
+                have got speaker anonymity and believed they had reviewer
+                anonymity — a privacy promise the product never made. */}
+            Hide the speaker&apos;s name from reviewers (blind review)
           </label>
           {configure.error != null ? (
             <AlertLive>That round could not be saved. Check the dates and try again.</AlertLive>

@@ -343,3 +343,21 @@ describe('rendered navigation', () => {
     await waitFor(() => expect(screen.queryByText('Public links')).toBeNull())
   })
 })
+
+/**
+ * A reviewer's queue has to be reachable by clicking.
+ *
+ * The review queue lived at /evaluations and was linked from nowhere: a signed-in
+ * committee member saw the speaker portal, their headshot, the call for papers and
+ * the public schedule, and could only reach the work they had been assigned by
+ * typing the URL. A capability with no control is, to everyone who is not reading
+ * the source, absent.
+ */
+describe('the reviewer can reach their queue', () => {
+  it('offers the review queue among a signed-in speaker’s destinations', () => {
+    const destinations = speakerDestinations()
+    const reviews = destinations.find((destination) => destination.to === '/evaluations')
+    expect(reviews).toBeDefined()
+    expect(reviews?.label).toMatch(/review/i)
+  })
+})

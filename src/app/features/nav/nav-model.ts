@@ -73,6 +73,13 @@ export function speakerDestinations(): readonly NavDestination[] {
   return [
     { id: 'portal', label: 'Your speaker portal', to: '/portal', group: 'Speaker' },
     { id: 'headshot', label: 'Your headshot', to: '/headshot', group: 'Speaker' },
+    // The review queue was linked from nowhere. A committee member signed in,
+    // landed on the speaker portal, and could reach the work they had been
+    // assigned only by typing the URL — so to everyone not reading the source,
+    // reviewing did not exist. It sits with the other signed-in destinations
+    // because a reviewer IS a speaker-session identity; the page itself tells
+    // anyone with no assignments that they have none.
+    { id: 'reviews', label: 'Your reviews', to: '/evaluations', group: 'Speaker' },
   ]
 }
 

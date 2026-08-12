@@ -495,7 +495,10 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
       adminPage.getByRole('heading', { level: 1, name: 'Review committee' }),
     ).toBeVisible()
     await adminPage.getByLabel('Criterion name').fill('Depth')
-    await adminPage.getByLabel('Weight').fill('2')
+    // By id, not by label: a round's own scorecard can weight a rating question,
+    // so this page now carries two controls whose accessible name is "Weight"
+    // and the label alone no longer identifies one.
+    await adminPage.locator('#criterion-weight').fill('2')
     await adminPage.getByRole('button', { name: 'Add criterion' }).click()
     await expect(adminPage.getByText('Depth')).toBeVisible()
     // The reset seed already opens Round 1 with an 'Overall fit' criterion;
@@ -576,8 +579,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     // the trigger itself simply times out against a dialog nobody answered.
     await activateByKeyboard(adminPage, 'Accept proposal')
     const accepted = adminPage.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' && response.url().includes('/accept'),
+      (response) => response.request().method() === 'POST' && response.url().includes('/accept'),
     )
     await adminPage.getByRole('button', { name: 'Confirm acceptance' }).click()
     expect((await accepted).status(), 'acceptance succeeds').toBe(200)

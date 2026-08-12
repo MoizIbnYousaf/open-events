@@ -894,6 +894,49 @@ export async function handlePutRoundPool(context: ServerContext): Promise<Respon
   )
 }
 
+
+/**
+ * POST .../rounds/:roundId/distribute: shares this round's reading out among
+ * its reviewers in one action, within an optional per-reviewer cap and an
+ * optional single track.
+ */
+export async function handleDistributeRound(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const roundId = context.req.param('roundId')
+  if (slug === undefined || roundId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const perReviewerCap = body.perReviewerCap
+  const track = body.track
+  const readersPerSubmission = body.readersPerSubmission
+  if (
+    perReviewerCap !== undefined &&
+    perReviewerCap !== null &&
+    typeof perReviewerCap !== 'number'
+  ) {
+    return validationFailedResponse(context)
+  }
+  if (track !== undefined && track !== null && typeof track !== 'string') {
+    return validationFailedResponse(context)
+  }
+  if (readersPerSubmission !== undefined && typeof readersPerSubmission !== 'number') {
+    return validationFailedResponse(context)
+  }
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(
+    await deps.evaluations.distributeRound(actor, eventId, roundId, {
+      ...(typeof perReviewerCap === 'number' ? { perReviewerCap } : {}),
+      ...(typeof track === 'string' ? { track } : {}),
+      ...(typeof readersPerSubmission === 'number' ? { readersPerSubmission } : {}),
+    }),
+  )
+}
+
 /** POST /api/admin/rounds/:id/close: idempotent one-way close. */
 export async function handleCloseRound(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -1114,6 +1157,13 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handlePutRoundPool,
+  )
+  app.post(
+    '/api/admin/events/:slug/rounds/:roundId/distribute',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleDistributeRound,
   )
   app.post(
     '/api/admin/events/:slug/rounds/:id/close',

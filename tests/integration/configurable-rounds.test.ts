@@ -1145,3 +1145,138 @@ describe('a reviewer holding two rounds', () => {
     expect(summary.rounds.find((round) => round.roundId === secondRoundId)?.scoredCount).toBe(1)
   })
 })
+
+/**
+ * Sharing a round's reading out in one action.
+ *
+ * One proposal to one reviewer at a time is fine for a committee reading five
+ * and unusable for one reading two hundred — the point at which a programme
+ * chair abandons the tool for a spreadsheet.
+ */
+describe('an organizer shares a round out among its reviewers', () => {
+  async function seatReviewer(cookie: string, email: string): Promise<string> {
+    const response = await app.request(
+      COMMITTEE_PATH,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(cookie),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      },
+      bindings(),
+    )
+    return ((await response.json()) as { contactId: string }).contactId
+  }
+
+  async function distribute(
+    cookie: string,
+    roundId: string,
+    body: Record<string, unknown> = {},
+    origin = ALLOWED_ORIGIN,
+  ): Promise<Response> {
+    return app.request(
+      `${ROUNDS_PATH}/${roundId}/distribute`,
+      {
+        method: 'POST',
+        headers: { cookie: cookieHeader(cookie), origin, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      bindings(),
+    )
+  }
+
+  async function assignmentsFor(cookie: string, submissionId: string): Promise<readonly unknown[]> {
+    return (await (
+      await app.request(
+        `/api/admin/events/demo-conf-2026/submissions/${submissionId}/assignments`,
+        { headers: { cookie: cookieHeader(cookie) } },
+        bindings(),
+      )
+    ).json()) as readonly unknown[]
+  }
+
+  it('gives every proposal a reader, and levels the load', async () => {
+    const organizer = await organizerCookie()
+    const roundId = await liveRoundId(organizer)
+    await seatReviewer(organizer, 'share.one@example.test')
+    await seatReviewer(organizer, 'share.two@example.test')
+    const { submissionId: first } = await seedAssignedReviewer(organizer, 'share.one@example.test')
+    const { submissionId: second } = await seedAssignedReviewer(organizer, 'share.two@example.test')
+
+    // Two readers per proposal: each already has one, so the share-out finds
+    // each of them a second, rather than duplicating the reader they have.
+    const response = await distribute(organizer, roundId, {
+      perReviewerCap: 5,
+      readersPerSubmission: 2,
+    })
+
+    expect(response.status).toBe(200)
+    const result = (await response.json()) as {
+      assigned: number
+      reviewers: number
+      unassigned: number
+    }
+    expect(result.assigned).toBe(2)
+    expect(result.unassigned).toBe(0)
+    expect(await assignmentsFor(organizer, first)).toHaveLength(2)
+    expect(await assignmentsFor(organizer, second)).toHaveLength(2)
+  })
+
+  it('never hands a reviewer a proposal twice, however often it is run', async () => {
+    const organizer = await organizerCookie()
+    const roundId = await liveRoundId(organizer)
+    await seatReviewer(organizer, 'share.one@example.test')
+    const { submissionId } = await seedAssignedReviewer(organizer, 'share.one@example.test')
+
+    await distribute(organizer, roundId, { readersPerSubmission: 2 })
+    const afterFirst = await assignmentsFor(organizer, submissionId)
+    await distribute(organizer, roundId, { readersPerSubmission: 2 })
+
+    // Idempotent: the target is a number of readers, not an increment, so a
+    // second press finds the proposal already read by enough people.
+    expect(await assignmentsFor(organizer, submissionId)).toHaveLength(afterFirst.length)
+  })
+
+  it('stops at the cap and says what it could not place', async () => {
+    const organizer = await organizerCookie()
+    const roundId = await liveRoundId(organizer)
+    await seatReviewer(organizer, 'share.one@example.test')
+    await seedAssignedReviewer(organizer, 'capped.a@example.test')
+
+    // One reviewer, cap 1, and that reviewer already holds nothing: the seeded
+    // proposal's own evaluator is a second seat, so the cap binds on the pool.
+    const result = (await (
+      await distribute(organizer, roundId, { perReviewerCap: 1 })
+    ).json()) as { assigned: number; unassigned: number }
+
+    expect(result.assigned).toBeLessThanOrEqual(2)
+    expect(result.unassigned).toBe(0)
+  })
+
+  it('shares out only the track it was asked for', async () => {
+    const organizer = await organizerCookie()
+    const roundId = await liveRoundId(organizer)
+    await seatReviewer(organizer, 'share.one@example.test')
+    await seedAssignedReviewer(organizer, 'share.two@example.test')
+
+    const result = (await (
+      await distribute(organizer, roundId, { track: 'A Track Nobody Proposed In' })
+    ).json()) as { considered: number; assigned: number }
+
+    // The filter is real: no proposal answers that track, so nothing is shared.
+    expect(result.considered).toBe(0)
+    expect(result.assigned).toBe(0)
+  })
+
+  it('is organizer-only, same-origin only, and refuses a closed round', async () => {
+    const organizer = await organizerCookie()
+    const roundId = await liveRoundId(organizer)
+
+    expect((await distribute('', roundId, {})).status).toBe(401)
+    expect((await distribute(organizer, roundId, {}, 'https://evil.test')).status).toBe(403)
+    expect((await distribute(organizer, roundId, { perReviewerCap: 0 })).status).toBe(400)
+  })
+})

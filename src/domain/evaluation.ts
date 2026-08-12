@@ -451,6 +451,90 @@ export function selectQueueAssignments(
   })
 }
 
+/** One reviewer a round can be shared out among, with what they already hold. */
+export interface DistributionCandidate {
+  readonly contactId: ContactId
+  /** Assignments they already hold in THIS round; the cap counts these too. */
+  readonly held: number
+}
+
+/** One proposal to share out, and who may not read it. */
+export interface DistributionSubject {
+  readonly submissionId: SubmissionId
+  /** Reviewers already on it, or barred from it — never handed it again. */
+  readonly excluded: ReadonlySet<ContactId>
+}
+
+/** One proposal handed to one reviewer. */
+export interface DistributionPairing {
+  readonly submissionId: SubmissionId
+  readonly contactId: ContactId
+}
+
+/**
+ * Shares a round's reading out among its reviewers, evenly and within the cap.
+ *
+ * Works towards a TARGET number of readers per proposal rather than adding one
+ * more each time it runs. That is what makes the action safe to press twice: a
+ * proposal already read by enough people is skipped, so an organizer who is
+ * unsure whether the first click registered does not silently double their
+ * committee's workload. It also states the real intent — "every proposal wants
+ * two readers" — instead of leaving coverage to depend on how many times a
+ * button was pressed.
+ *
+ * Least-loaded-first, counting what each reviewer ALREADY holds in the round,
+ * so hand assignments made earlier are levelled around rather than ignored.
+ * Ties go to the earlier reviewer, so the result is deterministic.
+ *
+ * Nobody is given a proposal they are already on or barred from, and a proposal
+ * that runs out of eligible reviewers is simply left short — reported to the
+ * caller rather than forced onto someone with a conflict or over their cap.
+ * Handing out reading nobody can do is worse than handing out none.
+ */
+export function distributeAssignments(
+  candidates: readonly DistributionCandidate[],
+  subjects: readonly DistributionSubject[],
+  perReviewerCap: number | null,
+  readersPerSubject = 1,
+): readonly DistributionPairing[] {
+  const load = new Map<ContactId, number>(
+    candidates.map((candidate) => [candidate.contactId, candidate.held]),
+  )
+  const rank = new Map<ContactId, number>(
+    candidates.map((candidate, index) => [candidate.contactId, index]),
+  )
+  const pairings: DistributionPairing[] = []
+
+  for (const subject of subjects) {
+    const taken = new Set(subject.excluded)
+    while (taken.size < readersPerSubject) {
+      let chosen: ContactId | null = null
+      for (const candidate of candidates) {
+        if (taken.has(candidate.contactId)) continue
+        const held = load.get(candidate.contactId) ?? 0
+        if (perReviewerCap !== null && held >= perReviewerCap) continue
+        if (chosen === null) {
+          chosen = candidate.contactId
+          continue
+        }
+        const bestLoad = load.get(chosen) ?? 0
+        const isLighter = held < bestLoad
+        const isEarlierTie =
+          held === bestLoad && (rank.get(candidate.contactId) ?? 0) < (rank.get(chosen) ?? 0)
+        if (isLighter || isEarlierTie) chosen = candidate.contactId
+      }
+      // Nobody left who may read this one: leave it short rather than breaking
+      // a cap or a conflict to make a number look complete.
+      if (chosen === null) break
+      taken.add(chosen)
+      load.set(chosen, (load.get(chosen) ?? 0) + 1)
+      pairings.push({ submissionId: subject.submissionId, contactId: chosen })
+    }
+  }
+
+  return pairings
+}
+
 /**
  * The assignments one round holds, in insertion order.
  *

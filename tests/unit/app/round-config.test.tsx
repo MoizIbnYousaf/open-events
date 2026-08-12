@@ -30,6 +30,7 @@ const CRITERIA_PATH = `/api/admin/events/${SLUG}/criteria`
 const ROUND_ID = 'round-1'
 const SCORECARD_PATH = `${ROUNDS_PATH}/${ROUND_ID}/scorecard`
 const POOL_PATH = `${ROUNDS_PATH}/${ROUND_ID}/pool`
+const DISTRIBUTE_PATH = `${ROUNDS_PATH}/${ROUND_ID}/distribute`
 
 interface RoundBody {
   id: string
@@ -111,6 +112,9 @@ function defaultHandler(url: string, init?: RequestInit): Response {
       id: `criterion-${index}`,
     }))
     return jsonResponse(scorecard)
+  }
+  if (method === 'POST' && url === DISTRIBUTE_PATH) {
+    return jsonResponse({ assigned: 6, reviewers: 3, considered: 4, unassigned: 1 })
   }
   if (method === 'PUT' && url === POOL_PATH) {
     const sent = JSON.parse(String(init?.body)) as { contactIds: string[] }
@@ -388,5 +392,38 @@ describe('an organizer pools reviewers into the round', () => {
 
     expect(await within(region).findByLabelText(/Reviewer Two/i)).toBeChecked()
     expect(within(region).getByLabelText(/Reviewer One/i)).not.toBeChecked()
+  })
+})
+
+/**
+ * Assignment at scale. The organizer-side machinery can be immaculate and still
+ * unusable if the only way to staff a round is one proposal at a time, so this
+ * asserts the control exists on the page an organizer actually opens, sends
+ * what they typed, and reports what happened rather than a bare success.
+ */
+describe('an organizer shares the round out from the committee page', () => {
+  it('sends the target, the cap and the track, and reports what came back', async () => {
+    const user = userEvent.setup()
+    mountCommittee()
+
+    const readers = await screen.findByLabelText(/reviewers per proposal/i)
+    await user.clear(readers)
+    await user.type(readers, '2')
+    const cap = screen.getByLabelText(/most proposals per reviewer/i)
+    await user.type(cap, '3')
+    await user.type(screen.getByLabelText(/only this track/i), 'AI Engineering')
+
+    await user.click(screen.getByRole('button', { name: /share the reading out/i }))
+
+    await waitFor(() =>
+      expect(bodyOf(DISTRIBUTE_PATH, 'POST')).toMatchObject({
+        readersPerSubmission: 2,
+        perReviewerCap: 3,
+        track: 'AI Engineering',
+      }),
+    )
+    // The shortfall is stated. A cap set too low is invisible in a green tick,
+    // and an organizer who is not told will believe the round is fully staffed.
+    expect(await screen.findByText(/1 proposal\(s\) still need a reader/i)).toBeInTheDocument()
   })
 })

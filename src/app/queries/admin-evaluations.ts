@@ -23,7 +23,9 @@ import {
   type CriterionInput,
   type RoundConfigInput,
   type RoundCriterionInput,
+  distributeRound,
 } from '../api/admin-evaluations'
+import type { DistributeRoundBody } from '../api/admin-evaluations'
 import type { EventSlug, EvaluationRoundId, SubmissionId } from '../../domain'
 
 export const adminEvaluationQueryKeys = {
@@ -64,6 +66,22 @@ export function useConfigureRound(slug: EventSlug, roundId: string) {
     mutationFn: (config: RoundConfigInput) => configureRound(slug, roundId, config),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.rounds(slug) })
+    },
+  })
+}
+
+/**
+ * Sharing the round out changes assignments across many proposals at once, so
+ * every list that counts them is refetched rather than the one the organizer
+ * happens to be looking at.
+ */
+export function useDistributeRound(slug: EventSlug, roundId: string) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: (body: DistributeRoundBody) => distributeRound(slug, roundId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.committee(slug) })
+      await queryClient.invalidateQueries({ queryKey: roundConfigQueryKeys.pool(slug, roundId) })
     },
   })
 }

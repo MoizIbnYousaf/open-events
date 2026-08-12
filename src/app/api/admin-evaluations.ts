@@ -220,6 +220,32 @@ export function putRoundPool(
   })
 }
 
+/** What a share-out did, in the terms the organizer asked in. */
+export interface DistributeRoundResult {
+  readonly assigned: number
+  readonly reviewers: number
+  readonly considered: number
+  readonly unassigned: number
+}
+
+export interface DistributeRoundBody {
+  readonly readersPerSubmission: number
+  readonly perReviewerCap?: number | null
+  readonly track?: string | null
+}
+
+/** POST .../rounds/:id/distribute — share this round's reading out at once. */
+export function distributeRound(
+  slug: EventSlug,
+  roundId: string,
+  body: DistributeRoundBody,
+): Promise<DistributeRoundResult> {
+  return requestJson(`${roundPath(slug, roundId)}/distribute`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 /** GET /api/admin/events/:slug/results — every proposal with what it scored. */
 export function listEvaluationResults(slug: EventSlug): Promise<readonly EvaluationResultRowDto[]> {
   return requestJson(`/api/admin/events/${encodeURIComponent(slug)}/results`)

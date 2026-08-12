@@ -41,6 +41,7 @@ import {
   usePutRoundPool,
   usePutRoundScorecard,
   useRemoveCommitteeMember,
+  useDistributeRound,
   useRoundPool,
   useRoundScorecard,
   useRunEventRounds,
@@ -1024,7 +1025,124 @@ function RoundEditor({
           </div>
         </CardContent>
       </Card>
+
+      <ShareOutCard slug={slug} round={round} hasReviewers={committee.length > 0} />
     </section>
+  )
+}
+
+/**
+ * Sharing this round's reading out among its reviewers in one action.
+ *
+ * A committee reading five proposals can be assigned one at a time. A committee
+ * reading two hundred cannot, and an organizer who has to click three hundred
+ * times reaches for a spreadsheet instead — so the tool has to be able to do
+ * the arithmetic it is asking them to do by hand.
+ *
+ * Readers-per-proposal is a TARGET, and the copy says so, because the safety of
+ * pressing this twice is the whole reason it is expressed that way.
+ */
+function ShareOutCard({
+  slug,
+  round,
+  hasReviewers,
+}: {
+  readonly slug: EventSlug
+  readonly round: ListedRound
+  readonly hasReviewers: boolean
+}) {
+  const distribute = useDistributeRound(slug, round.id)
+  const [readers, setReaders] = useState('2')
+  const [cap, setCap] = useState('')
+  const [track, setTrack] = useState('')
+  const [outcome, setOutcome] = useState<string | null>(null)
+  const readersId = `share-readers-${round.id}`
+  const capId = `share-cap-${round.id}`
+  const trackId = `share-track-${round.id}`
+  const closed = round.status === 'closed'
+
+  const handleShare = () => {
+    setOutcome(null)
+    const readerCount = Number(readers)
+    const capCount = cap.trim() === '' ? null : Number(cap)
+    distribute.mutate(
+      {
+        readersPerSubmission: Number.isFinite(readerCount) ? readerCount : 1,
+        ...(capCount !== null && Number.isFinite(capCount) ? { perReviewerCap: capCount } : {}),
+        ...(track.trim() === '' ? {} : { track: track.trim() }),
+      },
+      {
+        onSuccess: (result) => {
+          // What it did, in numbers, rather than a bare success. An organizer
+          // needs to know that some proposals came back short — a cap set too
+          // low is invisible in a green tick.
+          setOutcome(
+            result.unassigned === 0
+              ? `Shared out ${result.assigned} assignment(s) across ${result.reviewers} reviewer(s).`
+              : `Shared out ${result.assigned} assignment(s) across ${result.reviewers} reviewer(s). ${result.unassigned} proposal(s) still need a reader.`,
+          )
+        },
+      },
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle level={3}>Share the reading out</CardTitle>
+        <CardDescription>
+          Gives every proposal the number of reviewers you ask for, spread evenly across the
+          reviewers in this round. Nobody is given the same proposal twice, so running it again
+          only fills what is still short.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        <Field>
+          <FieldLabel htmlFor={readersId}>Reviewers per proposal</FieldLabel>
+          <Input
+            id={readersId}
+            type="number"
+            min={1}
+            value={readers}
+            onChange={(event) => setReaders(event.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={capId}>Most proposals per reviewer (optional)</FieldLabel>
+          <Input
+            id={capId}
+            type="number"
+            min={1}
+            value={cap}
+            placeholder="No limit"
+            onChange={(event) => setCap(event.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={trackId}>Only this track (optional)</FieldLabel>
+          <Input
+            id={trackId}
+            value={track}
+            placeholder="Every track"
+            onChange={(event) => setTrack(event.target.value)}
+          />
+        </Field>
+        {distribute.error != null ? (
+          <AlertLive>The reading could not be shared out.</AlertLive>
+        ) : null}
+        {outcome !== null ? <StatusLive>{outcome}</StatusLive> : null}
+        <div>
+          <Button
+            type="button"
+            pending={distribute.isPending}
+            disabled={closed || !hasReviewers}
+            onClick={handleShare}
+          >
+            {distribute.isPending ? 'Sharing…' : 'Share the reading out'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

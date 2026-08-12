@@ -25,6 +25,7 @@ import {
   isAnswerValidFor,
   isRoundCriterionKind,
   weightedRoundAverageCentis,
+  distributeAssignments,
   selectQueueAssignments,
   selectSurfaceAssignments,
   snapshotCriterionWeights,
@@ -159,6 +160,29 @@ export interface CommitteeRosterEntryDto {
   readonly assignedCount: number
   /** How many of those they have actually scored. Never exceeds `assignedCount`. */
   readonly completedCount: number
+}
+
+/** How an organizer wants a round's reading shared out. */
+export interface DistributeRoundInput {
+  /** Most proposals any one reviewer may end up holding. Null means no ceiling. */
+  readonly perReviewerCap?: number | null
+  /** Share out only this track's proposals; absent or empty means all of them. */
+  readonly track?: string | null
+  /**
+   * How many reviewers each proposal should end up with. A TARGET, not an
+   * increment: pressing the button twice does not double the committee's
+   * reading, which is what makes it safe to press when unsure.
+   */
+  readonly readersPerSubmission?: number
+}
+
+/** What a share-out actually did, in the terms an organizer asked in. */
+export interface DistributeRoundResultDto {
+  readonly assigned: number
+  readonly reviewers: number
+  readonly considered: number
+  /** Proposals still with no reader — a cap set too low, or a track nobody reads. */
+  readonly unassigned: number
 }
 
 export interface AssignEvaluatorInput {
@@ -444,6 +468,120 @@ export class EvaluationService {
     )
     const stored = await this.#evaluations.replaceRoundCriteria(eventId, roundId, criteria)
     return stored.map(toRoundCriterionDto)
+  }
+
+  /**
+   * Shares a round's unread proposals out among its reviewers in one action.
+   *
+   * Assigning one proposal to one reviewer at a time is fine for a committee
+   * reading five and unusable for one reading two hundred, which is the point
+   * at which a programme chair reaches for a spreadsheet instead of the tool.
+   *
+   * WHO reads is the round's pool when it has one, and the whole committee when
+   * it does not — a round nobody has narrowed is a round everybody is in, which
+   * is what an organizer who never opened the pool control means. This is also
+   * what finally gives the pool teeth: until now it persisted and decided
+   * nothing.
+   *
+   * WHAT is shared out can be narrowed to a single track, because a committee
+   * usually splits its reading by subject and the alternative is the organizer
+   * filtering by eye. A proposal already on someone's list is never handed to
+   * them twice, and one with no eligible reviewer left is reported unassigned
+   * rather than forced past a cap.
+   */
+  async distributeRound(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+    input: DistributeRoundInput,
+  ): Promise<DistributeRoundResultDto> {
+    const round = await this.#requireRound(eventId, roundId)
+    if (round.status !== 'open') {
+      throw new ApplicationError('conflict', 'That review round is closed')
+    }
+    const cap = input.perReviewerCap ?? null
+    if (cap !== null && (!Number.isInteger(cap) || cap < 1)) {
+      throw new ApplicationError('validation_failed', 'A cap must be a whole number of at least 1')
+    }
+    const readers = input.readersPerSubmission ?? 1
+    if (!Number.isInteger(readers) || readers < 1) {
+      throw new ApplicationError(
+        'validation_failed',
+        'Each proposal needs at least one reviewer',
+      )
+    }
+
+    const [pool, roster] = await Promise.all([
+      this.#evaluations.listRoundPool(eventId, roundId),
+      this.#evaluations.listCommitteeRoster(eventId),
+    ])
+    const eligible = pool.length > 0 ? pool : roster.map((member) => member.contactId)
+    if (eligible.length === 0) {
+      throw new ApplicationError('conflict', 'This round has no reviewers to share the reading out')
+    }
+
+    const track = typeof input.track === 'string' ? input.track.trim() : ''
+    const submissions = (await this.#submissions.listByEvent(eventId)).filter(
+      (submission) => track === '' || submission.answers['track'] === track,
+    )
+
+    // What everyone already holds IN THIS ROUND, so the cap counts the work an
+    // organizer assigned by hand and a second run keeps levelling rather than
+    // starting from zero.
+    const existing = await Promise.all(
+      submissions.map((submission) =>
+        this.#evaluations.listAssignmentsBySubmission(eventId, submission.id),
+      ),
+    )
+    const held = new Map<ContactId, number>(eligible.map((contactId) => [contactId, 0]))
+    const subjects = submissions.map((submission, index) => {
+      const excluded = new Set<ContactId>()
+      for (const assignment of existing[index] ?? []) {
+        if (assignment.roundId !== roundId) continue
+        excluded.add(assignment.evaluatorContactId)
+        held.set(assignment.evaluatorContactId, (held.get(assignment.evaluatorContactId) ?? 0) + 1)
+      }
+      return { submissionId: submission.id, excluded }
+    })
+
+    const pairings = distributeAssignments(
+      eligible.map((contactId) => ({ contactId, held: held.get(contactId) ?? 0 })),
+      subjects,
+      cap,
+      readers,
+    )
+
+    const now = this.#clock.now()
+    for (const pairing of pairings) {
+      await this.#evaluations.saveAssignment({
+        id: crypto.randomUUID(),
+        eventId,
+        roundId,
+        submissionId: pairing.submissionId,
+        evaluatorContactId: pairing.contactId,
+        createdAt: now,
+      })
+    }
+
+    // "Unassigned" has to mean nobody is reading it, not merely that this run
+    // added nothing: a proposal the organizer had already assigned by hand
+    // gains no pairing here and is not a gap. Counted as those left with no
+    // reader at all, so a cap set too low reports honestly instead of hiding
+    // behind a total.
+    const gained = new Map<SubmissionId, number>()
+    for (const pairing of pairings) {
+      gained.set(pairing.submissionId, (gained.get(pairing.submissionId) ?? 0) + 1)
+    }
+    const unassigned = subjects.filter(
+      (subject) => subject.excluded.size + (gained.get(subject.submissionId) ?? 0) < readers,
+    ).length
+
+    return {
+      assigned: pairings.length,
+      reviewers: eligible.length,
+      considered: submissions.length,
+      unassigned,
+    }
   }
 
   /** The committee members reading in this round. */

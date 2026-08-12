@@ -6,6 +6,8 @@ import type {
   EvaluationRound,
   EvaluationRoundWeight,
   EvaluationScore,
+  RoundCriterion,
+  RoundScore,
 } from '../../../src/domain'
 import { closeEvaluationRound } from '../../../src/domain'
 
@@ -48,6 +50,9 @@ export class InMemoryEvaluationRepository implements EvaluationRepository {
   readonly #assignments = new Map<string, EvaluationAssignment>()
   readonly #scores = new Map<string, EvaluationScore>()
   readonly #committee = new Map<string, EvaluationCommitteeMember>()
+  readonly #roundCriteria = new Map<string, RoundCriterion>()
+  readonly #roundScores = new Map<string, RoundScore>()
+  readonly #roundPool = new Map<string, { contactId: string; addedAt: string }[]>()
 
   constructor(
     criteria: readonly EvaluationCriterion[] = [],
@@ -100,6 +105,115 @@ export class InMemoryEvaluationRepository implements EvaluationRepository {
   async saveRound(round: EvaluationRound): Promise<EvaluationRound> {
     this.#rounds.set(round.id, round)
     return round
+  }
+
+  async configureRound(
+    eventId: string,
+    roundId: string,
+    config: {
+      readonly name: string
+      readonly opensAt: string | null
+      readonly closesAt: string | null
+      readonly anonymize: boolean
+    },
+  ): Promise<EvaluationRound | null> {
+    const round = this.#rounds.get(roundId)
+    // Event scope, mirroring the adapter's WHERE: a round of another event is
+    // simply not found here either.
+    if (round === undefined || round.eventId !== eventId) return null
+    const configured: EvaluationRound = { ...round, ...config }
+    this.#rounds.set(roundId, configured)
+    return configured
+  }
+
+  async listRoundCriteria(eventId: string, roundId: string): Promise<readonly RoundCriterion[]> {
+    return [...this.#roundCriteria.values()]
+      .filter((criterion) => criterion.eventId === eventId && criterion.roundId === roundId)
+      .sort((left, right) => left.position - right.position)
+  }
+
+  async replaceRoundCriteria(
+    eventId: string,
+    roundId: string,
+    criteria: readonly RoundCriterion[],
+  ): Promise<readonly RoundCriterion[]> {
+    for (const [id, criterion] of [...this.#roundCriteria.entries()]) {
+      if (criterion.eventId === eventId && criterion.roundId === roundId) {
+        this.#roundCriteria.delete(id)
+        // Answers to a question nobody is asked any more go with it, as the
+        // adapter's foreign key would enforce.
+        for (const [key, score] of [...this.#roundScores.entries()]) {
+          if (score.criterionId === id) this.#roundScores.delete(key)
+        }
+      }
+    }
+    for (const criterion of criteria) this.#roundCriteria.set(criterion.id, criterion)
+    return this.listRoundCriteria(eventId, roundId)
+  }
+
+  async listRoundScoresByAssignment(
+    eventId: string,
+    assignmentId: string,
+  ): Promise<readonly RoundScore[]> {
+    return [...this.#roundScores.values()]
+      .filter((score) => score.eventId === eventId && score.assignmentId === assignmentId)
+      .sort((left, right) => compareBinary(left.criterionId, right.criterionId))
+  }
+
+  async listRoundScoresBySubmission(
+    eventId: string,
+    submissionId: string,
+  ): Promise<readonly RoundScore[]> {
+    const assignmentIds = new Set(
+      [...this.#assignments.values()]
+        .filter(
+          (assignment) =>
+            assignment.eventId === eventId && assignment.submissionId === submissionId,
+        )
+        .map((assignment) => assignment.id),
+    )
+    return [...this.#roundScores.values()]
+      .filter((score) => score.eventId === eventId && assignmentIds.has(score.assignmentId))
+      .sort(
+        (left, right) =>
+          compareBinary(left.assignmentId, right.assignmentId) ||
+          compareBinary(left.criterionId, right.criterionId),
+      )
+  }
+
+  async saveRoundScore(score: RoundScore): Promise<RoundScore> {
+    const key = scoreKey(score.assignmentId, score.criterionId)
+    const existing = this.#roundScores.get(key)
+    // The first `createdAt` survives, as the adapter's upsert does: when they
+    // first answered is a different fact from when they last changed it.
+    const stored: RoundScore = { ...score, createdAt: existing?.createdAt ?? score.createdAt }
+    this.#roundScores.set(key, stored)
+    return stored
+  }
+
+  async listRoundPool(eventId: string, roundId: string): Promise<readonly string[]> {
+    // Ordered by (addedAt, contactId) exactly as the adapter's ORDER BY does,
+    // so the double cannot present a sequence production never would.
+    return (this.#roundPool.get(`${eventId}${KEY_SEPARATOR}${roundId}`) ?? [])
+      .slice()
+      .sort(
+        (left, right) =>
+          compareBinary(left.addedAt, right.addedAt) ||
+          compareBinary(left.contactId, right.contactId),
+      )
+      .map((entry) => entry.contactId)
+  }
+
+  async replaceRoundPool(
+    eventId: string,
+    roundId: string,
+    contactIds: readonly string[],
+    addedAt: string,
+  ): Promise<void> {
+    this.#roundPool.set(
+      `${eventId}${KEY_SEPARATOR}${roundId}`,
+      contactIds.map((contactId) => ({ contactId, addedAt })),
+    )
   }
 
   async closeRound(
@@ -188,6 +302,16 @@ export class InMemoryEvaluationRepository implements EvaluationRepository {
     // The seat only. Assignments and scores are keyed elsewhere and stay put,
     // mirroring the D1 delete's deliberately narrow reach.
     this.#committee.delete(`${eventId}${KEY_SEPARATOR}${contactId}`)
+    // …except the round pools, which the schema cascades: a pool is a
+    // narrowing of a seat, so losing the seat cannot leave them pooled.
+    for (const [key, pooled] of [...this.#roundPool.entries()]) {
+      if (key.startsWith(`${eventId}${KEY_SEPARATOR}`)) {
+        this.#roundPool.set(
+          key,
+          pooled.filter((entry) => entry.contactId !== contactId),
+        )
+      }
+    }
   }
 
   async saveAssignment(assignment: EvaluationAssignment): Promise<EvaluationAssignment> {

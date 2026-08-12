@@ -58,6 +58,10 @@ function round(overrides: Partial<EvaluationRound> = {}): EvaluationRound {
     name: 'Round 1',
     status: 'open',
     recordedWeights: null,
+    // A round nobody has configured: no window, open to the whole committee.
+    opensAt: null,
+    closesAt: null,
+    anonymize: false,
     ...overrides,
   }
 }

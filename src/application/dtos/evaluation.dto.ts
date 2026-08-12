@@ -29,6 +29,11 @@ export interface EvaluationRoundDto {
   readonly number: number
   readonly name: string
   readonly status: EvaluationRoundStatus
+  /** Null on a round nobody has dated; a window is offered, not required. */
+  readonly opensAt: string | null
+  readonly closesAt: string | null
+  /** Whether reviewers are hidden from one another in this round. */
+  readonly anonymize: boolean
 }
 
 /**
@@ -106,6 +111,24 @@ export interface EvaluationRowDto {
   readonly comments: string | null
   readonly updatedAt: string | null
   readonly previousRounds: readonly EvaluationPreviousRoundDto[]
+  /**
+   * The round's own questions, when it carries a typed scorecard. Absent on a
+   * round using the legacy single rating, so a form can tell "this round asks
+   * three things" from "this round asks the one thing it always did".
+   */
+  readonly criteria?: readonly EvaluationRowCriterionDto[]
+}
+
+/** One question on a reviewer's form, with whatever they have answered so far. */
+export interface EvaluationRowCriterionDto {
+  readonly id: string
+  readonly label: string
+  readonly kind: 'rating' | 'select' | 'text'
+  readonly weight: number | null
+  readonly scale: { readonly min: number; readonly max: number } | null
+  readonly options: readonly string[] | null
+  /** Null while unanswered — a real state, not a missing field. */
+  readonly value: number | string | null
 }
 
 /** Per-criterion breakdown behind the weighted totals. */
@@ -192,6 +215,9 @@ export function toEvaluationRoundDto(round: EvaluationRound): EvaluationRoundDto
     number: round.number,
     name: round.name,
     status: round.status,
+    opensAt: round.opensAt,
+    closesAt: round.closesAt,
+    anonymize: round.anonymize,
   }
 }
 

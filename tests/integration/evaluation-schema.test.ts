@@ -429,6 +429,12 @@ describe('DemoConf 2026 committee seed', () => {
       name: 'Round 1',
       status: 'open',
       weights_json: null,
+      // Migration 0017 added the round's own configuration. The seeded round
+      // predates it and reads as undated and not anonymized — the columns
+      // exist so an organizer CAN configure a round, not so every round must.
+      opens_at: null,
+      closes_at: null,
+      anonymize: 0,
     })
   })
 

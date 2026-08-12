@@ -10,7 +10,10 @@ import type {
   EvaluationRoundWeight,
   EvaluationScore,
   EventId,
+  RoundCriterion,
+  RoundScore,
   SubmissionId,
+  UtcInstant,
 } from '../../domain'
 
 /**
@@ -53,6 +56,25 @@ export interface EvaluationRepository {
   /** Insert-if-absent keyed on (eventId, number); returns the stored round. */
   saveRound(round: EvaluationRound): Promise<EvaluationRound>
   /**
+   * Rewrites a round's configuration — its name, its window and whether it is
+   * blind. Null when no row matched, which is how a round belonging to another
+   * event answers: the event scope lives in the statement that writes.
+   *
+   * Status is deliberately not settable here. Opening and closing is a
+   * transition with its own rule (a closed round never reopens), not a field on
+   * a settings form.
+   */
+  configureRound(
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+    config: {
+      readonly name: string
+      readonly opensAt: UtcInstant | null
+      readonly closesAt: UtcInstant | null
+      readonly anonymize: boolean
+    },
+  ): Promise<EvaluationRound | null>
+  /**
    * Moves a round to closed, recording `recordedWeights` as the rubric it
    * concluded under, and returns it; an already-closed round comes back
    * unchanged with the weights it originally recorded, so a repeated close
@@ -76,6 +98,42 @@ export interface EvaluationRepository {
   ): Promise<EvaluationCommitteeMember | null>
   /** Insert-if-absent keyed on (eventId, contactId); a repeat seat is a no-op. */
   saveCommitteeMember(member: EvaluationCommitteeMember): Promise<EvaluationCommitteeMember>
+  /** One round's scorecard, in the order the organizer arranged it. */
+  listRoundCriteria(eventId: EventId, roundId: EvaluationRoundId): Promise<readonly RoundCriterion[]>
+  /**
+   * Replaces a round's scorecard wholesale.
+   *
+   * A scorecard is edited as a whole on one screen, so a partial write would
+   * leave a round holding half of two different rubrics. Answers to criteria
+   * that no longer exist go with them — a question nobody is asked has no
+   * answers to keep.
+   */
+  replaceRoundCriteria(
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+    criteria: readonly RoundCriterion[],
+  ): Promise<readonly RoundCriterion[]>
+  /** Every typed answer one assignment carries. */
+  listRoundScoresByAssignment(
+    eventId: EventId,
+    assignmentId: EvaluationAssignmentId,
+  ): Promise<readonly RoundScore[]>
+  /** Every typed answer against one submission, across its assignments. */
+  listRoundScoresBySubmission(
+    eventId: EventId,
+    submissionId: SubmissionId,
+  ): Promise<readonly RoundScore[]>
+  /** Upserts one answer on (assignment, criterion); re-scoring edits in place. */
+  saveRoundScore(score: RoundScore): Promise<RoundScore>
+  /** The contacts pooled into one round, oldest first. */
+  listRoundPool(eventId: EventId, roundId: EvaluationRoundId): Promise<readonly ContactId[]>
+  /** Replaces a round's pool wholesale, mirroring how the screen edits it. */
+  replaceRoundPool(
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+    contactIds: readonly ContactId[],
+    addedAt: string,
+  ): Promise<void>
   /**
    * The whole roster in ONE read: every seat, the person in it, and their
    * workload, oldest seat first.

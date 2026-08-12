@@ -358,6 +358,12 @@ describe('organizer criteria and rounds', () => {
         number: 1,
         name: 'Round 1',
         status: 'open',
+        // The round's own configuration, added in 0017. A seeded round is
+        // undated and open to the whole committee until an organizer says
+        // otherwise, and says so in fields rather than by omitting them.
+        opensAt: null,
+        closesAt: null,
+        anonymize: false,
       },
     ])
 

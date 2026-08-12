@@ -12,6 +12,9 @@ import type {
   EvaluationRoundStatus,
   EvaluationRoundWeight,
   EvaluationScore,
+  RoundCriterion,
+  RoundCriterionKind,
+  RoundScore,
 } from '../domain'
 import { DbDecodeError } from './mappers'
 
@@ -30,6 +33,9 @@ interface RawRoundRow {
   readonly name: string
   readonly status: EvaluationRoundStatus
   readonly weights_json: string | null
+  readonly opens_at: string | null
+  readonly closes_at: string | null
+  readonly anonymize: number
 }
 
 interface RawAssignmentRow {
@@ -59,7 +65,8 @@ interface RawScoreRow {
 }
 
 const CRITERION_COLUMNS = 'event_id, id, name, weight, position'
-const ROUND_COLUMNS = 'event_id, id, number, name, status, weights_json'
+const ROUND_COLUMNS = `event_id, id, number, name, status, weights_json, opens_at,
+                closes_at, anonymize`
 const ASSIGNMENT_COLUMNS = `event_id, id, round_id, submission_id, evaluator_contact_id,
                 created_at`
 const COMMITTEE_MEMBER_COLUMNS = 'event_id, contact_id, added_at'
@@ -107,6 +114,11 @@ function toRound(row: RawRoundRow): EvaluationRound {
     name: row.name,
     status: row.status,
     recordedWeights: parseRoundWeights(row.weights_json),
+    opensAt: row.opens_at,
+    closesAt: row.closes_at,
+    // SQLite has no boolean; 1/0 is the storage and `true`/`false` is the
+    // vocabulary every caller above this line speaks.
+    anonymize: row.anonymize === 1,
   }
 }
 
@@ -118,6 +130,85 @@ function toAssignment(row: RawAssignmentRow): EvaluationAssignment {
     submissionId: row.submission_id,
     evaluatorContactId: row.evaluator_contact_id,
     createdAt: row.created_at,
+  }
+}
+
+interface RawRoundCriterionRow {
+  readonly event_id: string
+  readonly id: string
+  readonly round_id: string
+  readonly position: number
+  readonly label: string
+  readonly kind: RoundCriterionKind
+  readonly weight: number | null
+  readonly config_json: string | null
+}
+
+interface RawRoundScoreRow {
+  readonly event_id: string
+  readonly id: string
+  readonly assignment_id: string
+  readonly criterion_id: string
+  readonly value_number: number | null
+  readonly value_text: string | null
+  readonly created_at: string
+  readonly updated_at: string
+}
+
+const ROUND_CRITERION_COLUMNS =
+  'event_id, id, round_id, position, label, kind, weight, config_json'
+const ROUND_SCORE_COLUMNS = `event_id, id, assignment_id, criterion_id, value_number,
+                value_text, created_at, updated_at`
+
+/**
+ * The kind-specific half of a criterion. A scale and an option list have no
+ * shape in common, so each kind writes only what it means and the others store
+ * nothing rather than a column full of nulls.
+ */
+function serializeCriterionConfig(criterion: RoundCriterion): string | null {
+  if (criterion.kind === 'rating' && criterion.scale !== null) {
+    return JSON.stringify({ min: criterion.scale.min, max: criterion.scale.max })
+  }
+  if (criterion.kind === 'select' && criterion.options !== null) {
+    return JSON.stringify({ options: criterion.options })
+  }
+  return null
+}
+
+function toRoundCriterion(row: RawRoundCriterionRow): RoundCriterion {
+  const config: unknown = row.config_json === null ? null : JSON.parse(row.config_json)
+  const record = (config ?? {}) as { min?: unknown; max?: unknown; options?: unknown }
+  const scale =
+    row.kind === 'rating' && typeof record.min === 'number' && typeof record.max === 'number'
+      ? { min: record.min, max: record.max }
+      : null
+  const options =
+    row.kind === 'select' && Array.isArray(record.options)
+      ? record.options.filter((option): option is string => typeof option === 'string')
+      : null
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    roundId: row.round_id,
+    position: row.position,
+    label: row.label,
+    kind: row.kind,
+    weight: row.weight,
+    scale,
+    options,
+  }
+}
+
+function toRoundScore(row: RawRoundScoreRow): RoundScore {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    assignmentId: row.assignment_id,
+    criterionId: row.criterion_id,
+    valueNumber: row.value_number,
+    valueText: row.value_text,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 
@@ -222,6 +313,43 @@ export function createEvaluationRepository(db: D1Database): EvaluationRepository
       const row = await db
         .prepare(`SELECT ${ROUND_COLUMNS} FROM evaluation_rounds WHERE event_id = ? AND number = ?`)
         .bind(eventId, number)
+        .first<RawRoundRow>()
+      return row === null ? null : toRound(row)
+    },
+
+    async configureRound(
+      eventId: string,
+      roundId: string,
+      config: {
+        readonly name: string
+        readonly opensAt: string | null
+        readonly closesAt: string | null
+        readonly anonymize: boolean
+      },
+    ): Promise<EvaluationRound | null> {
+      // Event scope in the same statement that writes, so naming another
+      // event's slug with this round's id updates nothing rather than reaching
+      // across. Status is untouched here: opening and closing is its own
+      // transition, guarded by the no-reopen trigger.
+      const result = await db
+        .prepare(
+          `UPDATE evaluation_rounds
+              SET name = ?, opens_at = ?, closes_at = ?, anonymize = ?
+            WHERE event_id = ? AND id = ?`,
+        )
+        .bind(
+          config.name,
+          config.opensAt,
+          config.closesAt,
+          config.anonymize ? 1 : 0,
+          eventId,
+          roundId,
+        )
+        .run()
+      if ((result.meta?.changes ?? 0) === 0) return null
+      const row = await db
+        .prepare(`SELECT ${ROUND_COLUMNS} FROM evaluation_rounds WHERE event_id = ? AND id = ?`)
+        .bind(eventId, roundId)
         .first<RawRoundRow>()
       return row === null ? null : toRound(row)
     },
@@ -364,6 +492,163 @@ export function createEvaluationRepository(db: D1Database): EvaluationRepository
         .first<RawCommitteeMemberRow>()
       if (row === null) throw new Error('committee member insert stored no row')
       return toCommitteeMember(row)
+    },
+
+    async listRoundCriteria(eventId: string, roundId: string): Promise<readonly RoundCriterion[]> {
+      const result = await db
+        .prepare(
+          `SELECT ${ROUND_CRITERION_COLUMNS} FROM evaluation_round_criteria
+            WHERE event_id = ? AND round_id = ? ORDER BY position`,
+        )
+        .bind(eventId, roundId)
+        .all<RawRoundCriterionRow>()
+      return result.results.map(toRoundCriterion)
+    },
+
+    async replaceRoundCriteria(
+      eventId: string,
+      roundId: string,
+      criteria: readonly RoundCriterion[],
+    ): Promise<readonly RoundCriterion[]> {
+      // One batch, so a scorecard is never half-replaced: a failure part-way
+      // through would otherwise leave a round holding some of the old rubric
+      // and some of the new, which is a state no screen can render honestly.
+      // The delete carries the event scope, so another event's round is
+      // untouched even if its id were passed.
+      await db.batch([
+        db
+          .prepare('DELETE FROM evaluation_round_criteria WHERE event_id = ? AND round_id = ?')
+          .bind(eventId, roundId),
+        ...criteria.map((criterion) =>
+          db
+            .prepare(
+              `INSERT INTO evaluation_round_criteria
+                 (event_id, id, round_id, position, label, kind, weight, config_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(
+              eventId,
+              criterion.id,
+              roundId,
+              criterion.position,
+              criterion.label,
+              criterion.kind,
+              criterion.weight,
+              serializeCriterionConfig(criterion),
+            ),
+        ),
+      ])
+      const stored = await db
+        .prepare(
+          `SELECT ${ROUND_CRITERION_COLUMNS} FROM evaluation_round_criteria
+            WHERE event_id = ? AND round_id = ? ORDER BY position`,
+        )
+        .bind(eventId, roundId)
+        .all<RawRoundCriterionRow>()
+      return stored.results.map(toRoundCriterion)
+    },
+
+    async listRoundScoresByAssignment(
+      eventId: string,
+      assignmentId: string,
+    ): Promise<readonly RoundScore[]> {
+      const result = await db
+        .prepare(
+          `SELECT ${ROUND_SCORE_COLUMNS} FROM evaluation_round_scores
+            WHERE event_id = ? AND assignment_id = ? ORDER BY criterion_id`,
+        )
+        .bind(eventId, assignmentId)
+        .all<RawRoundScoreRow>()
+      return result.results.map(toRoundScore)
+    },
+
+    async listRoundScoresBySubmission(
+      eventId: string,
+      submissionId: string,
+    ): Promise<readonly RoundScore[]> {
+      const result = await db
+        .prepare(
+          `SELECT ${ROUND_SCORE_COLUMNS.split(', ')
+            .map((column) => `s.${column}`)
+            .join(', ')}
+             FROM evaluation_round_scores s
+             JOIN evaluation_assignments a ON a.event_id = s.event_id AND a.id = s.assignment_id
+            WHERE s.event_id = ? AND a.submission_id = ?
+            ORDER BY s.assignment_id, s.criterion_id`,
+        )
+        .bind(eventId, submissionId)
+        .all<RawRoundScoreRow>()
+      return result.results.map(toRoundScore)
+    },
+
+    async saveRoundScore(score: RoundScore): Promise<RoundScore> {
+      // Upsert on (assignment, criterion): re-scoring edits the answer that is
+      // there rather than adding a second one, so reopening shows one value per
+      // field. The first `created_at` survives — when they first answered is a
+      // different fact from when they last changed their mind.
+      await db
+        .prepare(
+          `INSERT INTO evaluation_round_scores
+             (event_id, id, assignment_id, criterion_id, value_number, value_text,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(assignment_id, criterion_id) DO UPDATE
+             SET value_number = excluded.value_number,
+                 value_text   = excluded.value_text,
+                 updated_at   = excluded.updated_at`,
+        )
+        .bind(
+          score.eventId,
+          score.id,
+          score.assignmentId,
+          score.criterionId,
+          score.valueNumber,
+          score.valueText,
+          score.createdAt,
+          score.updatedAt,
+        )
+        .run()
+      const stored = await db
+        .prepare(
+          `SELECT ${ROUND_SCORE_COLUMNS} FROM evaluation_round_scores
+            WHERE assignment_id = ? AND criterion_id = ?`,
+        )
+        .bind(score.assignmentId, score.criterionId)
+        .first<RawRoundScoreRow>()
+      if (stored === null) throw new Error('round score upsert stored no row')
+      return toRoundScore(stored)
+    },
+
+    async listRoundPool(eventId: string, roundId: string): Promise<readonly string[]> {
+      const result = await db
+        .prepare(
+          `SELECT contact_id FROM evaluation_round_pool
+            WHERE event_id = ? AND round_id = ? ORDER BY added_at, contact_id`,
+        )
+        .bind(eventId, roundId)
+        .all<{ contact_id: string }>()
+      return result.results.map((row) => row.contact_id)
+    },
+
+    async replaceRoundPool(
+      eventId: string,
+      roundId: string,
+      contactIds: readonly string[],
+      addedAt: string,
+    ): Promise<void> {
+      await db.batch([
+        db
+          .prepare('DELETE FROM evaluation_round_pool WHERE event_id = ? AND round_id = ?')
+          .bind(eventId, roundId),
+        ...contactIds.map((contactId) =>
+          db
+            .prepare(
+              `INSERT INTO evaluation_round_pool (event_id, round_id, contact_id, added_at)
+               VALUES (?, ?, ?, ?)`,
+            )
+            .bind(eventId, roundId, contactId, addedAt),
+        ),
+      ])
     },
 
     async listCommitteeRoster(eventId: string): Promise<readonly CommitteeRosterRow[]> {

@@ -6,6 +6,7 @@ import type {
   CriterionInput,
   DefineCriteriaInput,
   OpenRoundInput,
+  RoundCriterionInput,
   PlaceAgendaSessionInput,
   ReplaceTaxonomyInput,
   SaveFormDraftInput,
@@ -793,6 +794,106 @@ export async function handleOpenRound(context: ServerContext): Promise<Response>
   return context.json(await deps.evaluations.openRound(actor, eventId, input))
 }
 
+/**
+ * PUT /api/admin/events/:slug/rounds/:roundId: the round's own configuration —
+ * what it is called, when it runs, and whether it is blind. Not its status:
+ * opening and closing is a transition with its own rule, not a form field.
+ */
+export async function handleConfigureRound(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const roundId = context.req.param('roundId')
+  if (slug === undefined || roundId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  if (typeof body.name !== 'string') return validationFailedResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(
+    await deps.evaluations.configureRound(actor, eventId, roundId, {
+      name: body.name,
+      opensAt: typeof body.opensAt === 'string' || body.opensAt === null ? body.opensAt : null,
+      closesAt: typeof body.closesAt === 'string' || body.closesAt === null ? body.closesAt : null,
+      anonymize: body.anonymize === true,
+    }),
+  )
+}
+
+/** GET /api/admin/events/:slug/rounds/:roundId/scorecard: what this round asks. */
+export async function handleGetRoundScorecard(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const roundId = context.req.param('roundId')
+  if (slug === undefined || roundId === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.getRoundScorecard(actor, eventId, roundId))
+}
+
+/** PUT .../scorecard: replaces the round's questions wholesale. */
+export async function handlePutRoundScorecard(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const roundId = context.req.param('roundId')
+  if (slug === undefined || roundId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || !Array.isArray(body.criteria)) return validationFailedResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(
+    await deps.evaluations.putRoundScorecard(
+      actor,
+      eventId,
+      roundId,
+      body.criteria as readonly RoundCriterionInput[],
+    ),
+  )
+}
+
+/** GET .../pool: which committee members read in this round. */
+export async function handleGetRoundPool(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const roundId = context.req.param('roundId')
+  if (slug === undefined || roundId === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.getRoundPool(actor, eventId, roundId))
+}
+
+/** PUT .../pool: sets the round's reviewers, all of whom must hold a seat. */
+export async function handlePutRoundPool(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const roundId = context.req.param('roundId')
+  if (slug === undefined || roundId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || !Array.isArray(body.contactIds)) return validationFailedResponse(context)
+  if (!body.contactIds.every((id) => typeof id === 'string')) {
+    return validationFailedResponse(context)
+  }
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(
+    await deps.evaluations.putRoundPool(actor, eventId, roundId, body.contactIds as string[]),
+  )
+}
+
 /** POST /api/admin/rounds/:id/close: idempotent one-way close. */
 export async function handleCloseRound(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -963,6 +1064,39 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleOpenRound,
+  )
+  app.put(
+    '/api/admin/events/:slug/rounds/:roundId',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleConfigureRound,
+  )
+  app.get(
+    '/api/admin/events/:slug/rounds/:roundId/scorecard',
+    requireSession(),
+    requireActor('organizer'),
+    handleGetRoundScorecard,
+  )
+  app.put(
+    '/api/admin/events/:slug/rounds/:roundId/scorecard',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handlePutRoundScorecard,
+  )
+  app.get(
+    '/api/admin/events/:slug/rounds/:roundId/pool',
+    requireSession(),
+    requireActor('organizer'),
+    handleGetRoundPool,
+  )
+  app.put(
+    '/api/admin/events/:slug/rounds/:roundId/pool',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handlePutRoundPool,
   )
   app.post(
     '/api/admin/events/:slug/rounds/:id/close',

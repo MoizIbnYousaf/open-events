@@ -70,6 +70,7 @@ describe('migration apply from an empty local D1', () => {
       '0014_widen_uploaded_file_kinds.sql',
       '0015_fix_condition_rule_unique_grain.sql',
       '0016_create_submission_decisions.sql',
+      '0017_configurable_review_rounds.sql',
     ])
 
     const tables = await env.DB.prepare(

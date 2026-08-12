@@ -385,7 +385,21 @@ export async function handleSubmitEvaluation(context: ServerContext): Promise<Re
   const submissionId = body.submissionId
   const rating = body.rating
   const comments = body.comments
-  if (typeof submissionId !== 'string' || typeof rating !== 'number') {
+  const answers = body.answers
+  if (typeof submissionId !== 'string') return validationFailedResponse(context)
+  // TWO SHAPES, because a round decides which it asks for: a typed scorecard
+  // sends `answers`, and a round without one sends the single `rating` it
+  // always did. Exactly one must be present — a body carrying neither is not a
+  // review, and the service decides which the round actually accepts.
+  const hasAnswers = Array.isArray(answers)
+  if (!hasAnswers && typeof rating !== 'number') return validationFailedResponse(context)
+  if (
+    hasAnswers &&
+    !answers.every(
+      (answer) =>
+        isRecord(answer) && typeof answer.criterionId === 'string' && 'value' in answer,
+    )
+  ) {
     return validationFailedResponse(context)
   }
   if (comments !== undefined && comments !== null && typeof comments !== 'string') {
@@ -397,7 +411,10 @@ export async function handleSubmitEvaluation(context: ServerContext): Promise<Re
   // wrote without ever showing it to them.
   const input: SubmitEvaluationInput = {
     submissionId,
-    rating,
+    ...(typeof rating === 'number' ? { rating } : {}),
+    ...(hasAnswers
+      ? { answers: answers as readonly { criterionId: string; value: unknown }[] }
+      : {}),
     ...('comments' in body ? { comments: comments as string | null } : {}),
   }
   return context.json(await deps.evaluations.upsertScore(actor, input))

@@ -60,6 +60,107 @@ export interface EvaluationRound {
   readonly name: string
   readonly status: EvaluationRoundStatus
   readonly recordedWeights: readonly EvaluationRoundWeight[] | null
+  /** When reading opens and closes. Null on a round nobody has dated. */
+  readonly opensAt: UtcInstant | null
+  readonly closesAt: UtcInstant | null
+  /** Whether reviewers are hidden from one another in this round. */
+  readonly anonymize: boolean
+}
+
+/**
+ * The three shapes a scorecard question can take.
+ *
+ * 'rating' is a number on a scale and the only one that can be averaged.
+ * 'select' is one of a fixed list. 'text' is prose. A committee asking "which
+ * track is this?" or "what should we tell the speaker?" was previously asking
+ * it in a comment box or not at all.
+ */
+export const ROUND_CRITERION_KINDS = ['rating', 'select', 'text'] as const
+
+export type RoundCriterionKind = (typeof ROUND_CRITERION_KINDS)[number]
+
+export function isRoundCriterionKind(value: unknown): value is RoundCriterionKind {
+  return typeof value === 'string' && (ROUND_CRITERION_KINDS as readonly string[]).includes(value)
+}
+
+/**
+ * One question on one round's scorecard.
+ *
+ * `weight` is present exactly when `kind` is 'rating'. A chosen option and a
+ * paragraph cannot be multiplied, so they carry no weight rather than a weight
+ * every calculation would have to remember to skip. `scale` belongs to a
+ * rating and `options` to a select; each is null on the kinds it means nothing
+ * for, because a field that is meaningless for two kinds out of three
+ * describes the shape worse than an absent one does.
+ */
+export interface RoundCriterion {
+  readonly id: string
+  readonly eventId: EventId
+  readonly roundId: EvaluationRoundId
+  readonly position: number
+  readonly label: string
+  readonly kind: RoundCriterionKind
+  readonly weight: number | null
+  readonly scale: { readonly min: number; readonly max: number } | null
+  readonly options: readonly string[] | null
+}
+
+/** One reviewer's answer to one scorecard question. */
+export interface RoundScore {
+  readonly id: string
+  readonly eventId: EventId
+  readonly assignmentId: EvaluationAssignmentId
+  readonly criterionId: string
+  /** Exactly one of these is set: a rating is a number, everything else words. */
+  readonly valueNumber: number | null
+  readonly valueText: string | null
+  readonly createdAt: UtcInstant
+  readonly updatedAt: UtcInstant
+}
+
+/**
+ * Whether an answer fits the question it answers.
+ *
+ * The reviewer's form offers only what the criterion allows, so a value that
+ * does not fit arrived from somewhere other than that form — a stale tab whose
+ * scorecard has since been rewritten, or a hand-made request. Either way the
+ * honest response is to refuse it rather than store a rating off its own scale
+ * or an option nobody may pick.
+ */
+export function isAnswerValidFor(criterion: RoundCriterion, value: unknown): boolean {
+  if (criterion.kind === 'rating') {
+    if (typeof value !== 'number' || !Number.isInteger(value)) return false
+    const scale = criterion.scale ?? { min: 1, max: 5 }
+    return value >= scale.min && value <= scale.max
+  }
+  if (criterion.kind === 'select') {
+    return typeof value === 'string' && (criterion.options ?? []).includes(value)
+  }
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+/**
+ * The weighted average of a round's typed scorecard, in hundredths.
+ *
+ * Only ratings take part, because only they carry weight. A scorecard of pure
+ * prose has no average at all and says so with null rather than a zero, which
+ * would read as "the committee scored it nothing".
+ */
+export function weightedRoundAverageCentis(
+  criteria: readonly RoundCriterion[],
+  answers: ReadonlyMap<string, number>,
+): number | null {
+  let weightSum = 0
+  let weightedTotal = 0
+  for (const criterion of criteria) {
+    if (criterion.kind !== 'rating' || criterion.weight === null) continue
+    const value = answers.get(criterion.id)
+    if (value === undefined) continue
+    weightSum += criterion.weight
+    weightedTotal += criterion.weight * value
+  }
+  if (weightSum === 0) return null
+  return Math.round((weightedTotal / weightSum) * 100)
 }
 
 /**

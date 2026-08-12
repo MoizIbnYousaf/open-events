@@ -5,6 +5,9 @@ import type {
   EvaluationRound,
   EvaluationRoundId,
   EvaluationScore,
+  RoundCriterion,
+  RoundCriterionKind,
+  RoundScore,
 } from '../../domain/evaluation'
 import type { EventId } from '../../domain/event'
 import type { SubmissionId } from '../../domain/submission'
@@ -18,11 +21,15 @@ import {
   selectDefaultCriterion,
   selectOpenRound,
   selectRoundAssignments,
+  isAnswerValidFor,
+  isRoundCriterionKind,
+  weightedRoundAverageCentis,
   selectSurfaceAssignments,
   snapshotCriterionWeights,
   type WeightedScore,
 } from '../../domain/evaluation'
 import { isValidEmailAddress, normalizeEmail } from '../../domain/invariants/email'
+import { isValidUtcInstant } from '../../domain/invariants/time'
 import type { OrganizerActor, SubmitterActor } from '../actors'
 import type {
   EvaluationAssignmentDto,
@@ -60,6 +67,58 @@ export interface DefineCriteriaInput {
 export interface OpenRoundInput {
   readonly number: number
   readonly name: string
+}
+
+export interface ConfigureRoundInput {
+  readonly name: string
+  readonly opensAt?: string | null
+  readonly closesAt?: string | null
+  readonly anonymize?: boolean
+}
+
+/** One proposed scorecard question, exactly as the organizer surface sends it. */
+export interface RoundCriterionInput {
+  readonly label: string
+  readonly kind: string
+  readonly weight?: number | null
+  readonly scale?: { readonly min: number; readonly max: number } | null
+  readonly options?: readonly string[] | null
+}
+
+/** One scorecard question as every surface reads it back. */
+export interface RoundCriterionDto {
+  readonly id: string
+  readonly label: string
+  readonly kind: RoundCriterionKind
+  readonly weight: number | null
+  readonly position: number
+  readonly scale: { readonly min: number; readonly max: number } | null
+  readonly options: readonly string[] | null
+}
+
+function toRoundCriterionDto(criterion: RoundCriterion): RoundCriterionDto {
+  return {
+    id: criterion.id,
+    label: criterion.label,
+    kind: criterion.kind,
+    weight: criterion.weight,
+    position: criterion.position,
+    scale: criterion.scale,
+    options: criterion.options,
+  }
+}
+
+/**
+ * A date the organizer typed, or the absence of one.
+ *
+ * Returns the canonical instant, `null` for "no date", or the sentinel
+ * 'invalid' — which the caller refuses. Coercing an unparseable date to null
+ * would silently clear a window the organizer believed they had set.
+ */
+function normalizeInstant(value: string | null | undefined): string | null | 'invalid' {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value !== 'string') return 'invalid'
+  return isValidUtcInstant(value) ? value : 'invalid'
 }
 
 export interface AddCommitteeMemberInput {
@@ -114,8 +173,11 @@ export interface AssignEvaluatorInput {
  */
 export interface SubmitEvaluationInput {
   readonly submissionId: SubmissionId
-  readonly rating: number
+  /** The legacy single rating; unused when the round has a typed scorecard. */
+  readonly rating?: number
   readonly comments?: string | null
+  /** One entry per answered question, when the round carries a scorecard. */
+  readonly answers?: readonly { readonly criterionId: string; readonly value: unknown }[]
 }
 
 /**
@@ -301,6 +363,173 @@ export class EvaluationService {
   }
 
   /**
+   * Rewrites one round's configuration: what it is called, when it runs, and
+   * whether reviewers are hidden from one another.
+   *
+   * The window is validated the way every other window in this product is —
+   * canonical UTC, and a close strictly after an open — so a round cannot be
+   * given a shape the rest of the app would have to interpret. A refused
+   * configuration changes nothing at all rather than landing the half of it
+   * that happened to be valid.
+   */
+  async configureRound(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+    input: ConfigureRoundInput,
+  ): Promise<EvaluationRoundDto> {
+    const name = typeof input.name === 'string' ? input.name.trim() : ''
+    if (name.length === 0) {
+      throw new ApplicationError('validation_failed', 'A round name is required')
+    }
+    const opensAt = normalizeInstant(input.opensAt)
+    const closesAt = normalizeInstant(input.closesAt)
+    if (opensAt === 'invalid' || closesAt === 'invalid') {
+      throw new ApplicationError('validation_failed', 'A round date must be a UTC instant')
+    }
+    if (opensAt !== null && closesAt !== null && closesAt <= opensAt) {
+      throw new ApplicationError('validation_failed', 'A round must close after it opens')
+    }
+    const configured = await this.#evaluations.configureRound(eventId, roundId, {
+      name,
+      opensAt,
+      closesAt,
+      anonymize: input.anonymize === true,
+    })
+    if (configured === null) {
+      // Absent and belonging-to-another-event are the same safe answer.
+      throw new ApplicationError('not_found', `Round '${roundId}' not found`)
+    }
+    return toEvaluationRoundDto(configured)
+  }
+
+  /** One round's scorecard, in the order the organizer arranged it. */
+  async getRoundScorecard(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+  ): Promise<readonly RoundCriterionDto[]> {
+    await this.#requireRound(eventId, roundId)
+    return (await this.#evaluations.listRoundCriteria(eventId, roundId)).map(toRoundCriterionDto)
+  }
+
+  /**
+   * Replaces a round's scorecard.
+   *
+   * Every criterion is validated before ANY of them is written, so a scorecard
+   * with one bad question is refused whole rather than saved up to the point it
+   * went wrong — a half-saved rubric is one the organizer would have to
+   * discover by reading it back.
+   */
+  async putRoundScorecard(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+    input: readonly RoundCriterionInput[],
+  ): Promise<readonly RoundCriterionDto[]> {
+    await this.#requireRound(eventId, roundId)
+    const criteria: RoundCriterion[] = input.map((candidate, index) =>
+      this.#parseCriterion(candidate, index, eventId, roundId),
+    )
+    const stored = await this.#evaluations.replaceRoundCriteria(eventId, roundId, criteria)
+    return stored.map(toRoundCriterionDto)
+  }
+
+  /** The committee members reading in this round. */
+  async getRoundPool(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+  ): Promise<readonly { readonly contactId: ContactId }[]> {
+    await this.#requireRound(eventId, roundId)
+    return (await this.#evaluations.listRoundPool(eventId, roundId)).map((contactId) => ({
+      contactId,
+    }))
+  }
+
+  /**
+   * Sets which committee members read in this round.
+   *
+   * A pool NARROWS the committee; it never grants. Everyone named has to hold a
+   * seat, because the seat is what grants access to the event's review surface
+   * at all — pooling a stranger into a round would otherwise be a way around
+   * the committee entirely.
+   */
+  async putRoundPool(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+    contactIds: readonly ContactId[],
+  ): Promise<readonly { readonly contactId: ContactId }[]> {
+    await this.#requireRound(eventId, roundId)
+    const seats = await Promise.all(
+      contactIds.map((contactId) => this.#evaluations.findCommitteeMember(eventId, contactId)),
+    )
+    if (seats.some((seat) => seat === null)) {
+      throw new ApplicationError(
+        'validation_failed',
+        'Only committee members can be pooled into a round',
+      )
+    }
+    await this.#evaluations.replaceRoundPool(eventId, roundId, contactIds, this.#clock.now())
+    return contactIds.map((contactId) => ({ contactId }))
+  }
+
+  async #requireRound(eventId: EventId, roundId: EvaluationRoundId): Promise<EvaluationRound> {
+    const round = await this.#evaluations.findRoundById(roundId)
+    if (round === null || round.eventId !== eventId) {
+      throw new ApplicationError('not_found', `Round '${roundId}' not found`)
+    }
+    return round
+  }
+
+  /** One proposed criterion, refused rather than coerced when it is malformed. */
+  #parseCriterion(
+    candidate: RoundCriterionInput,
+    index: number,
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+  ): RoundCriterion {
+    const label = typeof candidate.label === 'string' ? candidate.label.trim() : ''
+    if (label.length === 0) {
+      throw new ApplicationError('validation_failed', 'A criterion label is required')
+    }
+    if (!isRoundCriterionKind(candidate.kind)) {
+      throw new ApplicationError('validation_failed', 'Unknown criterion kind')
+    }
+    const kind = candidate.kind
+    // Weight belongs to a rating and to nothing else: an option and a paragraph
+    // cannot be multiplied, so a weight on them would be a number the average
+    // has to remember to skip.
+    if (kind === 'rating') {
+      if (typeof candidate.weight !== 'number' || !Number.isInteger(candidate.weight) || candidate.weight < 1) {
+        throw new ApplicationError('validation_failed', 'A rating criterion needs a whole weight')
+      }
+    } else if (candidate.weight !== null && candidate.weight !== undefined) {
+      throw new ApplicationError('validation_failed', 'Only a rating criterion carries a weight')
+    }
+    const scale = kind === 'rating' ? (candidate.scale ?? { min: 1, max: 5 }) : null
+    if (scale !== null && (!Number.isInteger(scale.min) || !Number.isInteger(scale.max) || scale.max <= scale.min)) {
+      throw new ApplicationError('validation_failed', 'A rating scale must run upwards')
+    }
+    const options = kind === 'select' ? (candidate.options ?? []) : null
+    if (options !== null && (options.length === 0 || options.some((option) => option.trim() === ''))) {
+      throw new ApplicationError('validation_failed', 'A choice criterion needs options')
+    }
+    return {
+      id: crypto.randomUUID(),
+      eventId,
+      roundId,
+      position: index,
+      label,
+      kind,
+      weight: kind === 'rating' ? (candidate.weight as number) : null,
+      scale,
+      options,
+    }
+  }
+
+  /**
    * The event's committee, with each member's workload beside their seat.
    *
    * Ordered by when the seat was taken, so the roster reads as the committee was
@@ -381,6 +610,12 @@ export class EvaluationService {
       name,
       status: 'open',
       recordedWeights: null,
+      // A new round is undated and open to everyone until an organizer says
+      // otherwise; the columns exist so they can say so, not so every round
+      // must.
+      opensAt: null,
+      closesAt: null,
+      anonymize: false,
     })
     return toEvaluationRoundDto(round)
   }
@@ -542,16 +777,39 @@ export class EvaluationService {
       evaluatorIds.map((id, index) => [id, evaluators[index] ?? null] as const),
     )
     const criterion = selectDefaultCriterion(criteria)
-    const roundSummaries = rounds.map((round) =>
-      summarizeRound(
+    // Typed answers, and the scorecards they answer, for every round that has
+    // one. A round with a scorecard is summarised from ITS weights; a round
+    // without keeps the event rubric it always used.
+    const [typedAnswers, typedCards] = await Promise.all([
+      this.#evaluations.listRoundScoresBySubmission(submission.eventId, submission.id),
+      Promise.all(
+        rounds.map(async (round) => ({
+          roundId: round.id,
+          criteria: await this.#evaluations.listRoundCriteria(submission.eventId, round.id),
+        })),
+      ),
+    ])
+    const cardByRound = new Map(typedCards.map((entry) => [entry.roundId, entry.criteria]))
+    const roundSummaries = rounds.map((round) => {
+      const card = cardByRound.get(round.id) ?? []
+      if (card.length > 0) {
+        return summarizeTypedRound(
+          round,
+          selectRoundAssignments(assignments, round.id),
+          card,
+          typedAnswers,
+          byContactId,
+        )
+      }
+      return summarizeRound(
         round,
         selectRoundAssignments(assignments, round.id),
         stored,
         criteria,
         criterion,
         byContactId,
-      ),
-    )
+      )
+    })
     const current = selectCurrentRound(rounds)
     const headline = roundSummaries.find((entry) => entry.roundId === current?.id) ?? null
 
@@ -605,9 +863,18 @@ export class EvaluationService {
     ])
     const criterion = selectDefaultCriterion(criteria)
     return Promise.all(
-      [...selectSurfaceAssignments(assignments, rounds).values()].map((assignment) =>
-        this.#toRow(assignment, criterion, assignments, rounds),
-      ),
+      [...selectSurfaceAssignments(assignments, rounds).values()].map(async (assignment) => {
+        // Each row asks whatever ITS round asks. Two rounds of one event may
+        // carry different scorecards, so the shape is decided per assignment
+        // rather than once for the whole queue.
+        const roundCriteria = await this.#evaluations.listRoundCriteria(
+          actor.eventId,
+          assignment.roundId,
+        )
+        return roundCriteria.length > 0
+          ? this.#toTypedRow(actor, assignment, roundCriteria, rounds)
+          : this.#toRow(assignment, criterion, assignments, rounds)
+      }),
     )
   }
 
@@ -631,6 +898,19 @@ export class EvaluationService {
     if (assignment === undefined) {
       throw new ApplicationError('forbidden', 'You are not assigned to that submission')
     }
+
+    // WHICH PATH IS LIVE is decided by the round, not by the request. A round
+    // carrying its own typed scorecard takes typed answers; a round with none
+    // — every round that existed before scorecards — keeps the single-rating
+    // path and the scores already recorded against it.
+    const roundCriteria = await this.#evaluations.listRoundCriteria(
+      actor.eventId,
+      assignment.roundId,
+    )
+    if (roundCriteria.length > 0) {
+      return this.#recordTypedAnswers(actor, assignment, roundCriteria, input, rounds)
+    }
+
     if (!isValidEvaluationRating(input.rating)) {
       throw new ApplicationError('validation_failed', 'A rating must be a whole number from 1 to 5')
     }
@@ -659,6 +939,108 @@ export class EvaluationService {
       updatedAt: now,
     })
     return this.#toRow(assignment, criterion, assignments, rounds)
+  }
+
+  /**
+   * Records a reviewer's answers to a typed scorecard.
+   *
+   * Every answer is checked against the criterion it answers BEFORE any of them
+   * is written, so a submission carrying one bad value is refused whole rather
+   * than half-saved — a reviewer would otherwise have to reload to discover
+   * which of their answers survived.
+   */
+  async #recordTypedAnswers(
+    actor: SubmitterActor,
+    assignment: EvaluationAssignment,
+    criteria: readonly RoundCriterion[],
+    input: SubmitEvaluationInput,
+    rounds: readonly EvaluationRound[],
+  ): Promise<EvaluationRowDto> {
+    const round = rounds.find((candidate) => candidate.id === assignment.roundId)
+    if (round === undefined || round.status !== 'open') {
+      throw new ApplicationError('conflict', 'That review round is closed')
+    }
+    const byId = new Map(criteria.map((criterion) => [criterion.id, criterion]))
+    const answers = input.answers ?? []
+    for (const answer of answers) {
+      const criterion = byId.get(answer.criterionId)
+      if (criterion === undefined) {
+        throw new ApplicationError('validation_failed', 'That question is not on this scorecard')
+      }
+      if (!isAnswerValidFor(criterion, answer.value)) {
+        throw new ApplicationError('validation_failed', `'${criterion.label}' was not answered validly`)
+      }
+    }
+
+    const now = this.#clock.now()
+    const existing = await this.#evaluations.listRoundScoresByAssignment(
+      actor.eventId,
+      assignment.id,
+    )
+    for (const answer of answers) {
+      const criterion = byId.get(answer.criterionId)
+      if (criterion === undefined) continue
+      const previous = existing.find((score) => score.criterionId === criterion.id)
+      await this.#evaluations.saveRoundScore({
+        id: previous?.id ?? crypto.randomUUID(),
+        eventId: actor.eventId,
+        assignmentId: assignment.id,
+        criterionId: criterion.id,
+        // A rating is a number and everything else is words: exactly one of
+        // these columns carries the answer, so a reader never has to guess.
+        valueNumber: criterion.kind === 'rating' ? (answer.value as number) : null,
+        valueText: criterion.kind === 'rating' ? null : String(answer.value),
+        createdAt: previous?.createdAt ?? now,
+        updatedAt: now,
+      })
+    }
+    return this.#toTypedRow(actor, assignment, criteria, rounds)
+  }
+
+  /** One queue row whose fields are the round's own questions. */
+  async #toTypedRow(
+    actor: SubmitterActor,
+    assignment: EvaluationAssignment,
+    criteria: readonly RoundCriterion[],
+    rounds: readonly EvaluationRound[],
+  ): Promise<EvaluationRowDto> {
+    const [submission, stored] = await Promise.all([
+      this.#submissions.findById(assignment.submissionId),
+      this.#evaluations.listRoundScoresByAssignment(actor.eventId, assignment.id),
+    ])
+    const round = rounds.find((candidate) => candidate.id === assignment.roundId)
+    const byCriterion = new Map(stored.map((score) => [score.criterionId, score]))
+    return {
+      submissionId: assignment.submissionId,
+      sessionTitle: submission?.title ?? '',
+      roundId: assignment.roundId,
+      roundNumber: round?.number ?? 0,
+      roundName: round?.name ?? '',
+      roundStatus: round?.status ?? 'open',
+      // The legacy single-rating fields stay null on a typed round: the answers
+      // live on `criteria`, and reporting a rating here would be inventing one.
+      rating: null,
+      comments: null,
+      updatedAt: stored.reduce<string | null>(
+        (latest, score) => (latest === null || score.updatedAt > latest ? score.updatedAt : latest),
+        null,
+      ),
+      previousRounds: [],
+      criteria: criteria.map((criterion) => {
+        const answer = byCriterion.get(criterion.id)
+        return {
+          id: criterion.id,
+          label: criterion.label,
+          kind: criterion.kind,
+          weight: criterion.weight,
+          scale: criterion.scale,
+          options: criterion.options,
+          // Unanswered is null rather than absent, so the form renders an empty
+          // field instead of guessing whether the question exists.
+          value: answer === undefined ? null : (answer.valueNumber ?? answer.valueText),
+        }
+      }),
+    }
   }
 
   /** Forbidden unless this contact sits on the event's review committee. */
@@ -819,6 +1201,108 @@ function ownScore(
       (score) => score.assignmentId === assignment.id && score.criterionId === criterion.id,
     ) ?? null
   )
+}
+
+/**
+ * One round summarised from its OWN typed scorecard.
+ *
+ * Only the ratings feed the number, because only they carry weight — a chosen
+ * option and a paragraph cannot be multiplied. Both still travel to the
+ * organizer on the review rows, because "not averaged" is a statement about
+ * arithmetic, not about whether the committee's words are worth reading.
+ */
+function summarizeTypedRound(
+  round: EvaluationRound,
+  assignments: readonly EvaluationAssignment[],
+  card: readonly RoundCriterion[],
+  answers: readonly RoundScore[],
+  evaluators: ReadonlyMap<ContactId, Contact | null>,
+): EvaluationRoundSummaryDto {
+  const byAssignment = new Map<string, RoundScore[]>()
+  for (const answer of answers) {
+    const bucket = byAssignment.get(answer.assignmentId) ?? []
+    bucket.push(answer)
+    byAssignment.set(answer.assignmentId, bucket)
+  }
+
+  const reviews: EvaluationReviewDto[] = assignments.map((assignment) => {
+    const own = byAssignment.get(assignment.id) ?? []
+    const ratings = new Map<string, number>()
+    for (const answer of own) {
+      if (answer.valueNumber !== null) ratings.set(answer.criterionId, answer.valueNumber)
+    }
+    const contact = evaluators.get(assignment.evaluatorContactId) ?? null
+    // The words this reviewer contributed, joined so a reader sees them
+    // together rather than as a shape only this screen knows how to unpack.
+    const words = card
+      .filter((criterion) => criterion.kind !== 'rating')
+      .map((criterion) => {
+        const answer = own.find((entry) => entry.criterionId === criterion.id)
+        return answer?.valueText === undefined || answer.valueText === null
+          ? null
+          : `${criterion.label}: ${answer.valueText}`
+      })
+      .filter((line): line is string => line !== null)
+    return {
+      assignmentId: assignment.id,
+      evaluatorContactId: assignment.evaluatorContactId,
+      evaluatorEmail: contact?.email ?? '',
+      evaluatorName: contact?.name ?? null,
+      rating: weightedRoundAverageCentis(card, ratings) === null
+        ? null
+        : Math.round((weightedRoundAverageCentis(card, ratings) ?? 0) / 100),
+      comment: words.length === 0 ? null : words.join('\n'),
+      updatedAt: own.reduce<string | null>(
+        (latest, score) => (latest === null || score.updatedAt > latest ? score.updatedAt : latest),
+        null,
+      ),
+    }
+  })
+
+  // The round's average is the weighted average across every rating recorded
+  // in it, so two reviewers scoring the same criterion both count.
+  const allRatings = new Map<string, number[]>()
+  for (const answer of answers) {
+    if (answer.valueNumber === null) continue
+    const bucket = allRatings.get(answer.criterionId) ?? []
+    bucket.push(answer.valueNumber)
+    allRatings.set(answer.criterionId, bucket)
+  }
+  const meanByCriterion = new Map<string, number>()
+  for (const [criterionId, values] of allRatings) {
+    meanByCriterion.set(criterionId, values.reduce((sum, value) => sum + value, 0) / values.length)
+  }
+  const weightedAverageCentis = weightedRoundAverageCentis(card, meanByCriterion) ?? 0
+  const weightSum = card.reduce(
+    (sum, criterion) =>
+      criterion.kind === 'rating' && meanByCriterion.has(criterion.id)
+        ? sum + (criterion.weight ?? 0)
+        : sum,
+    0,
+  )
+
+  return {
+    roundId: round.id,
+    number: round.number,
+    name: round.name,
+    status: round.status,
+    assignmentCount: assignments.length,
+    scoredCount: reviews.filter((review) => review.updatedAt !== null).length,
+    scoreCount: answers.length,
+    weightSum,
+    weightedTotal: Math.round((weightedAverageCentis * weightSum) / 100),
+    weightedAverageCentis,
+    criteria: card
+      .filter((criterion) => criterion.kind === 'rating')
+      .map((criterion) => ({
+        criterionId: criterion.id,
+        name: criterion.label,
+        weight: criterion.weight ?? 0,
+        scoreCount: (allRatings.get(criterion.id) ?? []).length,
+        ratingSum: (allRatings.get(criterion.id) ?? []).reduce((sum, value) => sum + value, 0),
+      })),
+    reviews,
+  }
 }
 
 function summarizeRound(

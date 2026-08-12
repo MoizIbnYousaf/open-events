@@ -120,6 +120,7 @@ function unscoredRow(overrides: Partial<RowBody> = {}): RowBody {
     // has made blind names the speaker; migration 0017 added both fields.
     // The seeded speaker contact has no display name, so the email is the
     // identifying fact the product actually holds for them.
+    roundState: 'open',
     speakerName: SPEAKER_EMAIL,
     anonymized: false,
     coSpeakers: [],

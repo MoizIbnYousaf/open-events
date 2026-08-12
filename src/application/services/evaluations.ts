@@ -26,6 +26,7 @@ import {
   isRoundCriterionKind,
   weightedRoundAverageCentis,
   distributeAssignments,
+  roundStateOf,
   selectQueueAssignments,
   selectSurfaceAssignments,
   snapshotCriterionWeights,
@@ -1181,8 +1182,11 @@ export class EvaluationService {
       throw new ApplicationError('validation_failed', 'A rating must be a whole number from 1 to 5')
     }
     const round = rounds.find((candidate) => candidate.id === assignment.roundId)
-    if (round === undefined || round.status !== 'open') {
-      throw new ApplicationError('conflict', 'That review round is closed')
+    // Status AND window. The organizer published a date; enforcing only the
+    // lifecycle flag meant a reviewer could score a week after "reviewing
+    // closes" and the committee would never know the total had moved.
+    if (round === undefined || roundStateOf(round, this.#clock.now()) !== 'open') {
+      throw new ApplicationError('conflict', 'That review round is not taking answers')
     }
     const criteria = await this.#evaluations.listCriteria(actor.eventId)
     const criterion = selectDefaultCriterion(criteria)
@@ -1254,8 +1258,11 @@ export class EvaluationService {
     rounds: readonly EvaluationRound[],
   ): Promise<EvaluationRowDto> {
     const round = rounds.find((candidate) => candidate.id === assignment.roundId)
-    if (round === undefined || round.status !== 'open') {
-      throw new ApplicationError('conflict', 'That review round is closed')
+    // Status AND window. The organizer published a date; enforcing only the
+    // lifecycle flag meant a reviewer could score a week after "reviewing
+    // closes" and the committee would never know the total had moved.
+    if (round === undefined || roundStateOf(round, this.#clock.now()) !== 'open') {
+      throw new ApplicationError('conflict', 'That review round is not taking answers')
     }
     const byId = new Map(criteria.map((criterion) => [criterion.id, criterion]))
     const answers = input.answers ?? []
@@ -1324,6 +1331,7 @@ export class EvaluationService {
       roundNumber: round?.number ?? 0,
       roundName: round?.name ?? '',
       roundStatus: round?.status ?? 'open',
+      roundState: round === undefined ? 'closed' : roundStateOf(round, this.#clock.now()),
       // The legacy single-rating fields stay null on a typed round: the answers
       // live on `criteria`, and reporting a rating here would be inventing one.
       rating: null,
@@ -1499,6 +1507,7 @@ export class EvaluationService {
       roundNumber: round?.number ?? 0,
       roundName: round?.name ?? '',
       roundStatus: round?.status ?? 'closed',
+      roundState: round === undefined ? 'closed' : roundStateOf(round, this.#clock.now()),
       rating: score?.rating ?? null,
       comments: score?.comment ?? null,
       updatedAt: score?.updatedAt ?? null,

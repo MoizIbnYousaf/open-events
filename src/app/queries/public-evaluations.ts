@@ -27,6 +27,8 @@ export interface EvaluationRow {
   readonly roundNumber: number
   readonly roundName: string
   readonly roundStatus: 'open' | 'closed'
+  /** Whether the round is taking answers now: the status AND its window. */
+  readonly roundState?: 'not-yet-open' | 'open' | 'closed'
   readonly rating: number | null
   readonly comments: string | null
   readonly updatedAt: string | null

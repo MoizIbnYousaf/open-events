@@ -75,6 +75,24 @@ const recordedAtFormatter = new Intl.DateTimeFormat('en-US', {
  * id, and a draft held over from an expired session in one round comes back in
  * the other, putting the reviewer's round-one answers into round two's form.
  */
+/**
+ * Whether this row can be answered right now, and why not when it cannot.
+ *
+ * Falls back to the lifecycle status for a payload from a build that predates
+ * `roundState`, so an older server renders exactly as it used to rather than
+ * locking every form.
+ */
+function roundStateOf(row: EvaluationRow): 'not-yet-open' | 'open' | 'closed' {
+  return row.roundState ?? (row.roundStatus === 'closed' ? 'closed' : 'open')
+}
+
+/** Why a round is not taking answers, in the reviewer's own terms. */
+function roundClosedReason(state: 'not-yet-open' | 'open' | 'closed'): string | null {
+  if (state === 'not-yet-open') return 'Reviewing has not opened for this round yet.'
+  if (state === 'closed') return 'Reviewing is closed for this round.'
+  return null
+}
+
 function rowKey(row: EvaluationRow): string {
   return `${row.submissionId}:${row.roundId}`
 }
@@ -325,7 +343,11 @@ function TypedEvaluationCard({
     Object.fromEntries(criteria.map((criterion) => [criterion.id, criterion.value])),
   )
   const [submittedMessage, setSubmittedMessage] = useState<string | null>(null)
-  const closed = row.roundStatus === 'closed'
+  // The SERVER's verdict, not two dates re-read here. A round can be open and
+  // still not taking answers because its reviewing window has passed, and a
+  // form that looks writable while the write is refused is the worse failure.
+  const state = roundStateOf(row)
+  const closed = state !== 'open'
 
   const handleSubmit = () => {
     if (submit.isPending) return
@@ -436,6 +458,9 @@ function TypedEvaluationCard({
         {submit.error != null ? (
           <AlertLive>That review could not be saved. Check the answers and try again.</AlertLive>
         ) : null}
+        {roundClosedReason(state) === null ? null : (
+          <CardDescription>{roundClosedReason(state)}</CardDescription>
+        )}
         <StatusLive aria-label="Review save state">{submittedMessage}</StatusLive>
       </CardContent>
       <CardFooter className="flex-wrap gap-3">
@@ -638,6 +663,9 @@ function EvaluationCard({
         </div>
         {ratingMissing ? <AlertLive id={ratingErrorId}>A rating is required</AlertLive> : null}
         {submit.isError ? <AlertLive>Unable to submit your evaluation.</AlertLive> : null}
+        {roundClosedReason(roundStateOf(row)) === null ? null : (
+          <CardDescription>{roundClosedReason(roundStateOf(row))}</CardDescription>
+        )}
       </CardContent>
       <CardFooter className="flex-wrap gap-3">
         <Button type="button" pending={submit.isPending} onClick={handleSubmit}>

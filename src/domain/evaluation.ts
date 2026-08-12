@@ -458,6 +458,35 @@ export function selectQueueAssignments(
   })
 }
 
+/**
+ * What a round's window means right now, named rather than left as two dates
+ * for every reader to judge for itself.
+ *
+ * The organizer sets "reviewing closes 14 June" and until now nothing read it:
+ * the round stayed open, and reviewers kept scoring on the 20th. A date nobody
+ * enforces is not a deadline, it is a decoration — and worse than none, because
+ * the committee believed it.
+ *
+ * Status and window both have to agree. Status is the organizer's own decision
+ * and a closed round is closed whatever the dates say; the window is the
+ * schedule they published. A round with no dates is governed by its status
+ * alone, which is every round that existed before windows did.
+ *
+ * Deliberately the same shape and the same boundary rule as the call for
+ * papers' own `submissionStateOf`: closing at an instant means that instant is
+ * already too late, and two windows in one product that disagreed about the
+ * meaning of their end date would be a bug nobody could see.
+ */
+export type RoundState = 'not-yet-open' | 'open' | 'closed'
+
+export function roundStateOf(round: EvaluationRound, now: UtcInstant): RoundState {
+  if (round.status === 'closed') return 'closed'
+  const nowMs = Date.parse(now)
+  if (round.opensAt !== null && nowMs < Date.parse(round.opensAt)) return 'not-yet-open'
+  if (round.closesAt !== null && nowMs >= Date.parse(round.closesAt)) return 'closed'
+  return 'open'
+}
+
 /** One reviewer a round can be shared out among, with what they already hold. */
 export interface DistributionCandidate {
   readonly contactId: ContactId

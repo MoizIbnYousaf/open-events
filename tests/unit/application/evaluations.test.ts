@@ -310,6 +310,7 @@ describe('EvaluationService evaluator scoping', () => {
         roundNumber: 1,
         roundName: 'Round 1',
         roundStatus: 'open',
+        roundState: 'open',
         rating: null,
         comments: null,
         updatedAt: null,
@@ -370,6 +371,7 @@ describe('EvaluationService scoring', () => {
       roundNumber: 1,
       roundName: 'Round 1',
       roundStatus: 'open',
+      roundState: 'open',
       rating: 4,
       comments: 'Strong fit',
       updatedAt: FIXED_NOW,
@@ -627,6 +629,7 @@ describe('EvaluationService multi-round evaluator rows', () => {
         roundNumber: 2,
         roundName: 'Round 2',
         roundStatus: 'open',
+        roundState: 'open',
         rating: null,
         comments: null,
         updatedAt: null,
@@ -940,6 +943,7 @@ describe('EvaluationService round results are preserved and readable', () => {
       roundId: roundTwo.id,
       roundNumber: 2,
       roundStatus: 'open',
+      roundState: 'open',
       rating: null,
     })
     expect(rows[0]?.previousRounds).toEqual([

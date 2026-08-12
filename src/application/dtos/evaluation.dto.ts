@@ -109,6 +109,14 @@ export interface EvaluationRowDto {
   readonly roundNumber: number
   readonly roundName: string
   readonly roundStatus: EvaluationRoundStatus
+  /**
+   * Whether this round is actually taking answers right now — the organizer's
+   * open/closed decision AND the window they published, resolved once on the
+   * server. The surface must not re-derive it from two dates and a clock: a
+   * form that looks writable while the server refuses the write is a worse
+   * failure than one that is honestly disabled.
+   */
+  readonly roundState?: 'not-yet-open' | 'open' | 'closed'
   readonly rating: number | null
   readonly comments: string | null
   readonly updatedAt: string | null

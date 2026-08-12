@@ -1446,3 +1446,71 @@ describe('a reviewer declares a conflict of interest', () => {
     expect((await recuse(reviewer, 'not-a-submission')).status).toBe(403)
   })
 })
+
+/**
+ * A round's reviewing window has to mean something.
+ *
+ * The organizer sets "reviewing closes 14 June", and until it was enforced the
+ * round stayed open and reviewers kept scoring on the 20th. A date nobody reads
+ * is worse than no date at all, because the committee believed it.
+ */
+describe('a round stops taking answers when its window says so', () => {
+  async function scoreAs(reviewer: string, submissionId: string): Promise<Response> {
+    return app.request(
+      '/api/public/evaluations',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(reviewer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ submissionId, rating: 4 }),
+      },
+      bindings(),
+    )
+  }
+
+  it('refuses a review filed after the closing date', async () => {
+    const organizer = await organizerCookie()
+    const roundId = await liveRoundId(organizer)
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+
+    // Open, dated, and still inside its window: the control case, so the
+    // refusal below cannot be mistaken for the round being broken.
+    expect((await scoreAs(reviewer, submissionId)).status).toBe(200)
+
+    await configureRound(organizer, roundId, {
+      name: 'Round 1',
+      opensAt: null,
+      closesAt: '2020-01-01T00:00:00.000Z',
+      anonymize: false,
+    })
+
+    expect((await scoreAs(reviewer, submissionId)).status).toBe(409)
+  })
+
+  it('refuses a review filed before reviewing opens', async () => {
+    const organizer = await organizerCookie()
+    const roundId = await liveRoundId(organizer)
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+
+    await configureRound(organizer, roundId, {
+      name: 'Round 1',
+      opensAt: '2099-01-01T00:00:00.000Z',
+      closesAt: null,
+      anonymize: false,
+    })
+
+    expect((await scoreAs(reviewer, submissionId)).status).toBe(409)
+  })
+
+  it('leaves an undated round governed by its status alone', async () => {
+    const organizer = await organizerCookie()
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+
+    // Every round that existed before windows did carries no dates, and must
+    // keep behaving exactly as it always has.
+    expect((await scoreAs(reviewer, submissionId)).status).toBe(200)
+  })
+})

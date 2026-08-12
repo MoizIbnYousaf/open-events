@@ -203,36 +203,17 @@ export default function CfpWizard({ form }: CfpWizardProps) {
   // when the draft query data changes (initial load, reload). Hydrated server
   // state clears dirty; no focus call is made.
   useEffect(() => {
-    // A visitor with no session gets the draft probe REFUSED, not answered —
-    // so hydration never runs, and the work they parked before the identity
-    // detour would sit in storage unread. Restoring it is the whole point of
-    // parking it, so the refusal path gets its own once-only restore.
-    if (draftQuery.isError && !restoredParkedRef.current) {
-      const editorNow = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
-      const pristine =
-        editorNow === undefined ||
-        (editorNow.title === '' && Object.keys(editorNow.answers).length === 0)
-      const parkedAfterDenial = pristine ? readCfpDraftStash(form.versionId) : null
-      if (parkedAfterDenial !== null) {
-        restoredParkedRef.current = true
-        setEditor((current) => ({
-          ...current,
-          formId: form.formId,
-          formVersionId: form.versionId,
-          draftId: null,
-          title: parkedAfterDenial.title,
-          answers: parkedAfterDenial.answers,
-          dirty: true,
-          reloadIntent: false,
-        }))
-        setStepIndex(parkedAfterDenial.stepIndex)
-      }
-      return
-    }
-    if (draftQuery.isError || draftQuery.data === undefined) return
-    const draft = draftQuery.data
+    // A visitor with no session gets the draft probe REFUSED, not answered. A
+    // refusal carries exactly as much server truth as an answered probe that
+    // found nothing — there is no draft — so it joins the same path rather
+    // than forking into a second restore. What it must never do is reach the
+    // hydration write at the bottom: a refusal is not permission to declare
+    // the editor empty and clean.
+    const probeRefused = draftQuery.isError
+    if (!probeRefused && draftQuery.data === undefined) return
+    const draft = probeRefused ? null : (draftQuery.data ?? null)
     const editorBefore = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
-    const reloadArmed = editorBefore?.reloadIntent === true
+    const reloadArmed = !probeRefused && editorBefore?.reloadIntent === true
     // Hydration is server truth arriving at a resting editor: the first probe,
     // and the deliberate reload after a conflict (which is meant to discard
     // local edits, so it runs regardless). It must never run over words typed
@@ -268,6 +249,9 @@ export default function CfpWizard({ form }: CfpWizardProps) {
       setStepIndex(parked.stepIndex)
       return
     }
+    // Nothing was parked, and a refusal told us nothing about the server. Leave
+    // the editor exactly as the visitor left it.
+    if (probeRefused) return
     // The server holds it now, so the parked copy has done its job.
     if (draft !== null) clearCfpDraftStash(form.versionId)
     setEditor((current) => ({

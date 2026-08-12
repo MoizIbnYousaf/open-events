@@ -387,6 +387,71 @@ export function selectSurfaceAssignments(
 }
 
 /**
+ * The reading an evaluator can still do: every OPEN round they hold on each
+ * submission, and — only when they hold none — the last round that ran, so a
+ * finished piece of work stays readable instead of vanishing.
+ *
+ * `selectSurfaceAssignments` keeps one row per submission, and that was right
+ * while a review was a single rating on a single event-level criterion: a
+ * second row would then have shown one proposal twice with contradictory
+ * ratings and nothing to tell the copies apart. A round carrying its OWN
+ * scorecard ends that premise. Round one and round two ask different
+ * questions, so answering both is not a contradiction, and every row has named
+ * its round all along. Collapsing meant a reviewer seated in round one was
+ * handed round two's form instead and round one's questions reached nobody.
+ *
+ * Closed rounds do NOT each get a row while something is open: the row for an
+ * open round already carries what this evaluator said in the rounds before it,
+ * so listing those again would put the same history on the screen twice, once
+ * as context and once as a form nobody can submit.
+ *
+ * Ordered by round number within a submission, and by the submission's first
+ * appearance between them, so a queue reads in the order the work arrived. An
+ * assignment whose round is not in the event is dropped rather than rendered as
+ * a nameless "Round 0" — storage makes that unreachable, and a row nobody can
+ * name is a row nobody can answer.
+ */
+export function selectQueueAssignments(
+  assignments: readonly EvaluationAssignment[],
+  rounds: readonly EvaluationRound[],
+): readonly EvaluationAssignment[] {
+  const byId = new Map(rounds.map((round) => [round.id, round]))
+  const known = assignments.filter((assignment) => byId.has(assignment.roundId))
+  const order: SubmissionId[] = []
+  const bySubmission = new Map<SubmissionId, EvaluationAssignment[]>()
+  for (const assignment of known) {
+    const held = bySubmission.get(assignment.submissionId)
+    if (held === undefined) {
+      order.push(assignment.submissionId)
+      bySubmission.set(assignment.submissionId, [assignment])
+      continue
+    }
+    held.push(assignment)
+  }
+
+  const numberOf = (assignment: EvaluationAssignment): number =>
+    byId.get(assignment.roundId)?.number ?? 0
+
+  return order.flatMap((submissionId) => {
+    const held = bySubmission.get(submissionId) ?? []
+    const open = held.filter((assignment) => byId.get(assignment.roundId)?.status === 'open')
+    // Nothing open means the work is done; the latest round stands as its
+    // record, which is what a single-round queue has always shown.
+    const shown =
+      open.length > 0
+        ? [...open].sort((left, right) => numberOf(left) - numberOf(right))
+        : held.reduce<EvaluationAssignment[]>(
+            (latest, assignment) =>
+              latest.length === 0 || numberOf(assignment) > numberOf(latest[0]!)
+                ? [assignment]
+                : latest,
+            [],
+          )
+    return shown
+  })
+}
+
+/**
  * The assignments one round holds, in insertion order.
  *
  * A committee total belongs to exactly one round, and storage already allows a

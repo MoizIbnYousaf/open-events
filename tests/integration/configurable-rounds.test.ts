@@ -941,3 +941,207 @@ describe('a round has its own reviewer pool', () => {
     expect((await putPool('', roundId, [])).status).toBe(401)
   })
 })
+
+/**
+ * The reviewer receives the round they were put on.
+ *
+ * A committee that runs two rounds asks two different sets of questions, and
+ * until now a reviewer holding both saw exactly one of them: the queue kept a
+ * single row per submission and picked the highest-numbered open round. That
+ * collapse was correct while a review was one number on one event-level
+ * criterion — a second row would then have carried the same submission with a
+ * contradictory rating and nothing to tell the copies apart. Once a round
+ * gained a scorecard of its own the premise died: a round-one answer does not
+ * contradict a round-two answer, it answers a different question, and the row
+ * has named its round all along.
+ */
+describe('a reviewer holding two rounds', () => {
+  const FIRST = [
+    { label: 'Originality', kind: 'rating', weight: 3, position: 0, scale: { min: 1, max: 5 } },
+    { label: 'Recommendation', kind: 'select', weight: null, position: 1, options: ['Accept', 'Reject'] },
+  ]
+  const SECOND = [
+    { label: 'Final score', kind: 'rating', weight: 1, position: 0, scale: { min: 1, max: 5 } },
+  ]
+
+  async function assignTo(
+    organizer: string,
+    submissionId: string,
+    email: string,
+    roundId: string,
+  ): Promise<Response> {
+    return app.request(
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/assignments`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(organizer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ evaluatorEmail: email, roundId }),
+      },
+      bindings(),
+    )
+  }
+
+  async function queueOf(reviewer: string): Promise<readonly EvaluationRowDto[]> {
+    const response = await app.request(
+      '/api/public/evaluations',
+      { headers: { cookie: cookieHeader(reviewer) } },
+      bindings(),
+    )
+    expect(response.status).toBe(200)
+    return (await response.json()) as readonly EvaluationRowDto[]
+  }
+
+  /** One proposal, one reviewer, two open rounds each carrying its own scorecard. */
+  async function setUp(): Promise<{
+    organizer: string
+    reviewer: string
+    submissionId: string
+    firstRoundId: string
+    secondRoundId: string
+  }> {
+    const organizer = await organizerCookie()
+    const firstRoundId = await liveRoundId(organizer)
+    await putScorecard(organizer, firstRoundId, FIRST)
+
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+
+    const secondRoundId = await openSecondRound(organizer)
+    await putScorecard(organizer, secondRoundId, SECOND)
+    expect((await assignTo(organizer, submissionId, 'round.reviewer@example.test', secondRoundId)).status).toBe(200)
+
+    return { organizer, reviewer, submissionId, firstRoundId, secondRoundId }
+  }
+
+  it('is shown both rounds, each asking its own questions', async () => {
+    const { reviewer, firstRoundId, secondRoundId } = await setUp()
+
+    const rows = await queueOf(reviewer)
+
+    // Two rows for one proposal, because two rounds are asking.
+    expect(rows.map((row) => row.roundId).sort()).toEqual([firstRoundId, secondRoundId].sort())
+    const first = rows.find((row) => row.roundId === firstRoundId)
+    const second = rows.find((row) => row.roundId === secondRoundId)
+    expect(first?.criteria?.map((field) => field.label)).toEqual(['Originality', 'Recommendation'])
+    expect(second?.criteria?.map((field) => field.label)).toEqual(['Final score'])
+  })
+
+  it('files an answer against the round it names, leaving the other untouched', async () => {
+    const { reviewer, submissionId, firstRoundId, secondRoundId } = await setUp()
+    const before = await queueOf(reviewer)
+    const firstCriterion = before.find((row) => row.roundId === firstRoundId)?.criteria?.[0]
+
+    const posted = await app.request(
+      '/api/public/evaluations',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(reviewer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          submissionId,
+          roundId: firstRoundId,
+          answers: [{ criterionId: firstCriterion?.id, value: 4 }],
+        }),
+      },
+      bindings(),
+    )
+    expect(posted.status).toBe(200)
+
+    const after = await queueOf(reviewer)
+    // The named round holds the answer; the other round is still unanswered.
+    // Without the round on the write this landed wherever the selector pointed.
+    expect(after.find((row) => row.roundId === firstRoundId)?.criteria?.[0]?.value).toBe(4)
+    expect(after.find((row) => row.roundId === secondRoundId)?.criteria?.[0]?.value).toBeNull()
+  })
+
+  /**
+   * The roster is how an organizer decides who to chase. It counted an
+   * assignment as done only when a row existed in `evaluation_scores`, which a
+   * typed scorecard never writes to — so a reviewer who had answered every
+   * question still read as owing all of them, and the Results table showing
+   * their scores made the roster's own numbers look arbitrary.
+   */
+  it('counts a typed answer as a completed review on the roster', async () => {
+    const { organizer, reviewer, submissionId, secondRoundId } = await setUp()
+    const rows = await queueOf(reviewer)
+    const criterion = rows.find((row) => row.roundId === secondRoundId)?.criteria?.[0]
+
+    await app.request(
+      '/api/public/evaluations',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(reviewer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          submissionId,
+          roundId: secondRoundId,
+          answers: [{ criterionId: criterion?.id, value: 5 }],
+        }),
+      },
+      bindings(),
+    )
+
+    const roster = (await (
+      await app.request(COMMITTEE_PATH, { headers: { cookie: cookieHeader(organizer) } }, bindings())
+    ).json()) as readonly { email: string; assignedCount: number; completedCount: number }[]
+    const seat = roster.find((member) => member.email === 'round.reviewer@example.test')
+
+    expect(seat?.assignedCount).toBe(2)
+    expect(seat?.completedCount).toBe(1)
+  })
+
+  /**
+   * The same answer, read from the proposal's own panel. The roster and the
+   * panel are two screens describing one fact, and an organizer who sees a
+   * score in one and "no ratings recorded yet" in the other cannot tell which
+   * screen is lying.
+   */
+  it('shows the typed answer on the proposal the organizer is looking at', async () => {
+    const { organizer, reviewer, submissionId, secondRoundId } = await setUp()
+    const rows = await queueOf(reviewer)
+    const criterion = rows.find((row) => row.roundId === secondRoundId)?.criteria?.[0]
+
+    await app.request(
+      '/api/public/evaluations',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(reviewer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          submissionId,
+          roundId: secondRoundId,
+          answers: [{ criterionId: criterion?.id, value: 5 }],
+        }),
+      },
+      bindings(),
+    )
+
+    const summary = (await (
+      await app.request(
+        `/api/admin/events/demo-conf-2026/submissions/${submissionId}/evaluation-summary`,
+        { headers: { cookie: cookieHeader(organizer) } },
+        bindings(),
+      )
+    ).json()) as {
+      currentRoundId: string
+      scoredCount: number
+      rounds: readonly { roundId: string; scoredCount: number }[]
+    }
+
+    expect(summary.currentRoundId).toBe(secondRoundId)
+    expect(summary.scoredCount).toBe(1)
+    expect(summary.rounds.find((round) => round.roundId === secondRoundId)?.scoredCount).toBe(1)
+  })
+})

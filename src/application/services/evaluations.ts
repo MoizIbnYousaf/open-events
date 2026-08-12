@@ -25,6 +25,7 @@ import {
   isAnswerValidFor,
   isRoundCriterionKind,
   weightedRoundAverageCentis,
+  selectQueueAssignments,
   selectSurfaceAssignments,
   snapshotCriterionWeights,
   type WeightedScore,
@@ -175,6 +176,14 @@ export interface AssignEvaluatorInput {
  */
 export interface SubmitEvaluationInput {
   readonly submissionId: SubmissionId
+  /**
+   * Which round is being answered. A reviewer holding one proposal in two
+   * rounds is answering two different scorecards, so the submission alone no
+   * longer says where an answer belongs. Omitted by a client that knows only
+   * one round, which is every caller written before rounds had scorecards: the
+   * live round then stands, exactly as it always did.
+   */
+  readonly roundId?: EvaluationRoundId
   /** The legacy single rating; unused when the round has a typed scorecard. */
   readonly rating?: number
   readonly comments?: string | null
@@ -944,7 +953,10 @@ export class EvaluationService {
     ])
     const criterion = selectDefaultCriterion(criteria)
     return Promise.all(
-      [...selectSurfaceAssignments(assignments, rounds).values()].map(async (assignment) => {
+      // One row per submission AND round. A reviewer sitting on two rounds is
+      // being asked two different sets of questions, and showing only the
+      // newest round meant the round they were seated in never reached them.
+      selectQueueAssignments(assignments, rounds).map(async (assignment) => {
         // Each row asks whatever ITS round asks. Two rounds of one event may
         // carry different scorecards, so the shape is decided per assignment
         // rather than once for the whole queue.
@@ -975,7 +987,18 @@ export class EvaluationService {
       this.#requireAssignments(actor),
       this.#evaluations.listRounds(actor.eventId),
     ])
-    const assignment = selectSurfaceAssignments(assignments, rounds).get(input.submissionId)
+    // A named round is answered directly; without one the live round stands,
+    // which is what every caller predating round scorecards means. Both resolve
+    // to an assignment the caller actually holds, so naming a round they were
+    // never put on is refused exactly like naming someone else's submission.
+    const assignment =
+      input.roundId === undefined
+        ? selectSurfaceAssignments(assignments, rounds).get(input.submissionId)
+        : assignments.find(
+            (candidate) =>
+              candidate.submissionId === input.submissionId &&
+              candidate.roundId === input.roundId,
+          )
     if (assignment === undefined) {
       throw new ApplicationError('forbidden', 'You are not assigned to that submission')
     }

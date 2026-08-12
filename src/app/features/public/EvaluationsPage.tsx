@@ -64,6 +64,19 @@ const recordedAtFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
 })
 
+/**
+ * What identifies one card: the proposal AND the round it is being read for.
+ *
+ * A reviewer sitting on two open rounds holds the same proposal twice, and each
+ * round asks its own questions. Keying anything on the proposal alone therefore
+ * collides — two React children claim one key, two form controls claim one DOM
+ * id, and a draft held over from an expired session in one round comes back in
+ * the other, putting the reviewer's round-one answers into round two's form.
+ */
+function rowKey(row: EvaluationRow): string {
+  return `${row.submissionId}:${row.roundId}`
+}
+
 function formatRecordedAt(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : recordedAtFormatter.format(date)
@@ -159,7 +172,7 @@ export default function EvaluationsPage() {
     <div className="grid gap-4">
       <EvaluationsHeading count={rows.length} />
       {rows.map((row) => (
-        <EvaluationCard key={row.submissionId} row={row} onAuthFailure={setWriteCode} />
+        <EvaluationCard key={rowKey(row)} row={row} onAuthFailure={setWriteCode} />
       ))}
     </div>
   )
@@ -271,7 +284,7 @@ function TypedEvaluationCard({
       return [{ criterionId: criterion.id, value }]
     })
     submit.mutate(
-      { submissionId: row.submissionId, answers },
+      { submissionId: row.submissionId, roundId: row.roundId, answers },
       {
         onSuccess: () => {
           setSubmittedMessage('Review saved')
@@ -401,7 +414,7 @@ function EvaluationCard({
   // Work held over from a session that expired mid-review outranks the stored
   // row: it is the newer opinion, and it is the one the evaluator would
   // otherwise have to retype.
-  const [heldOver] = useState(() => readEvaluationDraft(row.submissionId))
+  const [heldOver] = useState(() => readEvaluationDraft(rowKey(row)))
   const [rating, setRating] = useState<number | null>(
     heldOver === null ? row.rating : heldOver.rating,
   )
@@ -410,8 +423,8 @@ function EvaluationCard({
   )
   const [ratingMissing, setRatingMissing] = useState(false)
   const [submittedMessage, setSubmittedMessage] = useState<string | null>(null)
-  const ratingId = `evaluation-rating-${row.submissionId}`
-  const commentsId = `evaluation-comments-${row.submissionId}`
+  const ratingId = `evaluation-rating-${rowKey(row)}`
+  const commentsId = `evaluation-comments-${rowKey(row)}`
   const ratingErrorId = `${ratingId}-error`
 
   const handleSubmit = () => {
@@ -424,7 +437,7 @@ function EvaluationCard({
     setRatingMissing(false)
     setSubmittedMessage(null)
     submit.mutate(
-      { submissionId: row.submissionId, rating, comments: comments.trim() },
+      { submissionId: row.submissionId, roundId: row.roundId, rating, comments: comments.trim() },
       {
         onSuccess: () => {
           // Reset erases isSuccess, so the evaluator used to get no
@@ -433,7 +446,7 @@ function EvaluationCard({
           // same sentence again would speak it twice (DEC-014).
           setSubmittedMessage('Evaluation submitted')
           submit.reset()
-          clearEvaluationDraft(row.submissionId)
+          clearEvaluationDraft(rowKey(row))
           void queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all })
         },
         onError: (error) => {
@@ -442,7 +455,7 @@ function EvaluationCard({
           if (code !== 'unauthorized' && code !== 'forbidden') return
           // The rating never reached the server, so hold it before the page
           // swaps this form out for the recovery surface.
-          stashEvaluationDraft(row.submissionId, { rating, comments: comments.trim() })
+          stashEvaluationDraft(rowKey(row), { rating, comments: comments.trim() })
           onAuthFailure(code)
         },
       },

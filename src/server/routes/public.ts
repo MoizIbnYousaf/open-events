@@ -386,7 +386,14 @@ export async function handleSubmitEvaluation(context: ServerContext): Promise<Re
   const rating = body.rating
   const comments = body.comments
   const answers = body.answers
+  const roundId = body.roundId
   if (typeof submissionId !== 'string') return validationFailedResponse(context)
+  // Which round is being answered. Optional, because a reviewer holding one
+  // round has only ever meant that round; required in practice the moment they
+  // hold two, since the submission alone no longer says which form this is.
+  if (roundId !== undefined && typeof roundId !== 'string') {
+    return validationFailedResponse(context)
+  }
   // TWO SHAPES, because a round decides which it asks for: a typed scorecard
   // sends `answers`, and a round without one sends the single `rating` it
   // always did. Exactly one must be present — a body carrying neither is not a
@@ -411,6 +418,7 @@ export async function handleSubmitEvaluation(context: ServerContext): Promise<Re
   // wrote without ever showing it to them.
   const input: SubmitEvaluationInput = {
     submissionId,
+    ...(typeof roundId === 'string' ? { roundId } : {}),
     ...(typeof rating === 'number' ? { rating } : {}),
     ...(hasAnswers
       ? { answers: answers as readonly { criterionId: string; value: unknown }[] }

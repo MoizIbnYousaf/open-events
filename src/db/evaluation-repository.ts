@@ -668,9 +668,12 @@ export function createEvaluationRepository(db: D1Database): EvaluationRepository
                   (SELECT COUNT(*) FROM evaluation_assignments a
                     WHERE a.event_id = m.event_id
                       AND a.evaluator_contact_id = m.contact_id
-                      AND EXISTS (SELECT 1 FROM evaluation_scores s
-                                   WHERE s.event_id = a.event_id
-                                     AND s.assignment_id = a.id)) AS completed_count
+                      AND (EXISTS (SELECT 1 FROM evaluation_scores s
+                                    WHERE s.event_id = a.event_id
+                                      AND s.assignment_id = a.id)
+                           OR EXISTS (SELECT 1 FROM evaluation_round_scores rs
+                                       WHERE rs.event_id = a.event_id
+                                         AND rs.assignment_id = a.id))) AS completed_count
              FROM evaluation_committee_members m
              LEFT JOIN contacts c ON c.id = m.contact_id
             WHERE m.event_id = ?

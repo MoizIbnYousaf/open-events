@@ -59,6 +59,12 @@ export interface EvaluationRowCriterion {
  */
 export interface SubmitEvaluationInput {
   readonly submissionId: string
+  /**
+   * Which round this answers. A reviewer can hold one proposal in two open
+   * rounds, each asking its own questions, so the proposal alone no longer
+   * says which form was filled in.
+   */
+  readonly roundId?: string
   /** The single rating, on a round that has no questions of its own. */
   readonly rating?: number
   readonly comments?: string

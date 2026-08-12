@@ -471,8 +471,13 @@ describe('evaluations UI', () => {
     await user.selectOptions(screen.getByLabelText(/rating/i), '3')
     await user.click(screen.getByRole('button', { name: /submit/i }))
 
+    // The round travels with the answer. A reviewer can hold one proposal in
+    // two open rounds, so a body naming only the proposal leaves the server to
+    // guess which form was filled in — and it guesses the newest round, which
+    // is how a round-one review used to land on round two.
     expect(postedBody).toEqual({
       submissionId: 'submission-1',
+      roundId: 'round-1',
       rating: 3,
       comments: 'Great session',
     })
@@ -711,5 +716,51 @@ describe('evaluations UI', () => {
     expect(init?.method).toBe('POST')
     expect(init?.credentials).toBe('include')
     expect(JSON.parse(String(init?.body))).toEqual(input)
+  })
+
+  /**
+   * A committee running two rounds at once hands one reviewer the same proposal
+   * twice, each round asking its own questions. Everything on this screen used
+   * to be identified by the proposal alone, so the two cards collided: one
+   * React key for two children, one DOM id for two rating controls — which is
+   * also what a screen reader and a label-based query resolve against — and one
+   * write that could only ever name a single round.
+   */
+  it('gives each round its own card, its own controls and its own write', async () => {
+    const user = userEvent.setup()
+    const bodies: unknown[] = []
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) {
+        return jsonResponse([
+          { ...UNSCORED_ROW, roundId: 'round-1', roundNumber: 1, roundName: 'Screening' },
+          { ...UNSCORED_ROW, roundId: 'round-2', roundNumber: 2, roundName: 'Final' },
+        ])
+      }
+      if (method === 'POST' && url === EVALUATIONS_URL) {
+        bodies.push(JSON.parse(String(init?.body)))
+        return jsonResponse({ ...UNSCORED_ROW, rating: 4 })
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    // Both rounds are on screen, each named, rather than the newest silently
+    // standing in for both.
+    expect(await screen.findByText(/Round 1: Screening/)).toBeInTheDocument()
+    expect(screen.getByText(/Round 2: Final/)).toBeInTheDocument()
+
+    // Two distinct rating controls: a shared id would make this query ambiguous
+    // and would point both labels at the same field.
+    const ratings = screen.getAllByLabelText(/rating/i)
+    expect(ratings).toHaveLength(2)
+    expect(new Set(ratings.map((control) => control.id)).size).toBe(2)
+
+    await user.selectOptions(ratings[1]!, '4')
+    await user.click(screen.getAllByRole('button', { name: /submit/i })[1]!)
+
+    // The answer names the round it answers.
+    await waitFor(() => expect(bodies).toHaveLength(1))
+    expect(bodies[0]).toMatchObject({ submissionId: 'submission-1', roundId: 'round-2', rating: 4 })
   })
 })

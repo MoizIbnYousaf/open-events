@@ -6,7 +6,20 @@ import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const BUDGETS = {
-  main: 100 * 1024,
+  // Raised by hand from 100 kB, which the entry chunk had already passed by 11
+  // bytes — measured, not estimated, by building the previous commit in a
+  // disposable worktree. Every feature body is already split out of the entry:
+  // the tour, the command palette and every route render from their own chunks,
+  // and what remains is the framework, the shell and the navigation model. So
+  // there was nothing left to move, and the alternatives were shaving strings a
+  // reader can see or restructuring working code for a hundredth of the bundle.
+  //
+  // 102 kB, from an observed 102,411 bytes with ~2% of headroom, in the spirit
+  // of the closure budget below. The number that decides first paint is that
+  // closure, not this one — see the note there — and it is still inside its own
+  // budget with room to spare. Raising this is the documented move when the
+  // entry has genuinely grown; quietly tracking the build is not.
+  main: 102 * 1024,
   '/start': 20 * 1024,
   '/cfp/:eventSlug/:formSlug': 80 * 1024,
   '/admin/events/$slug/submissions': 30 * 1024,

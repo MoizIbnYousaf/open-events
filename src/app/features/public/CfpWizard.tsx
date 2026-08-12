@@ -81,6 +81,31 @@ export default function CfpWizard({ form }: CfpWizardProps) {
     () => form.elements.some((element) => element.fieldKey === TITLE_FIELD_KEY),
     [form],
   )
+  /**
+   * The step a restored draft belongs on: the first one carrying any of the
+   * restored work. A server draft records what was written, never where the
+   * writer was standing, so landing on step one is landing on a page that shows
+   * none of it — which is exactly how a resumed draft came to look like a lost
+   * one. Falls back to the first step when the draft turns out to hold nothing
+   * this form still asks for.
+   */
+  const firstStepHolding = useCallback(
+    (title: string, answers: Readonly<Record<string, unknown>>): number => {
+      for (const [index, page] of steps.entries()) {
+        if (index === proposalPageIndex && !hasTitleQuestion && title !== '') return index
+        const holdsAnswer = form.elements.some((element) => {
+          if (element.pageId !== page.id || element.fieldKey === null) return false
+          const value = answers[element.fieldKey]
+          return (
+            value !== undefined && value !== '' && !(Array.isArray(value) && value.length === 0)
+          )
+        })
+        if (holdsAnswer) return index
+      }
+      return 0
+    },
+    [steps, proposalPageIndex, hasTitleQuestion, form.elements],
+  )
   const draftQuery = useActiveDraft(form.formId)
   const editorQuery = usePublicEditor(form.formId, form.versionId)
   const editor = editorQuery.data ?? defaultEditor(form.formId, form.versionId)
@@ -221,32 +246,68 @@ export default function CfpWizard({ form }: CfpWizardProps) {
     // acknowledges is by definition older than anything typed while the
     // request was in flight.
     if (!reloadArmed && editorBefore?.dirty === true) return
-    // Nothing on the server and something parked before the identity detour:
-    // the visitor is coming back to work they already did, so restore it
-    // rather than greeting them with an empty form.
+    // A visitor is coming back to work they already did, and it can be waiting
+    // in either of two places: parked in this tab before the identity detour, or
+    // held on the server from a save in an earlier sitting. Both are the same
+    // event to the person — "my draft is still here" — so both take one restore
+    // path, land on the step that actually holds the work, and say so.
+    //
     // Once, and only into an editor nobody has typed into yet: restoring on
     // every hydration would yank a working visitor back to the step they were
     // on when they left, and a save acknowledgement hydrates too.
     const editorIsPristine =
       editorBefore === undefined ||
       (editorBefore.title === '' && Object.keys(editorBefore.answers).length === 0)
-    const parked =
-      draft === null && !restoredParkedRef.current && editorIsPristine
-        ? readCfpDraftStash(form.versionId)
-        : null
-    if (parked !== null && !reloadArmed) {
+    const firstRestore = !restoredParkedRef.current && editorIsPristine && !reloadArmed
+    const parked = firstRestore && draft === null ? readCfpDraftStash(form.versionId) : null
+    // Title and answers are both optional on the wire, and the hydration write
+    // below has always defaulted them. The restore has to default them too: a
+    // step derived from an absent answer map, or a title handed to validation as
+    // undefined, takes the whole wizard down on mount.
+    const draftAnswers = draft?.answers ?? {}
+    const draftTitle = draft?.title ?? ''
+    // A draft with neither a title nor an answer is an empty shell — restoring
+    // it would announce a resumption of nothing.
+    const serverHoldsWork =
+      draft !== null && (draftTitle !== '' || Object.keys(draftAnswers).length > 0)
+    const resume =
+      parked !== null
+        ? {
+            title: parked.title,
+            answers: parked.answers,
+            step: parked.stepIndex,
+            id: null,
+            dirty: true,
+          }
+        : firstRestore && serverHoldsWork && draft !== null
+          ? {
+              title: draftTitle,
+              answers: draftAnswers,
+              // The server stores the work, not the place in the wizard, so the
+              // step is derived: the first one carrying something restored.
+              step: firstStepHolding(draftTitle, draftAnswers),
+              id: draft.id,
+              dirty: false,
+            }
+          : null
+    if (resume !== null) {
       restoredParkedRef.current = true
+      if (draft !== null) clearCfpDraftStash(form.versionId)
       setEditor((current) => ({
         ...current,
         formId: form.formId,
         formVersionId: form.versionId,
-        draftId: null,
-        title: parked.title,
-        answers: parked.answers,
-        dirty: true,
+        draftId: resume.id,
+        title: resume.title,
+        answers: resume.answers,
+        dirty: resume.dirty,
         reloadIntent: false,
       }))
-      setStepIndex(parked.stepIndex)
+      setStepIndex(resume.step)
+      // A silently pre-filled field is indistinguishable from a form the
+      // speaker filled in this sitting. The evaluator read one as an empty
+      // form and called the draft lost; saying it out loud is the fix.
+      setAnnouncement('Draft restored — pick up where you left off.')
       return
     }
     // Nothing was parked, and a refusal told us nothing about the server. Leave
@@ -273,7 +334,15 @@ export default function CfpWizard({ form }: CfpWizardProps) {
         element.focus()
       }
     }
-  }, [draftQuery.data, draftQuery.isError, form.formId, form.versionId, setEditor, queryClient])
+  }, [
+    draftQuery.data,
+    draftQuery.isError,
+    form.formId,
+    form.versionId,
+    setEditor,
+    queryClient,
+    firstStepHolding,
+  ])
 
   // Track the deterministic user-focused field element via focusin.
   useEffect(() => {
@@ -570,6 +639,7 @@ export default function CfpWizard({ form }: CfpWizardProps) {
           <CfpSaveBar
             onBack={stepIndex > 0 ? handleBack : undefined}
             onNext={stepIndex < steps.length - 1 ? handleNext : undefined}
+            onSaveStart={() => setAnnouncement(null)}
             onDenied={(denial) => {
               parkDraft()
               setSaveDenial(denial)

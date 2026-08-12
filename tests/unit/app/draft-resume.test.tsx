@@ -203,7 +203,9 @@ describe('public CFP draft save and resume', () => {
   it('resumes and hydrates the active draft answers and title', async () => {
     renderDraftUi()
 
-    await userEvent.setup().click(await screen.findByRole('button', { name: /next/i }))
+    // No Next click: a restored draft now lands on the step that holds it. This
+    // case used to walk there itself, which is exactly how it kept passing while
+    // a returning speaker saw an apparently empty welcome step (CFP-07).
     const format = await screen.findByLabelText(/format/i)
     expect(format).toHaveValue('talk')
     expect(await screen.findByLabelText(/title/i)).toHaveValue('Resumed talk')
@@ -286,8 +288,7 @@ describe('public CFP draft save and resume', () => {
     }
     renderDraftUi()
 
-    // Title lives on p-2; reach it via the same Next transition as resume.
-    await user.click(await screen.findByRole('button', { name: /next/i }))
+    // The restored draft already lands on p-2, where the title lives.
     // Make a local title edit before the conflict save.
     const title = await screen.findByLabelText(/title/i)
     await user.clear(title)
@@ -441,7 +442,6 @@ describe('public CFP draft save and resume', () => {
     window.dispatchEvent(cleanEvent)
     expect(cleanEvent.defaultPrevented).toBe(false)
 
-    await user.click(await screen.findByRole('button', { name: /next/i }))
     const title = await screen.findByLabelText(/title/i)
     await user.clear(title)
     await user.type(title, 'Edited title')
@@ -455,8 +455,7 @@ describe('public CFP draft save and resume', () => {
     const user = userEvent.setup()
     renderDraftUi()
 
-    // Title lives on p-2; reach it via the same Next transition as resume.
-    await user.click(await screen.findByRole('button', { name: /next/i }))
+    // The restored draft lands on p-2, where the title lives.
     await screen.findByLabelText(/title/i)
     const draftGetCalls = fetchMock.mock.calls.filter(([input, init]) => {
       return (
@@ -473,5 +472,125 @@ describe('public CFP draft save and resume', () => {
     for (const [input] of fetchMock.mock.calls) {
       expect(allowed.has(requestUrl(input))).toBe(true)
     }
+  })
+})
+
+/**
+ * CFP-07, made literal.
+ *
+ * The official evaluator saved a title-only draft with an authenticated speaker
+ * session, saw "Saved", walked to /portal and back, and reported the draft lost.
+ * It was not lost — the server round trip is sound, and a direct API check
+ * confirms the row is returned to a brand-new session for the same identity.
+ * What was lost was any way to SEE it: the wizard hydrates the title into an
+ * editor whose step indicator still reads step 1 "Welcome", and the title field
+ * lives on the proposal step. Nothing on arrival says a draft was found.
+ *
+ * The suite above missed this for the same reason the browser proof did — its
+ * resume case clicks Next before asserting, so it measures the data and never
+ * the arrival. These cases assert what a returning speaker actually sees, with
+ * no clicks at all.
+ *
+ * The form fixture here drops the title QUESTION so the universal proposal-title
+ * field is the one in play, which is the shape the seeded event really ships.
+ */
+const FORM_WITHOUT_TITLE_QUESTION: FormDefinitionDto = {
+  ...PUBLISHED_FORM,
+  elements: PUBLISHED_FORM.elements.filter((element) => element.fieldKey !== 'title'),
+  conditionRules: [],
+}
+
+const PARTIAL_DRAFT: DraftDto = {
+  id: 'draft-partial',
+  eventId: EVENT_ID,
+  formVersionId: VERSION_ID,
+  title: 'Taming 40-Minute CI: Incremental Builds at Monorepo Scale',
+  answers: {},
+  updatedAt: '2026-08-12T14:07:00.000Z',
+}
+
+function renderPartialDraftUi() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <CfpWizard form={FORM_WITHOUT_TITLE_QUESTION} eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />
+      </QueryClientProvider>,
+    ),
+  }
+}
+
+describe('resuming a partial draft after navigating away (CFP-07)', () => {
+  it('shows the saved title on arrival, without the speaker hunting for it', async () => {
+    const user = userEvent.setup()
+    let stored: DraftDto | null = null
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+        return stored === null
+          ? jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
+          : jsonResponse(stored)
+      }
+      if (method === 'PUT' && url === '/api/public/draft') {
+        stored = PARTIAL_DRAFT
+        return jsonResponse(PARTIAL_DRAFT)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+
+    // First visit: an identified speaker types ONLY the title and saves.
+    const first = renderPartialDraftUi()
+    await user.click(await screen.findByRole('button', { name: /next/i }))
+    await user.type(await screen.findByLabelText(/proposal title/i), PARTIAL_DRAFT.title)
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/))
+
+    // Navigating to /portal and back unmounts the wizard and mounts it again
+    // with a cold cache. This is the exact trip the evaluator took.
+    first.unmount()
+    cleanup()
+    renderPartialDraftUi()
+
+    // No clicks. What the returning speaker sees on arrival is the whole point.
+    expect(await screen.findByDisplayValue(PARTIAL_DRAFT.title)).toBeInTheDocument()
+  })
+
+  it('lands on the step holding the restored work rather than the welcome step', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+        return jsonResponse(PARTIAL_DRAFT)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPartialDraftUi()
+
+    // 'About your proposal' is step 2 of 4 in this fixture and holds the title.
+    // The step name also appears in the stepper and the card, so the assertion
+    // is anchored on the header line that carries both.
+    const header = await screen.findByText(/step 2 of 4/i)
+    expect(header).toHaveTextContent(/about your proposal/i)
+  })
+
+  it('tells the returning speaker their draft was restored', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === `/api/public/draft?formId=${FORM_ID}`) {
+        return jsonResponse(PARTIAL_DRAFT)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPartialDraftUi()
+
+    // A silently pre-filled field is indistinguishable from a form the speaker
+    // already filled in this sitting; the resume has to be stated. Asserted by
+    // text, not by role: the save bar owns a status region of its own, so
+    // getByRole('status') is ambiguous by design here.
+    const notice = await screen.findByText(/draft restored/i)
+    expect(notice).toBeInTheDocument()
+    expect(notice.closest('[role="status"]')).not.toBeNull()
   })
 })

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -180,7 +180,28 @@ async function mountWizard() {
   return mountWizardWith(PUBLISHED_FORM)
 }
 
-async function advanceToProposalInformation(user: ReturnType<typeof userEvent.setup>) {
+/**
+ * Be standing on Proposal information.
+ *
+ * How we get there depends on whether a draft is being restored, and the caller
+ * always knows which: a restored draft moves the wizard to the step holding it
+ * (CFP-07), while a fresh form waits on Welcome for a Next. Deciding by reading
+ * `aria-current` instead is a race — the restore lands in an effect, so a read
+ * that happens a tick early presses Next INTO the transition and overshoots to
+ * the following step.
+ */
+async function advanceToProposalInformation(
+  user: ReturnType<typeof userEvent.setup>,
+  options: { readonly resumed?: boolean } = {},
+) {
+  if (options.resumed === true) {
+    await waitFor(() =>
+      expect(screen.getByRole('listitem', { name: /proposal information/i })).toHaveAttribute(
+        'aria-current',
+      ),
+    )
+    return
+  }
   await user.click(await screen.findByRole('button', { name: /next/i }))
   expect(await screen.findByRole('listitem', { name: /proposal information/i })).toHaveAttribute(
     'aria-current',
@@ -266,7 +287,7 @@ describe('public CFP proposal title', () => {
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
     const { user: resumedUser } = await mountWizard()
-    await advanceToProposalInformation(resumedUser)
+    await advanceToProposalInformation(resumedUser, { resumed: true })
 
     expect(await screen.findByRole('textbox', { name: 'Proposal title' })).toHaveValue('My talk')
   })
@@ -337,7 +358,7 @@ describe('public CFP resumed draft hydration', () => {
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
     const { queryClient, user } = await mountWizard()
-    await advanceToProposalInformation(user)
+    await advanceToProposalInformation(user, { resumed: true })
 
     await screen.findByDisplayValue('My talk')
     expect(queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)?.draftId).toBe(
@@ -355,7 +376,9 @@ describe('public CFP resumed draft hydration', () => {
     }
     const { user } = await mountWizard()
 
-    await user.click(await screen.findByRole('button', { name: /next/i }))
+    // The resumed draft lands on Proposal information by itself now, so the walk
+    // starts from there rather than from Welcome.
+    await advanceToProposalInformation(user, { resumed: true })
     await screen.findByDisplayValue('My talk')
     await user.click(screen.getByRole('button', { name: /next/i }))
     await user.click(screen.getByRole('button', { name: /next/i }))

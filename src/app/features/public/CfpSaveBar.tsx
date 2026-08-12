@@ -28,6 +28,14 @@ interface CfpSaveBarProps {
    * editable and can no longer save anything. The page decides instead.
    */
   readonly onDenied: (code: SaveDenial) => void
+  /**
+   * Raised the moment a save begins, so the page can retire any wizard-level
+   * announcement of its own before this bar's region speaks. Two polite regions
+   * holding text at once is the thing DEC-014 forbids, and the resumed-draft
+   * notice would otherwise still be sitting there saying "Draft restored" while
+   * this one says "Saved".
+   */
+  readonly onSaveStart?: () => void
 }
 
 /**
@@ -45,7 +53,7 @@ interface CfpSaveBarProps {
  * the viewport floor would sit on top of it, so there the row stays in flow.
  * Safe-area padding keeps it clear of a phone's home indicator.
  */
-export default function CfpSaveBar({ onBack, onNext, onDenied }: CfpSaveBarProps) {
+export default function CfpSaveBar({ onBack, onNext, onDenied, onSaveStart }: CfpSaveBarProps) {
   const queryClient = useQueryClient()
   const save = useSaveDraft()
   const [reloadPending, setReloadPending] = useState(false)
@@ -83,7 +91,8 @@ export default function CfpSaveBar({ onBack, onNext, onDenied }: CfpSaveBarProps
         type="button"
         variant="outline"
         pending={save.isPending}
-        onClick={() =>
+        onClick={() => {
+          onSaveStart?.()
           // No onSuccess announcement: the StatusLive below is a live
           // region and already says "Saved", and the failure renders its own
           // alert. One region per outcome (DEC-014, F-R3-13).
@@ -93,7 +102,7 @@ export default function CfpSaveBar({ onBack, onNext, onDenied }: CfpSaveBarProps
               if (denial === 'unauthorized' || denial === 'forbidden') onDenied(denial)
             },
           })
-        }
+        }}
       >
         {save.isPending ? 'Saving…' : 'Save'}
       </Button>

@@ -25,8 +25,11 @@ import {
 } from '../../../components/ui/page-header'
 import { StatusLive } from '../../../components/ui/status-live'
 import {
+  clearCfpDraftStash,
   publicDraftQueryKeys,
+  readCfpDraftStash,
   recoverPublicSession,
+  stashCfpDraft,
   useActiveDraft,
   usePublicEditor,
   type PublicEditorState,
@@ -109,6 +112,24 @@ export default function CfpWizard({ form }: CfpWizardProps) {
   const lastFocusedElementRef = useRef<HTMLElement | null>(null)
   const prevVisibleRef = useRef<ReadonlySet<ElementFieldKey>>(new Set())
   const previousStepRef = useRef(stepIndex)
+  /** A parked draft is restored at most once, into an untouched editor. */
+  const restoredParkedRef = useRef(false)
+
+  /**
+   * Park everything typed so the identity detour is a resumption, not a
+   * retype. A refused save replaces the wizard with one honest page state and
+   * the visitor leaves for /start; the editor lives in memory and dies with
+   * that navigation, so the words have to outlive it somewhere.
+   */
+  const parkDraft = useCallback(() => {
+    const editor = queryClient.getQueryData<PublicEditorState>(publicDraftQueryKeys.editor)
+    if (editor === undefined) return
+    stashCfpDraft(form.versionId, {
+      title: editor.title,
+      answers: editor.answers,
+      stepIndex,
+    })
+  }, [form.versionId, queryClient, stepIndex])
 
   const setEditor = useCallback(
     (updater: (current: PublicEditorState) => PublicEditorState) => {
@@ -193,6 +214,36 @@ export default function CfpWizard({ form }: CfpWizardProps) {
     // acknowledges is by definition older than anything typed while the
     // request was in flight.
     if (!reloadArmed && editorBefore?.dirty === true) return
+    // Nothing on the server and something parked before the identity detour:
+    // the visitor is coming back to work they already did, so restore it
+    // rather than greeting them with an empty form.
+    // Once, and only into an editor nobody has typed into yet: restoring on
+    // every hydration would yank a working visitor back to the step they were
+    // on when they left, and a save acknowledgement hydrates too.
+    const editorIsPristine =
+      editorBefore === undefined ||
+      (editorBefore.title === '' && Object.keys(editorBefore.answers).length === 0)
+    const parked =
+      draft === null && !restoredParkedRef.current && editorIsPristine
+        ? readCfpDraftStash(form.versionId)
+        : null
+    if (parked !== null && !reloadArmed) {
+      restoredParkedRef.current = true
+      setEditor((current) => ({
+        ...current,
+        formId: form.formId,
+        formVersionId: form.versionId,
+        draftId: null,
+        title: parked.title,
+        answers: parked.answers,
+        dirty: true,
+        reloadIntent: false,
+      }))
+      setStepIndex(parked.stepIndex)
+      return
+    }
+    // The server holds it now, so the parked copy has done its job.
+    if (draft !== null) clearCfpDraftStash(form.versionId)
     setEditor((current) => ({
       ...current,
       formId: form.formId,
@@ -509,7 +560,10 @@ export default function CfpWizard({ form }: CfpWizardProps) {
           <CfpSaveBar
             onBack={stepIndex > 0 ? handleBack : undefined}
             onNext={stepIndex < steps.length - 1 ? handleNext : undefined}
-            onDenied={setSaveDenial}
+            onDenied={(denial) => {
+              parkDraft()
+              setSaveDenial(denial)
+            }}
           />
         </>
       )}
@@ -517,7 +571,10 @@ export default function CfpWizard({ form }: CfpWizardProps) {
         <CfpSubmit
           formVersionId={form.versionId}
           onSubmitted={() => setSubmitted(true)}
-          onDenied={setSaveDenial}
+          onDenied={(denial) => {
+            parkDraft()
+            setSaveDenial(denial)
+          }}
         />
       ) : null}
       {confirmationActive ? null : announcement !== null ? (

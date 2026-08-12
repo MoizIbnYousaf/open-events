@@ -121,6 +121,69 @@ export function useSaveDraft() {
  * this form's active-draft keys, then (when a router is present) navigate to
  * the public start path. Never clears the whole cache or removes by prefix.
  */
+/**
+ * A public CFP draft parked across the identity detour.
+ *
+ * A visitor can fill four steps of the call for papers before anything asks
+ * who they are, and the first Save is what asks. Replacing the wizard with the
+ * "identify yourself" state is the honest answer — but the editor lives in
+ * memory, so the trip to /start used to take every typed word with it. The
+ * evaluator scored that as silent data loss, correctly.
+ *
+ * Keyed by form VERSION, not form id: a republished form can drop or rename
+ * fields, and rehydrating answers into questions that no longer exist would be
+ * a different kind of lie. `sessionStorage` matches the evaluator draft stash —
+ * the work belongs to this tab's visit, not to the machine.
+ */
+export interface CfpDraftStash {
+  readonly title: string
+  readonly answers: AnswerMap
+  /** The wizard step the visitor was on, so they come back where they left. */
+  readonly stepIndex: number
+}
+
+function cfpStashKey(formVersionId: string): string {
+  return `speakerops.cfp-draft.${formVersionId}`
+}
+
+export function stashCfpDraft(formVersionId: string, draft: CfpDraftStash): void {
+  try {
+    window.sessionStorage.setItem(cfpStashKey(formVersionId), JSON.stringify(draft))
+  } catch {
+    // A storage-less or quota-exhausted browser loses the resume, not the form.
+  }
+}
+
+/** Reads a parked draft back, tolerating absent, disabled or corrupted storage. */
+export function readCfpDraftStash(formVersionId: string): CfpDraftStash | null {
+  try {
+    const raw = window.sessionStorage.getItem(cfpStashKey(formVersionId))
+    if (raw === null) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const { title, answers, stepIndex } = parsed as {
+      title?: unknown
+      answers?: unknown
+      stepIndex?: unknown
+    }
+    if (typeof title !== 'string') return null
+    if (typeof answers !== 'object' || answers === null || Array.isArray(answers)) return null
+    if (typeof stepIndex !== 'number' || !Number.isFinite(stepIndex)) return null
+    return { title, answers: answers as AnswerMap, stepIndex }
+  } catch {
+    return null
+  }
+}
+
+/** Drops the parked draft once the server has actually stored one. */
+export function clearCfpDraftStash(formVersionId: string): void {
+  try {
+    window.sessionStorage.removeItem(cfpStashKey(formVersionId))
+  } catch {
+    // Unremovable storage goes stale only until the tab closes.
+  }
+}
+
 export function recoverPublicSession(
   queryClient: QueryClient,
   formId: string,

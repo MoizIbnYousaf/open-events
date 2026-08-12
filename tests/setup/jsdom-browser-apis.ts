@@ -57,3 +57,21 @@ if (typeof Element !== 'undefined' && typeof Element.prototype.setPointerCapture
     return false
   }
 }
+
+/**
+ * jsdom keeps one `sessionStorage` for the whole file, but every `render` in a
+ * suite is a fresh visit to the product. Anything a component parks there — a
+ * CFP draft waiting out the identity detour, an evaluator's unsaved rating —
+ * would otherwise be restored into the next test and move it to a step it
+ * never asked for. A real browser gives each tab its own storage; this gives
+ * each test the same courtesy.
+ */
+import { afterEach } from 'vitest'
+
+afterEach(() => {
+  try {
+    window.sessionStorage.clear()
+  } catch {
+    // A test that deliberately disables storage has nothing to clear.
+  }
+})

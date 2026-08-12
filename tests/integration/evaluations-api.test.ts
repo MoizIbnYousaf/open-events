@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { env, reset } from 'cloudflare:test'
 
+import type { EvaluationRowDto } from '../../src/application/dtos/evaluation.dto'
 import app from '../../src/server'
 import {
   DEMO_CONF_2026_CRITERION_ID,
@@ -60,29 +61,11 @@ interface AssignmentBody {
   readonly createdAt: string
 }
 
-interface PreviousRoundBody {
-  readonly roundNumber: number
-  readonly roundName: string
-  readonly rating: number
-  readonly comments: string | null
-  readonly updatedAt: string
-}
 
-interface RowBody {
-  readonly submissionId: string
-  readonly sessionTitle: string
-  readonly roundId: string
-  readonly roundNumber: number
-  readonly roundName: string
-  readonly roundStatus: string
-  readonly rating: number | null
-  readonly comments: string | null
-  readonly updatedAt: string | null
-  readonly previousRounds: readonly PreviousRoundBody[]
-  /** Whose proposal it is, and whether this round hides that (0017). */
-  readonly speakerName: string | null
-  readonly anonymized: boolean
-}
+// The row's OWN type, not a copy that resembles it. A local shape keeps
+// compiling after the server adds or drops a field, so real drift shows up as
+// a passing test — which is how the blind redaction once shipped unproven.
+type RowBody = EvaluationRowDto
 
 interface CriterionSummaryBody {
   readonly criterionId: string
@@ -139,6 +122,7 @@ function unscoredRow(overrides: Partial<RowBody> = {}): RowBody {
     // identifying fact the product actually holds for them.
     speakerName: SPEAKER_EMAIL,
     anonymized: false,
+    coSpeakers: [],
     ...overrides,
   }
 }

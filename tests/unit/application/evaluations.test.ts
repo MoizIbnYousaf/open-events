@@ -318,6 +318,7 @@ describe('EvaluationService evaluator scoping', () => {
         // no contact for the owner, so there is no name to give.
         speakerName: null,
         anonymized: false,
+        coSpeakers: [],
       },
     ])
     expect(rows.map((row) => row.submissionId)).not.toContain(otherSubmission.id)
@@ -375,6 +376,7 @@ describe('EvaluationService scoring', () => {
       previousRounds: [],
       speakerName: null,
       anonymized: false,
+      coSpeakers: [],
     })
     expect(await service.listOwnEvaluations(actor)).toEqual([row])
   })
@@ -639,6 +641,7 @@ describe('EvaluationService multi-round evaluator rows', () => {
         ],
         speakerName: null,
         anonymized: false,
+        coSpeakers: [],
       },
     ])
     expect(new Set(rows.map((row) => row.submissionId)).size).toBe(rows.length)

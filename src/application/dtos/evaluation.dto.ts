@@ -127,6 +127,19 @@ export interface EvaluationRowDto {
   readonly speakerName?: string | null
   /** True when this round is blind, so the surface can say why the name is absent. */
   readonly anonymized?: boolean
+  /**
+   * Who else is on the proposal, and in what capacity — empty in a blind round
+   * for the same reason the speaker's name is withheld there. A committee that
+   * hides the author and then lists their co-presenter has not run a blind
+   * round, it has run a slower one.
+   */
+  readonly coSpeakers?: readonly EvaluationCoSpeakerDto[]
+}
+
+/** One other name on a proposal, as a reviewer is allowed to see it. */
+export interface EvaluationCoSpeakerDto {
+  readonly name: string
+  readonly role: string
 }
 
 /** One question on a reviewer's form, with whatever they have answered so far. */

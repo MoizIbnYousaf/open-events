@@ -568,6 +568,80 @@ describe('a reviewer scores against the round scorecard', () => {
     expect(blind[0]?.anonymized).toBe(true)
   })
 
+  /**
+   * Blinding the author and then listing their co-presenter is not a blind
+   * round, it is a slower one. Both names have to go — and the fixture has to
+   * carry a real co-speaker, or the assertion passes against a surface that
+   * never showed contributors at all and proves nothing.
+   */
+  it('withholds the other names on the proposal too, and shows them when it is not blind', async () => {
+    const organizer = await organizerCookie()
+    const roundId = await liveRoundId(organizer)
+    const speaker = await submitterCookie(env.DB)
+    const draftId = await savePublicDraft(speaker, {
+      title: 'Taming 40-Minute CI',
+      answers: SEEDED_TALK_ANSWERS,
+    })
+    const submitted = await app.request(
+      '/api/public/submit',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(speaker),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          originDraftId: draftId,
+          formVersionId: DEMO_CONF_2026_VERSION_ID,
+          title: 'Taming 40-Minute CI',
+          answers: SEEDED_TALK_ANSWERS,
+          coSpeakers: [{ name: 'Marcus Okafor', email: 'marcus.speaker@example.test' }],
+        }),
+      },
+      bindings(),
+    )
+    const submissionId = ((await submitted.json()) as { id: string }).id
+    await app.request(
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/assignments`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(organizer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ evaluatorEmail: 'blind.reviewer@example.test' }),
+      },
+      bindings(),
+    )
+    const reviewer = await submitterCookie(env.DB, {}, 'blind.reviewer@example.test')
+
+    const queue = async (): Promise<readonly QueueRow[]> =>
+      (await (
+        await app.request(
+          '/api/public/evaluations',
+          { headers: { cookie: cookieHeader(reviewer) } },
+          bindings(),
+        )
+      ).json()) as readonly QueueRow[]
+
+    // Named first: a redaction proves nothing unless the name it removes was
+    // reaching the reviewer to begin with.
+    const named = await queue()
+    expect(named[0]?.coSpeakers?.map((person) => person.name)).toEqual(['Marcus Okafor'])
+    expect(named[0]?.coSpeakers?.[0]?.role).toBe('co-speaker')
+
+    await configureRound(organizer, roundId, {
+      name: 'Round 1',
+      opensAt: null,
+      closesAt: null,
+      anonymize: true,
+    })
+
+    expect((await queue())[0]?.coSpeakers).toEqual([])
+  })
+
   it('renders every configured field, with its type and its choices', async () => {
     const { reviewer } = await setUp()
 

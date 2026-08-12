@@ -286,10 +286,17 @@ function SpeakerLine({ row }: { readonly row: EvaluationRow }) {
       <CardDescription>Blind review — the speaker is not shown in this round.</CardDescription>
     )
   }
-  if (row.speakerName === null || row.speakerName === undefined || row.speakerName === '') {
-    return null
-  }
-  return <CardDescription>{`Proposed by ${row.speakerName}`}</CardDescription>
+  const named = typeof row.speakerName === 'string' && row.speakerName !== ''
+  const others = row.coSpeakers ?? []
+  if (!named && others.length === 0) return null
+  return (
+    <CardDescription>
+      {named ? `Proposed by ${row.speakerName}` : 'Proposed by an author who is not named here'}
+      {others.length === 0
+        ? ''
+        : ` with ${others.map((person) => `${person.name} (${person.role})`).join(', ')}`}
+    </CardDescription>
+  )
 }
 
 /**

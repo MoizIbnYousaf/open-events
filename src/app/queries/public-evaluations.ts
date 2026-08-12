@@ -40,6 +40,8 @@ export interface EvaluationRow {
   /** Whose proposal this is — absent in a blind round, where nobody may know. */
   readonly speakerName?: string | null
   readonly anonymized?: boolean
+  /** Other names on the proposal — empty in a blind round, where nobody may know. */
+  readonly coSpeakers?: readonly { readonly name: string; readonly role: string }[]
 }
 
 /** One question on the reviewer's form, with whatever they have answered. */

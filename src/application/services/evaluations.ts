@@ -1310,11 +1310,15 @@ export class EvaluationService {
     ])
     const round = rounds.find((candidate) => candidate.id === assignment.roundId)
     const byCriterion = new Map(stored.map((score) => [score.criterionId, score]))
-    const speakerName = await this.#speakerNameFor(submission, round)
+    const [speakerName, coSpeakers] = await Promise.all([
+      this.#speakerNameFor(submission, round),
+      this.#coSpeakersFor(submission, round),
+    ])
     return {
       submissionId: assignment.submissionId,
       sessionTitle: submission?.title ?? '',
       speakerName,
+      coSpeakers,
       anonymized: round?.anonymize === true,
       roundId: assignment.roundId,
       roundNumber: round?.number ?? 0,
@@ -1362,6 +1366,37 @@ export class EvaluationService {
     if (submission === null || round === undefined || round.anonymize) return null
     const owner = await this.#contacts.findById(submission.ownerContactId)
     return owner?.name ?? null
+  }
+
+  /**
+   * The other names on a proposal, or nothing at all in a blind round.
+   *
+   * Withheld on the SERVER beside the speaker's own name, and for the same
+   * reason: a committee that hides the author and then lists their co-presenter
+   * has not run a blind round, it has run a slower one. The primary is left out
+   * because they are already the `speakerName` — repeating them would put one
+   * person on the card twice.
+   */
+  async #coSpeakersFor(
+    submission: { readonly id: SubmissionId; readonly eventId: EventId } | null,
+    round: EvaluationRound | undefined,
+  ): Promise<readonly { readonly name: string; readonly role: string }[]> {
+    if (submission === null || round === undefined || round.anonymize) return []
+    const contributors = await this.#submissions.listContributorsBySubmission(
+      submission.eventId,
+      submission.id,
+    )
+    const named = await Promise.all(
+      contributors
+        .filter((contributor) => contributor.role !== 'primary')
+        .map(async (contributor) => ({
+          contact: await this.#contacts.findById(contributor.contactId),
+          role: contributor.role,
+        })),
+    )
+    return named.flatMap((entry) =>
+      entry.contact === null ? [] : [{ name: entry.contact.name, role: entry.role }],
+    )
   }
 
   /** Forbidden unless this contact sits on the event's review committee. */
@@ -1458,6 +1493,7 @@ export class EvaluationService {
       submissionId: assignment.submissionId,
       sessionTitle: submission?.title ?? '',
       speakerName: await this.#speakerNameFor(submission, round),
+      coSpeakers: await this.#coSpeakersFor(submission, round),
       anonymized: round?.anonymize === true,
       roundId: assignment.roundId,
       roundNumber: round?.number ?? 0,

@@ -228,6 +228,56 @@ describe('speaker portal', () => {
     expect(acceptedChip).toHaveTextContent(/accepted/i)
   })
 
+  /**
+   * A co-speaker typed into the wizard was stored with their role and never
+   * shown back, so the only way to check whether a colleague had actually been
+   * included was to submit again. The role travels with the name because the
+   * programme needs to know who presents and who is credited.
+   */
+  it('names everyone on the proposal, with the capacity they are in', async () => {
+    const user = userEvent.setup()
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === PORTAL_URL) return jsonResponse(SUBMISSIONS_ENVELOPE)
+      if (method === 'GET' && url.startsWith('/api/public/submission/')) {
+        return jsonResponse({
+          id: 'submission-1',
+          title: 'Taming 40-Minute CI',
+          answers: { abstract: 'Incremental builds.' },
+          editable: true,
+          contributors: [
+            {
+              contactId: 'contact-1',
+              name: 'Priya Raman',
+              email: 'priya@example.test',
+              role: 'primary',
+              position: 0,
+            },
+            {
+              contactId: 'contact-2',
+              name: 'Marcus Okafor',
+              email: 'marcus@example.test',
+              role: 'co-speaker',
+              position: 1,
+            },
+          ],
+        })
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPage()
+
+    const list = await screen.findByRole('list', { name: /your submissions/i })
+    await user.click(within(list).getAllByRole('button', { name: /view proposal/i })[0]!)
+
+    const people = await screen.findByText(/Marcus Okafor/)
+    expect(people).toBeInTheDocument()
+    // The capacity, not just the name: "1 co-speaker" never answered whether
+    // Marcus was actually on it, or in what role.
+    expect(people.parentElement).toHaveTextContent(/co-speaker/i)
+    expect(screen.getByText(/Priya Raman/).parentElement).toHaveTextContent(/primary/i)
+  })
+
   it('offers the calendar invite only for an accepted submission', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'

@@ -217,6 +217,35 @@ function ProposalDisclosure({ submission }: { readonly submission: PortalSubmiss
   )
 }
 
+/**
+ * Everyone on the proposal, and in what capacity.
+ *
+ * A co-speaker typed into the wizard was stored with their role and then never
+ * shown back to the person who added them, so the only way to check whether a
+ * colleague had actually been included was to submit again. Names read as a
+ * list rather than a count, because "1 co-speaker" does not answer "did I spell
+ * Marcus's address right".
+ */
+function ProposalPeople({ detail }: { readonly detail: SubmissionDetailDto }) {
+  if (detail.contributors.length === 0) return null
+  return (
+    <div className="grid gap-1 pt-2">
+      <p className="text-xs font-medium text-muted-foreground">On this proposal</p>
+      <ul className="grid gap-0.5">
+        {detail.contributors.map((person) => (
+          <li key={person.contactId} className="text-sm">
+            <span className="font-medium">{person.name || person.email}</span>
+            {/* The role is the point: a programme needs to know who is
+                presenting and who is credited, and the database has stored
+                that distinction all along. */}
+            <span className="text-muted-foreground">{` — ${person.role}`}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function ProposalEditor({ detail }: { readonly detail: SubmissionDetailDto }) {
   const edit = useEditOwnSubmission(detail.id)
   const [answers, setAnswers] = useState<Record<string, string>>(() =>
@@ -246,6 +275,7 @@ function ProposalEditor({ detail }: { readonly detail: SubmissionDetailDto }) {
             </div>
           ))}
         </dl>
+        <ProposalPeople detail={detail} />
       </div>
     )
   }
@@ -301,6 +331,7 @@ function ProposalEditor({ detail }: { readonly detail: SubmissionDetailDto }) {
         </Button>
         <StatusLive aria-live="polite">{edit.isPending ? null : message}</StatusLive>
       </div>
+      <ProposalPeople detail={detail} />
     </form>
   )
 }

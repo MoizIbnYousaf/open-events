@@ -49,8 +49,22 @@ let fetchMock: ReturnType<typeof vi.fn>
 let fetchHandler: (url: string, init?: RequestInit) => Response | Promise<Response>
 
 const SEATED = [
-  { contactId: 'contact-1', email: 'reviewer.one@example.test', name: 'Reviewer One', addedAt: '2026-05-20T09:00:00.000Z', assignedCount: 0, completedCount: 0 },
-  { contactId: 'contact-2', email: 'reviewer.two@example.test', name: 'Reviewer Two', addedAt: '2026-05-21T09:00:00.000Z', assignedCount: 0, completedCount: 0 },
+  {
+    contactId: 'contact-1',
+    email: 'reviewer.one@example.test',
+    name: 'Reviewer One',
+    addedAt: '2026-05-20T09:00:00.000Z',
+    assignedCount: 0,
+    completedCount: 0,
+  },
+  {
+    contactId: 'contact-2',
+    email: 'reviewer.two@example.test',
+    name: 'Reviewer Two',
+    addedAt: '2026-05-21T09:00:00.000Z',
+    assignedCount: 0,
+    completedCount: 0,
+  },
 ]
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -69,10 +83,13 @@ function bodyOf(url: string, method: string): Record<string, unknown> | null {
     .reverse()
     .find(
       ([input, init]) =>
-        requestUrl(input) === url && ((init as RequestInit | undefined)?.method ?? 'GET') === method,
+        requestUrl(input) === url &&
+        ((init as RequestInit | undefined)?.method ?? 'GET') === method,
     )
   const init = call?.[1] as RequestInit | undefined
-  return init?.body === undefined ? null : (JSON.parse(String(init.body)) as Record<string, unknown>)
+  return init?.body === undefined
+    ? null
+    : (JSON.parse(String(init.body)) as Record<string, unknown>)
 }
 
 function defaultHandler(url: string, init?: RequestInit): Response {
@@ -89,7 +106,10 @@ function defaultHandler(url: string, init?: RequestInit): Response {
   }
   if (method === 'PUT' && url === SCORECARD_PATH) {
     const sent = JSON.parse(String(init?.body)) as { criteria: Record<string, unknown>[] }
-    scorecard = sent.criteria.map((criterion, index) => ({ ...criterion, id: `criterion-${index}` }))
+    scorecard = sent.criteria.map((criterion, index) => ({
+      ...criterion,
+      id: `criterion-${index}`,
+    }))
     return jsonResponse(scorecard)
   }
   if (method === 'PUT' && url === POOL_PATH) {
@@ -97,6 +117,10 @@ function defaultHandler(url: string, init?: RequestInit): Response {
     pool = sent.contactIds.map((contactId) => ({ contactId }))
     return jsonResponse(pool)
   }
+  // The page also carries a results table; this suite is not about it, so it
+  // answers empty rather than 500. A page where an unrelated section is ALSO
+  // failing has two alerts, and the assertions here address the one under test.
+  if (url.endsWith('/results')) return jsonResponse([])
   return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
 }
 
@@ -160,7 +184,9 @@ describe('an organizer configures a round on the page', () => {
     await user.type(name, 'Shortlisting')
     await user.click(within(region).getByRole('button', { name: /save round/i }))
 
-    await waitFor(() => expect(bodyOf(`${ROUNDS_PATH}/${ROUND_ID}`, 'PUT')).toMatchObject({ name: 'Shortlisting' }))
+    await waitFor(() =>
+      expect(bodyOf(`${ROUNDS_PATH}/${ROUND_ID}`, 'PUT')).toMatchObject({ name: 'Shortlisting' }),
+    )
     expect(await within(region).findByDisplayValue('Shortlisting')).toBeInTheDocument()
   })
 
@@ -207,6 +233,14 @@ describe('an organizer configures a round on the page', () => {
     await user.click(within(region).getByRole('button', { name: /save round/i }))
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+  })
+
+  it('renders no results error: the results query is a real page dependency', async () => {
+    mountCommittee()
+    await screen.findByRole('heading', { level: 1, name: 'Review committee' })
+    // A required read that 500s would put a SECOND alert on this page and make
+    // every `getByRole('alert')` here ambiguous.
+    expect(screen.queryByText(/results could not be loaded/i)).not.toBeInTheDocument()
   })
 })
 
@@ -267,8 +301,24 @@ describe('an organizer builds the round scorecard', () => {
 
   it('reloads a saved scorecard rather than an empty one', async () => {
     scorecard = [
-      { id: 'criterion-0', label: 'Relevance', kind: 'rating', weight: 3, position: 0, scale: { min: 1, max: 5 }, options: null },
-      { id: 'criterion-1', label: 'Notes', kind: 'text', weight: null, position: 1, scale: null, options: null },
+      {
+        id: 'criterion-0',
+        label: 'Relevance',
+        kind: 'rating',
+        weight: 3,
+        position: 0,
+        scale: { min: 1, max: 5 },
+        options: null,
+      },
+      {
+        id: 'criterion-1',
+        label: 'Notes',
+        kind: 'text',
+        weight: null,
+        position: 1,
+        scale: null,
+        options: null,
+      },
     ]
     mountCommittee()
     const region = await roundRegion()
@@ -279,6 +329,34 @@ describe('an organizer builds the round scorecard', () => {
     const saved = await within(region).findByRole('list', { name: /scorecard questions/i })
     expect(within(saved).getByText('Relevance')).toBeInTheDocument()
     expect(within(saved).getByText('Notes')).toBeInTheDocument()
+  })
+
+  it('resets the weight after adding, so the next question does not inherit it', async () => {
+    const user = userEvent.setup()
+    mountCommittee()
+    const region = await roundRegion()
+
+    // First question carries a deliberate weight.
+    await user.type(within(region).getByLabelText(/question/i), 'Originality')
+    await user.selectOptions(within(region).getByLabelText(/answer type/i), 'rating')
+    await user.clear(within(region).getByLabelText(/weight/i))
+    await user.type(within(region).getByLabelText(/weight/i), '2')
+    await user.click(within(region).getByRole('button', { name: /add question/i }))
+
+    // The field retained 2, so a second question typed straight afterwards was
+    // silently weighted 2 as well — and the weighted total the committee ranks
+    // on was wrong in a way nothing on screen disclosed.
+    expect(within(region).getByLabelText(/weight/i)).toHaveValue(1)
+
+    await user.type(within(region).getByLabelText('Question', { exact: true }), 'Relevance')
+    await user.click(within(region).getByRole('button', { name: /add question/i }))
+    await user.click(within(region).getByRole('button', { name: /save scorecard/i }))
+
+    await waitFor(() => {
+      const sent = bodyOf(SCORECARD_PATH, 'PUT') as { criteria?: Record<string, unknown>[] } | null
+      expect(sent?.criteria?.[0]).toMatchObject({ label: 'Originality', weight: 2 })
+      expect(sent?.criteria?.[1]).toMatchObject({ label: 'Relevance', weight: 1 })
+    })
   })
 })
 

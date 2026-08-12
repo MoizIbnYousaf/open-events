@@ -4,24 +4,25 @@ import { useServerMutation } from '../../../adapters/tanstack-react-query'
 
 import {
   addCommitteeMember,
-  configureRound,
-  getRoundPool,
-  getRoundScorecard,
-  putRoundPool,
-  putRoundScorecard,
-  type RoundConfigInput,
-  type RoundCriterionInput,
   assignEvaluator,
   closeEvaluationRound,
+  configureRound,
   defineEvaluationCriteria,
   getEvaluationSummary,
+  getRoundPool,
+  getRoundScorecard,
   listCommittee,
   listEvaluationAssignments,
   listEvaluationCriteria,
+  listEvaluationResults,
   listEvaluationRounds,
   openEvaluationRound,
+  putRoundPool,
+  putRoundScorecard,
   removeCommitteeMember,
   type CriterionInput,
+  type RoundConfigInput,
+  type RoundCriterionInput,
 } from '../api/admin-evaluations'
 import type { EventSlug, EvaluationRoundId, SubmissionId } from '../../domain'
 
@@ -248,4 +249,12 @@ export function useRunEvaluationRound(slug: EventSlug, submissionId: SubmissionI
     onSuccess: refresh,
   })
   return { open, close }
+}
+
+export function useEvaluationResults(slug: EventSlug | undefined) {
+  return useQuery({
+    queryKey: [...adminEvaluationQueryKeys.rounds(slug ?? ''), 'results'] as const,
+    queryFn: () => listEvaluationResults(slug as EventSlug),
+    enabled: slug !== undefined,
+  })
 }

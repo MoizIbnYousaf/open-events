@@ -10,8 +10,10 @@ import type {
   EvaluationScore,
   EventId,
   SubmissionId,
+  SubmissionOutcome,
   UtcInstant,
 } from '../../domain'
+import type { ContributorDto } from './submission.dto'
 
 /** One weighted scoring dimension as the organizer sees it. */
 export interface EvaluationCriterionDto {
@@ -248,4 +250,26 @@ export function toEvaluationAssignmentDto(
     comment: score?.comment ?? null,
     updatedAt: score?.updatedAt ?? null,
   }
+}
+
+/**
+ * One proposal's line in the results table.
+ *
+ * `weightedAverageCentis` is null — never 0 — when nobody has scored the
+ * proposal yet. Zero is a score a reviewer can legitimately give, and
+ * conflating the two would rank an unread proposal below a badly-reviewed one
+ * and quietly mislead the committee that is ranking them.
+ *
+ * Centis (hundredths) rather than a float, matching the per-submission summary:
+ * a table sorts and a person reads the same number, and rounding it once at the
+ * edge beats rounding it differently on every surface.
+ */
+export interface EvaluationResultRowDto {
+  readonly submissionId: SubmissionId
+  readonly title: string
+  readonly weightedAverageCentis: number | null
+  readonly assignmentCount: number
+  readonly scoredCount: number
+  readonly decision: SubmissionOutcome
+  readonly contributors: readonly ContributorDto[]
 }

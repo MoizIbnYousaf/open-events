@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import type { EvaluationResultRowDto } from '../../../application'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 
 import { AlertLive } from '../../../components/ui/alert-live'
@@ -13,7 +14,7 @@ import {
   CardTitle,
 } from '../../../components/ui/card'
 import { EmptyState } from '../../../components/ui/empty-state'
-import { ClipboardIcon } from '../../../components/ui/icons'
+import { ClipboardIcon, DocumentStackIcon } from '../../../components/ui/icons'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Textarea } from '../../../components/ui/textarea'
 import { SectionHeading } from '../../../components/ui/section-heading'
@@ -33,14 +34,15 @@ import {
   useAddCommitteeMember,
   useCommittee,
   useConfigureRound,
-  usePutRoundPool,
-  usePutRoundScorecard,
-  useRoundPool,
-  useRoundScorecard,
   useDefineEvaluationCriteria,
   useEvaluationCriteria,
+  useEvaluationResults,
   useEvaluationRounds,
+  usePutRoundPool,
+  usePutRoundScorecard,
   useRemoveCommitteeMember,
+  useRoundPool,
+  useRoundScorecard,
   useRunEventRounds,
 } from '../../queries/admin-evaluations'
 import type {
@@ -173,6 +175,7 @@ function EvaluationCommitteeScreen() {
       <ReviewersSection slug={slug} />
       <CriteriaSection slug={slug} defined={criteria.data ?? []} />
       <RoundsSection slug={slug} rounds={rounds.data ?? []} committee={committeeRoster} />
+      <ResultsSection slug={slug} />
     </div>
   )
 }
@@ -239,7 +242,7 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
         // person's real name, and it says whether this was actually a new seat.
         // Announcing an invitation for somebody already seated tells the
         // organizer they did something they did not.
-        setInvited(seated.created ? (seated.name.trim() || seated.email) : null)
+        setInvited(seated.created ? seated.name.trim() || seated.email : null)
         setEmail('')
       },
     })
@@ -324,7 +327,10 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
             </ul>
           ) : null}
 
-          <form className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={(event) => void submitInvite(event)}>
+          <form
+            className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+            onSubmit={(event) => void submitInvite(event)}
+          >
             <Field>
               <FieldLabel htmlFor="reviewer-email">Reviewer email</FieldLabel>
               <Input
@@ -353,7 +359,9 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
             <AlertLive id={emailErrorId}>Enter the reviewer&rsquo;s email address.</AlertLive>
           ) : null}
           {add.error != null ? (
-            <AlertLive>That reviewer could not be added. Check the address and try again.</AlertLive>
+            <AlertLive>
+              That reviewer could not be added. Check the address and try again.
+            </AlertLive>
           ) : null}
 
           {/* A provisioned reviewer may never have used the product, so the
@@ -414,6 +422,166 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
 }
 
 /** One h1 for the page, identical in every state it survives into. */
+/** Hundredths to a readable one-decimal score; null stays "not yet reviewed". */
+function formatAggregate(centis: number | null): string {
+  if (centis === null) return 'Not yet reviewed'
+  return (centis / 100).toFixed(1)
+}
+
+/**
+ * The results table: every proposal with what the committee scored it.
+ *
+ * Weighted criteria were configurable and their output was readable one
+ * proposal at a time, so the question a programme committee meets to answer —
+ * which proposals came out on top — had no screen. Opening each proposal and
+ * remembering the number is not a ranking.
+ *
+ * Sorted by score, and the sort reverses, because a committee reads this list
+ * from both ends: the strongest proposals to accept, and the weakest to decline.
+ * A proposal nobody has scored sorts to the BOTTOM in either direction rather
+ * than being treated as a zero — it has no score, and pretending it scored
+ * nothing would bury it beneath proposals that were genuinely reviewed badly.
+ */
+function ResultsSection({ slug }: { readonly slug: EventSlug }) {
+  const results = useEvaluationResults(slug)
+  const [descending, setDescending] = useState(true)
+  const rows = useMemo<readonly EvaluationResultRowDto[]>(() => {
+    const all: EvaluationResultRowDto[] = [...(results.data ?? [])]
+    all.sort((a, b) => {
+      // Unscored last in BOTH directions: "no score" is not a low score.
+      if (a.weightedAverageCentis === null && b.weightedAverageCentis === null) {
+        return a.title.localeCompare(b.title)
+      }
+      if (a.weightedAverageCentis === null) return 1
+      if (b.weightedAverageCentis === null) return -1
+      const delta = a.weightedAverageCentis - b.weightedAverageCentis
+      return descending ? -delta : delta
+    })
+    return all
+  }, [results.data, descending])
+
+  const exportCsv = () => {
+    const header = ['Title', 'Score', 'Reviews', 'Assigned', 'Decision', 'Participants']
+    const body = rows.map((row) => [
+      row.title,
+      row.weightedAverageCentis === null ? '' : (row.weightedAverageCentis / 100).toFixed(2),
+      String(row.scoredCount),
+      String(row.assignmentCount),
+      row.decision,
+      row.contributors.map((person) => `${person.name} (${person.role})`).join('; '),
+    ])
+    // Quote every field and double any embedded quote: a proposal title with a
+    // comma in it would otherwise split into two columns and silently corrupt
+    // every row after it.
+    const csv = [header, ...body]
+      .map((cells) => cells.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(','))
+      .join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${slug}-review-results.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        {/* `level` is what makes CardTitle a heading; without it the section
+            is a div and vanishes from the heading outline. */}
+        <CardTitle level={2}>Results</CardTitle>
+        <CardDescription>
+          Every proposal with the committee&apos;s weighted score, strongest first.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {results.isError ? (
+          <AlertLive>The results could not be loaded.</AlertLive>
+        ) : results.data === undefined ? (
+          <StatusLive aria-live="polite" aria-label="Results status">
+            Loading results…
+          </StatusLive>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={<DocumentStackIcon size={20} />}
+            title="No proposals yet"
+            description="Once speakers submit, their scores appear here as the committee reviews them."
+          />
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                aria-pressed={descending}
+                onClick={() => setDescending((current) => !current)}
+              >
+                {descending ? 'Sort by score: highest first' : 'Sort by score: lowest first'}
+              </Button>
+              <Button type="button" variant="outline" onClick={exportCsv}>
+                Export results (CSV)
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <caption className="sr-only">
+                  Proposals by weighted review score, {descending ? 'highest' : 'lowest'} first
+                </caption>
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th scope="col" className="py-1.5 pr-3 font-medium">
+                      Proposal
+                    </th>
+                    <th scope="col" className="py-1.5 pr-3 font-medium">
+                      Score
+                    </th>
+                    <th scope="col" className="py-1.5 pr-3 font-medium">
+                      Reviews
+                    </th>
+                    <th scope="col" className="py-1.5 font-medium">
+                      Decision
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.submissionId} className="border-b border-border last:border-0">
+                      <td className="py-1.5 pr-3">
+                        <span className="font-medium">{row.title}</span>
+                        {row.contributors.length > 0 ? (
+                          <span className="block text-xs text-muted-foreground">
+                            {row.contributors
+                              .map((person) => `${person.name} (${person.role})`)
+                              .join(', ')}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="py-1.5 pr-3 tabular-nums">
+                        {formatAggregate(row.weightedAverageCentis)}
+                      </td>
+                      <td className="py-1.5 pr-3 tabular-nums">
+                        {row.scoredCount} of {row.assignmentCount}
+                      </td>
+                      <td className="py-1.5">
+                        <Badge variant={row.decision === 'accepted' ? 'secondary' : 'outline'}>
+                          {row.decision === 'pending' ? 'Not decided' : row.decision}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function CommitteeHeading() {
   return (
     <PageHeader>
@@ -673,8 +841,8 @@ function RoundEditor({
         <CardHeader>
           <CardTitle level={3}>Scorecard</CardTitle>
           <CardDescription>
-            What reviewers are asked in this round. Only a rating is averaged — a choice and a
-            note are recorded and shown, but there is no honest way to average them.
+            What reviewers are asked in this round. Only a rating is averaged — a choice and a note
+            are recorded and shown, but there is no honest way to average them.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
@@ -782,6 +950,12 @@ function RoundEditor({
                 ])
                 setLabel('')
                 setChoices('')
+                // The weight has to go back to its default too. It used to
+                // persist, so an organizer who weighted one rating 2 and then
+                // typed the next question straight afterwards silently weighted
+                // that one 2 as well — and the weighted total the committee
+                // ranks on was wrong in a way nothing on screen disclosed.
+                setWeight('1')
               }}
             >
               Add question
@@ -900,27 +1074,27 @@ function RoundsSection({
   return (
     <div className="grid gap-4">
       <Card>
-      <CardHeader>
-        <CardTitle level={2} ref={headingRef} tabIndex={-1} className="outline-hidden">
-          Review rounds
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        {/* Named, like the invite region above it. This one is never empty, so
+        <CardHeader>
+          <CardTitle level={2} ref={headingRef} tabIndex={-1} className="outline-hidden">
+            Review rounds
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {/* Named, like the invite region above it. This one is never empty, so
             on a page carrying more than one polite region an unnamed instance
             is announced without saying what it is about (DEC-014), and the
             submission page labels its twin for the same reason. */}
-        <StatusLive aria-label="Review round state">
-          {liveRound === null ? 'No review round is open.' : `Round ${liveRound.number} is open.`}
-        </StatusLive>
-        {rounds.length === 0 ? null : (
-          <ul className="-my-1 divide-y divide-border">
-            {rounds.map((round) => (
-              <li key={round.id} className="flex flex-wrap items-center gap-2 py-2">
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {`Round ${round.number}: ${round.name}`}
-                </span>
-                {/* A round's status is a lifecycle state, so the chip carries
+          <StatusLive aria-label="Review round state">
+            {liveRound === null ? 'No review round is open.' : `Round ${liveRound.number} is open.`}
+          </StatusLive>
+          {rounds.length === 0 ? null : (
+            <ul className="-my-1 divide-y divide-border">
+              {rounds.map((round) => (
+                <li key={round.id} className="flex flex-wrap items-center gap-2 py-2">
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {`Round ${round.number}: ${round.name}`}
+                  </span>
+                  {/* A round's status is a lifecycle state, so the chip carries
                     the state marker — and while a close is actually in the
                     air, that marker is the thing that says so. Only the open
                     round is moving: opening a round creates a new one, and no
@@ -930,85 +1104,85 @@ function RoundsSection({
                     says otherwise. The animation is silent by design — this
                     card already owns the page's live region, and a second
                     voice announcing the same wait is not an improvement. */}
-                <Badge
-                  variant={round.status === 'closed' ? 'outline' : 'secondary'}
-                  dot
-                  pending={run.close.isPending && round.id === liveRound?.id}
-                >
-                  {round.status === 'closed' ? 'Closed' : 'Open'}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-        {run.open.isError || run.close.isError ? (
-          <AlertLive>That review round could not be changed.</AlertLive>
-        ) : null}
-      </CardContent>
-      <CardFooter className="flex-wrap gap-3">
-        {liveRound === null ? null : (
+                  <Badge
+                    variant={round.status === 'closed' ? 'outline' : 'secondary'}
+                    dot
+                    pending={run.close.isPending && round.id === liveRound?.id}
+                  >
+                    {round.status === 'closed' ? 'Closed' : 'Open'}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+          {run.open.isError || run.close.isError ? (
+            <AlertLive>That review round could not be changed.</AlertLive>
+          ) : null}
+        </CardContent>
+        <CardFooter className="flex-wrap gap-3">
+          {liveRound === null ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              pending={run.close.isPending}
+              onClick={() => setConfirmRound('close')}
+            >
+              {`Close round ${liveRound.number}`}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
-            pending={run.close.isPending}
-            onClick={() => setConfirmRound('close')}
+            pending={run.open.isPending}
+            onClick={() => setConfirmRound('open')}
           >
-            {`Close round ${liveRound.number}`}
+            {`Open round ${nextNumber}`}
           </Button>
-        )}
-        <Button
-          type="button"
-          variant="outline"
-          pending={run.open.isPending}
-          onClick={() => setConfirmRound('open')}
-        >
-          {`Open round ${nextNumber}`}
-        </Button>
-        {/* Same two questions the submission-level panel asks, from the same
+          {/* Same two questions the submission-level panel asks, from the same
             module: closing is one-way, and opening moves what the committee
             is scoring. */}
-        {liveRound === null ? null : (
+          {liveRound === null ? null : (
+            <RoundConfirmDialog
+              open={confirmRound === 'close'}
+              onOpenChange={(next) => {
+                if (!next) setConfirmRound(null)
+              }}
+              kind="close"
+              number={liveRound.number}
+              pending={run.close.isPending}
+              failed={run.close.isError}
+              onConfirm={() =>
+                run.close.mutate(liveRound.id, {
+                  onSuccess: () => {
+                    setConfirmRound(null)
+                    landOnHeading()
+                  },
+                })
+              }
+            />
+          )}
           <RoundConfirmDialog
-            open={confirmRound === 'close'}
+            open={confirmRound === 'open'}
             onOpenChange={(next) => {
               if (!next) setConfirmRound(null)
             }}
-            kind="close"
-            number={liveRound.number}
-            pending={run.close.isPending}
-            failed={run.close.isError}
+            kind="open"
+            number={nextNumber}
+            pending={run.open.isPending}
+            failed={run.open.isError}
             onConfirm={() =>
-              run.close.mutate(liveRound.id, {
-                onSuccess: () => {
-                  setConfirmRound(null)
-                  landOnHeading()
+              run.open.mutate(
+                { number: nextNumber, name: `Round ${nextNumber}` },
+                {
+                  onSuccess: () => {
+                    setConfirmRound(null)
+                    landOnHeading()
+                  },
                 },
-              })
+              )
             }
           />
-        )}
-        <RoundConfirmDialog
-          open={confirmRound === 'open'}
-          onOpenChange={(next) => {
-            if (!next) setConfirmRound(null)
-          }}
-          kind="open"
-          number={nextNumber}
-          pending={run.open.isPending}
-          failed={run.open.isError}
-          onConfirm={() =>
-            run.open.mutate(
-              { number: nextNumber, name: `Round ${nextNumber}` },
-              {
-                onSuccess: () => {
-                  setConfirmRound(null)
-                  landOnHeading()
-                },
-              },
-            )
-          }
-        />
-      </CardFooter>
+        </CardFooter>
       </Card>
 
       {/* Each round's own settings, scorecard and reviewers, under the round

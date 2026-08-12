@@ -1,6 +1,7 @@
 import type {
   EvaluationAssignmentDto,
   EvaluationCriterionDto,
+  EvaluationResultRowDto,
   EvaluationRoundDto,
   EvaluationSummaryDto,
 } from '../../application'
@@ -217,4 +218,9 @@ export function putRoundPool(
     method: 'PUT',
     body: JSON.stringify({ contactIds }),
   })
+}
+
+/** GET /api/admin/events/:slug/results — every proposal with what it scored. */
+export function listEvaluationResults(slug: EventSlug): Promise<readonly EvaluationResultRowDto[]> {
+  return requestJson(`/api/admin/events/${encodeURIComponent(slug)}/results`)
 }

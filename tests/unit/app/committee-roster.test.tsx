@@ -102,6 +102,10 @@ function defaultHandler(url: string, init?: RequestInit): Response {
     roster = roster.filter((entry) => entry.contactId !== contactId)
     return jsonResponse({ removed: true })
   }
+  // The page also carries a results table; this suite is not about it, so it
+  // answers empty rather than 500. A page where an unrelated section is ALSO
+  // failing has two alerts, and the assertions here address the one under test.
+  if (url.endsWith('/results')) return jsonResponse([])
   return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
 }
 
@@ -203,10 +207,7 @@ describe('an organizer staffs the committee from this page', () => {
     mountCommittee()
     await rosterRegion()
 
-    await user.type(
-      await screen.findByLabelText(/reviewer email/i),
-      'cold.reviewer@example.test',
-    )
+    await user.type(await screen.findByLabelText(/reviewer email/i), 'cold.reviewer@example.test')
     await user.click(screen.getByRole('button', { name: /add reviewer/i }))
 
     await waitFor(() => expect(callsTo(COMMITTEE_PATH, 'POST')).toBe(1))
@@ -224,10 +225,7 @@ describe('an organizer staffs the committee from this page', () => {
     mountCommittee()
     await rosterRegion()
 
-    await user.type(
-      await screen.findByLabelText(/reviewer email/i),
-      'cold.reviewer@example.test',
-    )
+    await user.type(await screen.findByLabelText(/reviewer email/i), 'cold.reviewer@example.test')
     await user.click(screen.getByRole('button', { name: /add reviewer/i }))
 
     // The live region is mounted BEFORE its text arrives — that is what makes
@@ -296,6 +294,16 @@ describe('an organizer staffs the committee from this page', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
+
+  it('renders no results error: the results query is a real page dependency', async () => {
+    mountCommittee()
+    await rosterRegion()
+    // A required read that 500s would put a SECOND alert on this page and make
+    // every `getByRole('alert')` here ambiguous. Pinning its absence keeps the
+    // other assertions specific by construction rather than by scoping around
+    // an error we tolerated.
+    expect(screen.queryByText(/results could not be loaded/i)).not.toBeInTheDocument()
+  })
 })
 
 describe('an organizer removes a reviewer', () => {
@@ -305,9 +313,7 @@ describe('an organizer removes a reviewer', () => {
     const region = await rosterRegion()
 
     const rows = await within(region).findAllByRole('listitem')
-    await user.click(
-      within(rows[0] as HTMLElement).getByRole('button', { name: /remove/i }),
-    )
+    await user.click(within(rows[0] as HTMLElement).getByRole('button', { name: /remove/i }))
     // Removing someone from a committee is not a click-and-hope: it is asked.
     await user.click(await screen.findByRole('button', { name: /confirm removal/i }))
 

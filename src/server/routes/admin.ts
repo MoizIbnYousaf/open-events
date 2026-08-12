@@ -964,6 +964,23 @@ export async function handleEvaluationSummary(context: ServerContext): Promise<R
   return context.json(await deps.evaluations.weightedSummary(actor, eventId, submissionId))
 }
 
+/**
+ * GET /api/admin/events/:slug/results — every proposal with what the committee
+ * scored it, for the results table. Read-only and organizer-only, like its
+ * per-submission sibling.
+ */
+export async function handleEvaluationResults(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.resultsForEvent(actor, eventId))
+}
+
 /** Registers the admin surface; CSRF runs before session validation on mutations. */
 export function registerAdminRoutes(app: Hono<ServerEnv>): void {
   app.post('/api/admin/session', handleAdminSession)
@@ -1123,6 +1140,12 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleEvaluationSummary,
+  )
+  app.get(
+    '/api/admin/events/:slug/results',
+    requireSession(),
+    requireActor('organizer'),
+    handleEvaluationResults,
   )
   app.post(
     '/api/admin/events/:slug/evaluations/committee',

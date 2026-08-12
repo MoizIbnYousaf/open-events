@@ -1,3 +1,4 @@
+import type { ContributorDto } from '../dtos/submission.dto'
 import type { Contact, ContactId } from '../../domain/contact'
 import type {
   EvaluationAssignment,
@@ -36,6 +37,7 @@ import type {
   EvaluationCriterionDto,
   EvaluationCriterionSummaryDto,
   EvaluationPreviousRoundDto,
+  EvaluationResultRowDto,
   EvaluationReviewDto,
   EvaluationRoundDto,
   EvaluationRoundSummaryDto,
@@ -502,18 +504,28 @@ export class EvaluationService {
     // cannot be multiplied, so a weight on them would be a number the average
     // has to remember to skip.
     if (kind === 'rating') {
-      if (typeof candidate.weight !== 'number' || !Number.isInteger(candidate.weight) || candidate.weight < 1) {
+      if (
+        typeof candidate.weight !== 'number' ||
+        !Number.isInteger(candidate.weight) ||
+        candidate.weight < 1
+      ) {
         throw new ApplicationError('validation_failed', 'A rating criterion needs a whole weight')
       }
     } else if (candidate.weight !== null && candidate.weight !== undefined) {
       throw new ApplicationError('validation_failed', 'Only a rating criterion carries a weight')
     }
     const scale = kind === 'rating' ? (candidate.scale ?? { min: 1, max: 5 }) : null
-    if (scale !== null && (!Number.isInteger(scale.min) || !Number.isInteger(scale.max) || scale.max <= scale.min)) {
+    if (
+      scale !== null &&
+      (!Number.isInteger(scale.min) || !Number.isInteger(scale.max) || scale.max <= scale.min)
+    ) {
       throw new ApplicationError('validation_failed', 'A rating scale must run upwards')
     }
     const options = kind === 'select' ? (candidate.options ?? []) : null
-    if (options !== null && (options.length === 0 || options.some((option) => option.trim() === ''))) {
+    if (
+      options !== null &&
+      (options.length === 0 || options.some((option) => option.trim() === ''))
+    ) {
       throw new ApplicationError('validation_failed', 'A choice criterion needs options')
     }
     return {
@@ -752,6 +764,75 @@ export class EvaluationService {
    * the rubric it recorded when it closed, so retuning the criteria for the
    * next round cannot rewrite a conclusion the committee already published.
    */
+  /**
+   * Every proposal of one event with what the committee scored it.
+   *
+   * The weighted total was reachable one submission at a time, so the question a
+   * programme committee actually meets to answer — which proposals came out on
+   * top — had no screen behind it. Reading a score by opening each proposal and
+   * remembering it is not a ranking.
+   *
+   * The arithmetic is deliberately NOT reimplemented here: each row is the same
+   * `weightedSummary` the detail page shows, so a total can never disagree with
+   * itself depending on which screen an organizer is looking at. Sorting is the
+   * caller's, and the row carries a comparable number so a table can order by it
+   * in either direction.
+   */
+  async resultsForEvent(
+    actor: OrganizerActor,
+    eventId: EventId,
+  ): Promise<readonly EvaluationResultRowDto[]> {
+    const submissions = await this.#submissions.listByEvent(eventId)
+    const [summaries, decisions, contributorLists] = await Promise.all([
+      Promise.all(
+        submissions.map((submission) => this.weightedSummary(actor, eventId, submission.id)),
+      ),
+      this.#submissions.listDecisionsByEvent(eventId),
+      Promise.all(
+        submissions.map(async (submission) => {
+          const rows = await this.#submissions.listContributorsBySubmission(eventId, submission.id)
+          // Names and roles both: a co-author is only visible on a results row if
+          // the role travels with the name, and the role lives on the join while
+          // the name lives on the contact.
+          return Promise.all(
+            rows.map(async (row): Promise<ContributorDto> => {
+              const contact = await this.#contacts.findById(row.contactId)
+              return {
+                contactId: row.contactId,
+                name: contact?.name ?? row.contactId,
+                email: contact?.email ?? '',
+                role: row.role,
+                position: row.position,
+              }
+            }),
+          )
+        }),
+      ),
+    ])
+    const outcomeBySubmission = new Map(
+      decisions.map((decision) => [decision.submissionId, decision.outcome] as const),
+    )
+    return submissions.map((submission, index) => {
+      const summary = summaries[index]
+      // Null, not zero: nobody having scored it is not the same as it scoring
+      // nothing, and a table that conflates them ranks an unread proposal below
+      // a badly-reviewed one.
+      const scored = summary !== undefined && summary.scoredCount > 0
+      return {
+        submissionId: submission.id,
+        title: submission.title,
+        weightedAverageCentis: scored ? (summary?.weightedAverageCentis ?? null) : null,
+        assignmentCount: summary?.assignmentCount ?? 0,
+        scoredCount: summary?.scoredCount ?? 0,
+        // 'pending' rather than null: the domain's own vocabulary for a
+        // proposal nobody has decided yet, so a table never has to guess whether
+        // an absent value means undecided or means the field failed to load.
+        decision: outcomeBySubmission.get(submission.id) ?? 'pending',
+        contributors: contributorLists[index] ?? [],
+      }
+    })
+  }
+
   async weightedSummary(
     _actor: OrganizerActor,
     eventId: EventId,
@@ -968,7 +1049,10 @@ export class EvaluationService {
         throw new ApplicationError('validation_failed', 'That question is not on this scorecard')
       }
       if (!isAnswerValidFor(criterion, answer.value)) {
-        throw new ApplicationError('validation_failed', `'${criterion.label}' was not answered validly`)
+        throw new ApplicationError(
+          'validation_failed',
+          `'${criterion.label}' was not answered validly`,
+        )
       }
     }
 
@@ -1271,9 +1355,10 @@ function summarizeTypedRound(
       evaluatorContactId: assignment.evaluatorContactId,
       evaluatorEmail: contact?.email ?? '',
       evaluatorName: contact?.name ?? null,
-      rating: weightedRoundAverageCentis(card, ratings) === null
-        ? null
-        : Math.round((weightedRoundAverageCentis(card, ratings) ?? 0) / 100),
+      rating:
+        weightedRoundAverageCentis(card, ratings) === null
+          ? null
+          : Math.round((weightedRoundAverageCentis(card, ratings) ?? 0) / 100),
       comment: words.length === 0 ? null : words.join('\n'),
       updatedAt: own.reduce<string | null>(
         (latest, score) => (latest === null || score.updatedAt > latest ? score.updatedAt : latest),

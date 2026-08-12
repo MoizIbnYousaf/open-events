@@ -3,14 +3,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useServerMutation } from '../../../adapters/tanstack-react-query'
 
 import {
+  addCommitteeMember,
   assignEvaluator,
   closeEvaluationRound,
   defineEvaluationCriteria,
   getEvaluationSummary,
+  listCommittee,
   listEvaluationAssignments,
   listEvaluationCriteria,
   listEvaluationRounds,
   openEvaluationRound,
+  removeCommitteeMember,
   type CriterionInput,
 } from '../api/admin-evaluations'
 import type { EventSlug, EvaluationRoundId, SubmissionId } from '../../domain'
@@ -18,10 +21,44 @@ import type { EventSlug, EvaluationRoundId, SubmissionId } from '../../domain'
 export const adminEvaluationQueryKeys = {
   criteria: (slug: EventSlug) => ['admin', 'events', slug, 'criteria'] as const,
   rounds: (slug: EventSlug) => ['admin', 'events', slug, 'rounds'] as const,
+  committee: (slug: EventSlug) => ['admin', 'events', slug, 'committee'] as const,
   assignments: (submissionId: SubmissionId) =>
     ['admin', 'submissions', submissionId, 'assignments'] as const,
   summary: (submissionId: SubmissionId) =>
     ['admin', 'submissions', submissionId, 'evaluation-summary'] as const,
+}
+
+export function useCommittee(slug: EventSlug | undefined) {
+  return useQuery({
+    queryKey: adminEvaluationQueryKeys.committee(slug ?? ''),
+    queryFn: () => listCommittee(slug as EventSlug),
+    enabled: slug !== undefined,
+  })
+}
+
+/**
+ * Seats a reviewer, then refetches the roster rather than appending locally:
+ * the server decides whether this was a new seat or an existing one, and what
+ * name the contact actually carries (an invite never renames a person).
+ */
+export function useAddCommitteeMember(slug: EventSlug) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: (email: string) => addCommitteeMember(slug, email),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.committee(slug) })
+    },
+  })
+}
+
+export function useRemoveCommitteeMember(slug: EventSlug) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: (contactId: string) => removeCommitteeMember(slug, contactId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.committee(slug) })
+    },
+  })
 }
 
 export function useEvaluationCriteria(slug: EventSlug | undefined) {
@@ -110,6 +147,14 @@ export function useAssignEvaluator(slug: EventSlug, submissionId: SubmissionId) 
         }),
         queryClient.invalidateQueries({
           queryKey: adminEvaluationQueryKeys.summary(submissionId),
+        }),
+        // Assigning SEATS the evaluator (`assign()` adds them to the committee)
+        // and changes their workload, and both are what the roster shows. Left
+        // out, an organizer who assigns from a submission then opens Review
+        // committee sees a committee missing the person they just added, and
+        // counts that are quietly wrong for everyone else.
+        queryClient.invalidateQueries({
+          queryKey: adminEvaluationQueryKeys.committee(slug),
         }),
       ])
     },

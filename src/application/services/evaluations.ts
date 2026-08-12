@@ -78,6 +78,27 @@ export interface CommitteeMemberDto {
   readonly created: boolean
 }
 
+/**
+ * One roster row: the seat, plus the only two numbers an organizer actually
+ * asks about it.
+ *
+ * A list of names is a phone book. "Who still owes me reviews" is the question
+ * a programme chair has, so the workload travels with the seat rather than
+ * living one click away on another screen. Both counts are always numbers,
+ * never absent — a member with nothing assigned is a real and common state, and
+ * zero says so where a missing field would render as a blank.
+ */
+export interface CommitteeRosterEntryDto {
+  readonly contactId: ContactId
+  readonly email: string
+  readonly name: string
+  readonly addedAt: string
+  /** Submissions this member has been given to read, in this event. */
+  readonly assignedCount: number
+  /** How many of those they have actually scored. Never exceeds `assignedCount`. */
+  readonly completedCount: number
+}
+
 export interface AssignEvaluatorInput {
   readonly evaluatorEmail: string
   /** Defaults to the live round: the highest-numbered open round. */
@@ -277,6 +298,41 @@ export class EvaluationService {
       addedAt: member.addedAt,
       created: existing === null,
     }
+  }
+
+  /**
+   * The event's committee, with each member's workload beside their seat.
+   *
+   * Ordered by when the seat was taken, so the roster reads as the committee was
+   * assembled rather than by an id nobody chose.
+   */
+  async listCommittee(
+    _actor: OrganizerActor,
+    eventId: EventId,
+  ): Promise<readonly CommitteeRosterEntryDto[]> {
+    // One repository read. This was assembled per member from primitives and
+    // cost a query per member plus one per assignment — 17 statements for a
+    // seven-person committee with nothing assigned, and hundreds for a real
+    // one. Counting rows is the database's job.
+    return this.#evaluations.listCommitteeRoster(eventId)
+  }
+
+  /**
+   * Gives up one seat.
+   *
+   * Deliberately idempotent and deliberately narrow: it removes the SEAT and
+   * nothing else. The contact survives (they may be a speaker on another event,
+   * and they are a person regardless), and every score they recorded survives —
+   * an average the committee already reached does not become untrue because
+   * somebody later left it. Their assignments keep pointing at them for the same
+   * reason, so the history of who read what stays answerable.
+   */
+  async removeCommitteeMember(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    contactId: ContactId,
+  ): Promise<void> {
+    await this.#evaluations.deleteCommitteeMember(eventId, contactId)
   }
 
   /**
@@ -527,6 +583,13 @@ export class EvaluationService {
    * two apart.
    */
   async listOwnEvaluations(actor: SubmitterActor): Promise<readonly EvaluationRowDto[]> {
+    // The SEAT is the authority, always — not the presence of assignments.
+    // Membership used to be checked only when the queue came back empty, so a
+    // reviewer removed from the committee kept every assignment they already
+    // had: the organizer was told access was revoked, and it was not. Their
+    // assignments deliberately survive removal (the record of who read what),
+    // which is exactly why those rows cannot be what grants access.
+    await this.#requireCommitteeMember(actor)
     const assignments = await this.#evaluations.listAssignmentsByEvaluator(
       actor.eventId,
       actor.contactId,
@@ -534,7 +597,6 @@ export class EvaluationService {
     if (assignments.length === 0) {
       // A committee member whose queue is empty is told it is empty; someone
       // who was never on the committee does not learn the surface exists.
-      await this.#requireCommitteeMember(actor)
       return []
     }
     const [criteria, rounds] = await Promise.all([
@@ -609,6 +671,10 @@ export class EvaluationService {
 
   /** Assignments of the calling evaluator; forbidden when there are none. */
   async #requireAssignments(actor: SubmitterActor): Promise<readonly EvaluationAssignment[]> {
+    // Seat first, then work. Gating a WRITE on assignments alone let a removed
+    // reviewer keep scoring — and overwrite ratings — on a committee they are
+    // no longer part of, because their assignment rows outlive their seat.
+    await this.#requireCommitteeMember(actor)
     const assignments = await this.#evaluations.listAssignmentsByEvaluator(
       actor.eventId,
       actor.contactId,

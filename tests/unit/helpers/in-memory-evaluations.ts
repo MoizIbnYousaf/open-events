@@ -1,4 +1,4 @@
-import type { EvaluationRepository } from '../../../src/application'
+import type { CommitteeRosterRow, EvaluationRepository } from '../../../src/application'
 import type {
   EvaluationAssignment,
   EvaluationCommitteeMember,
@@ -150,6 +150,44 @@ export class InMemoryEvaluationRepository implements EvaluationRepository {
     if (existing !== undefined) return existing
     this.#committee.set(key, member)
     return member
+  }
+
+  /**
+   * Mirrors the single-statement projection the D1 repository does, counts
+   * included, so a service that trusts one shape gets the same answers from
+   * both. `email`/`name` are blank here because this double holds no contacts;
+   * tests that care about identity assert through the real repository.
+   */
+  async listCommitteeRoster(eventId: string): Promise<readonly CommitteeRosterRow[]> {
+    return [...this.#committee.values()]
+      .filter((member) => member.eventId === eventId)
+      .sort((left, right) => left.addedAt.localeCompare(right.addedAt))
+      .map((member) => {
+        const assignments = [...this.#assignments.values()].filter(
+          (assignment) =>
+            assignment.eventId === eventId &&
+            assignment.evaluatorContactId === member.contactId,
+        )
+        const scored = assignments.filter((assignment) =>
+          [...this.#scores.values()].some(
+            (score) => score.eventId === eventId && score.assignmentId === assignment.id,
+          ),
+        )
+        return {
+          contactId: member.contactId,
+          email: '',
+          name: '',
+          addedAt: member.addedAt,
+          assignedCount: assignments.length,
+          completedCount: scored.length,
+        }
+      })
+  }
+
+  async deleteCommitteeMember(eventId: string, contactId: string): Promise<void> {
+    // The seat only. Assignments and scores are keyed elsewhere and stay put,
+    // mirroring the D1 delete's deliberately narrow reach.
+    this.#committee.delete(`${eventId}${KEY_SEPARATOR}${contactId}`)
   }
 
   async saveAssignment(assignment: EvaluationAssignment): Promise<EvaluationAssignment> {

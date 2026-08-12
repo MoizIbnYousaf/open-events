@@ -27,11 +27,16 @@ import { StatusLive } from '../../../components/ui/status-live'
 import { getApiErrorCode } from '../../api/admin-events'
 import type { EventSlug } from '../../../domain'
 import {
+  useAddCommitteeMember,
+  useCommittee,
   useDefineEvaluationCriteria,
   useEvaluationCriteria,
   useEvaluationRounds,
+  useRemoveCommitteeMember,
   useRunEventRounds,
 } from '../../queries/admin-evaluations'
+import type { CommitteeRosterEntry } from '../../api/admin-evaluations'
+import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
 import RoundConfirmDialog from './RoundConfirmDialog'
@@ -141,12 +146,253 @@ function EvaluationCommitteeScreen() {
 
   // No back link: Review committee is a rail destination, so the rail is the
   // way back and says so with `aria-current`. See `BackLink.tsx`.
+  // Reviewers first. The page is named for the committee, and for most of its
+  // life the question is who is on it — the rubric and the rounds are what the
+  // committee scores WITH, and they were the whole page while the committee
+  // itself had no screen at all.
   return (
     <div className="grid gap-4">
       <CommitteeHeading />
+      <ReviewersSection slug={slug} />
       <CriteriaSection slug={slug} defined={criteria.data ?? []} />
       <RoundsSection slug={slug} rounds={rounds.data ?? []} />
     </div>
+  )
+}
+
+/** "1 of 3" — done over given, in the order an organizer reads it. */
+function workloadText(entry: CommitteeRosterEntry): string {
+  return `${entry.completedCount} of ${entry.assignedCount} reviews done`
+}
+
+/**
+ * The committee itself: who is seated, what each of them owes, how somebody
+ * joins, and how somebody leaves.
+ *
+ * This section is the whole point of the page's name. Before it existed the
+ * only way to seat a reviewer was a box on ONE submission's detail, so an
+ * organizer could staff a proposal but never see or manage their committee —
+ * and an evaluator looking for reviewer management concluded, correctly, that
+ * the product had none.
+ */
+function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
+  const roster = useCommittee(slug)
+  const add = useAddCommitteeMember(slug)
+  const remove = useRemoveCommitteeMember(slug)
+  const [email, setEmail] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  const [invited, setInvited] = useState<string | null>(null)
+  const [pendingRemoval, setPendingRemoval] = useState<CommitteeRosterEntry | null>(null)
+  const headingRef = useRef<HTMLHeadingElement | null>(null)
+  const emailErrorId = 'reviewer-email-error'
+
+  const members = roster.data ?? []
+
+  /**
+   * Where focus goes when the control holding it stops existing.
+   *
+   * Removing a reviewer unmounts the row — and the Remove button inside it that
+   * the confirm dialog just handed focus back to — so a keyboard reader would
+   * land on <body> with the page's place lost. The section heading is always
+   * mounted and is a destination rather than another action.
+   */
+  const landOnHeading = () => headingRef.current?.focus()
+
+  function submitInvite(event: React.FormEvent): void {
+    event.preventDefault()
+    const candidate = email.trim()
+    // Refused here rather than posted and refused there: an empty field is not
+    // a question worth asking the server, and the answer would arrive as a
+    // generic failure rather than as the specific thing that is wrong.
+    if (candidate.length === 0) {
+      setInvalid(true)
+      // A previous failure's alert must not stand beside this one: they would
+      // describe two different attempts, one of which is no longer in flight.
+      add.reset()
+      return
+    }
+    setInvalid(false)
+    setInvited(null)
+    // `mutate` with callbacks, not `mutateAsync`: the async form REJECTS on
+    // failure, and firing it into a `void` leaves an unhandled rejection behind
+    // every failed invite. The error is already rendered from `add.error`.
+    add.mutate(candidate, {
+      onSuccess: (seated) => {
+        // The SERVER's answer, not the string that was typed: it resolves the
+        // person's real name, and it says whether this was actually a new seat.
+        // Announcing an invitation for somebody already seated tells the
+        // organizer they did something they did not.
+        setInvited(seated.created ? (seated.name.trim() || seated.email) : null)
+        setEmail('')
+      },
+    })
+  }
+
+  return (
+    <section aria-labelledby="reviewers-heading">
+      <Card>
+        <CardHeader>
+          {/* `level` is what makes CardTitle a heading — without it the
+              component renders a div, and the section this page was rebuilt
+              around would be missing from the heading outline while its two
+              siblings appear. It is also the landing place focus needs after a
+              row is removed from under it. */}
+          <CardTitle id="reviewers-heading" level={2} ref={headingRef} tabIndex={-1}>
+            Reviewers
+          </CardTitle>
+          <CardDescription>
+            Who reads proposals for this event. Adding someone here grants them access to this
+            event&rsquo;s review queue and nothing else.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {/* The placeholder shapes carry the busy flag; the sentence does not
+              repeat them. Two announcements for one load is one too many, and
+              this page already has more polite regions than it should. */}
+          {roster.isPending ? (
+            <div aria-busy="true" aria-label="Loading the reviewers" className="grid gap-2">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+          ) : null}
+
+          {roster.error != null ? (
+            <div className="grid justify-items-start gap-2">
+              <AlertLive>The reviewers could not be loaded.</AlertLive>
+              <Button
+                type="button"
+                variant="outline"
+                pending={roster.isFetching}
+                onClick={() => void roster.refetch()}
+              >
+                {roster.isFetching ? 'Trying again…' : 'Try again'}
+              </Button>
+            </div>
+          ) : null}
+
+          {!roster.isPending && roster.error == null && members.length === 0 ? (
+            <EmptyState
+              icon={<ClipboardIcon aria-hidden />}
+              title="No reviewers yet"
+              description="Add someone by email to start building the review committee. They do not need an account first."
+            />
+          ) : null}
+
+          {members.length > 0 ? (
+            <ul className="grid gap-2" aria-label="Seated reviewers">
+              {members.map((member) => (
+                <li
+                  key={member.contactId}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                >
+                  <span className="grid min-w-0">
+                    <span className="truncate text-sm font-medium">{member.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">{member.email}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    {/* The workload is the reason a roster exists, so it sits
+                        beside the person rather than a click away. */}
+                    <Badge variant="outline">{workloadText(member)}</Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPendingRemoval(member)}
+                    >
+                      Remove
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          <form className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={(event) => void submitInvite(event)}>
+            <Field>
+              <FieldLabel htmlFor="reviewer-email">Reviewer email</FieldLabel>
+              <Input
+                id="reviewer-email"
+                type="email"
+                value={email}
+                aria-invalid={invalid || undefined}
+                // The field POINTS at its error, as the criterion field beside
+                // it does. Marked invalid with nothing described, a screen
+                // reader returning to the input hears "invalid entry" and no
+                // reason — and the alert it would have heard is shared with two
+                // other messages.
+                aria-describedby={invalid ? emailErrorId : undefined}
+                onChange={(event) => {
+                  setEmail(event.target.value)
+                  setInvalid(false)
+                }}
+              />
+            </Field>
+            <Button type="submit" pending={add.isPending}>
+              {add.isPending ? 'Adding…' : 'Add reviewer'}
+            </Button>
+          </form>
+
+          {invalid ? (
+            <AlertLive id={emailErrorId}>Enter the reviewer&rsquo;s email address.</AlertLive>
+          ) : null}
+          {add.error != null ? (
+            <AlertLive>That reviewer could not be added. Check the address and try again.</AlertLive>
+          ) : null}
+
+          {/* A provisioned reviewer may never have used the product, so the
+              confirmation has to answer the question it raises: how do they get
+              in? Naming the sign-in route is the difference between an invite
+              and a row appearing in a list. */}
+          {/* Named, because this page carries more than one polite region and
+              an unnamed one is announced without saying what it is about. */}
+          <StatusLive aria-label="Invite result">
+            {invited === null
+              ? null
+              : `${invited} is on the review committee. They sign in from the home page with their email — no password, and no account needed first.`}
+          </StatusLive>
+        </CardContent>
+        <CardFooter>
+          <CardDescription>
+            Assign proposals to reviewers from any submission&rsquo;s page, under Review committee.
+          </CardDescription>
+        </CardFooter>
+
+        {/* The dialog stays open across the request and reports its own
+            failure, per the component's contract: closing on click and
+            surfacing the error at the bottom of the card reads as "removed",
+            then silently is not. */}
+        <ConfirmDialog
+          open={pendingRemoval !== null}
+          onOpenChange={(open) => setPendingRemoval(open ? pendingRemoval : null)}
+          tone="destructive"
+          title="Remove this reviewer"
+          description={
+            pendingRemoval === null
+              ? ''
+              : `${pendingRemoval.name || pendingRemoval.email} loses access to this event's review queue immediately, including any proposals already assigned to them. Anything they have already scored stays on record, and they keep their account.`
+          }
+          confirmLabel="Confirm removal"
+          pending={remove.isPending}
+          onConfirm={() => {
+            const target = pendingRemoval
+            if (target === null) return
+            remove.mutate(target.contactId, {
+              onSuccess: () => {
+                setPendingRemoval(null)
+                // The row that held focus is about to unmount underneath it.
+                landOnHeading()
+              },
+            })
+          }}
+        >
+          {remove.error != null ? (
+            <AlertLive>
+              That reviewer could not be removed. They are still on the committee.
+            </AlertLive>
+          ) : null}
+        </ConfirmDialog>
+      </Card>
+    </section>
   )
 }
 
@@ -322,7 +568,11 @@ function RoundsSection({
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
-        <StatusLive>
+        {/* Named, like the invite region above it. This one is never empty, so
+            on a page carrying more than one polite region an unnamed instance
+            is announced without saying what it is about (DEC-014), and the
+            submission page labels its twin for the same reason. */}
+        <StatusLive aria-label="Review round state">
           {liveRound === null ? 'No review round is open.' : `Round ${liveRound.number} is open.`}
         </StatusLive>
         {rounds.length === 0 ? null : (

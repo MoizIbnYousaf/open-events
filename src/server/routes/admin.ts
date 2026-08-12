@@ -632,6 +632,44 @@ export async function handleAddCommitteeMember(context: ServerContext): Promise<
   return context.json(await deps.evaluations.addCommitteeMember(actor, eventId, input))
 }
 
+/**
+ * GET /api/admin/events/:slug/evaluations/committee: the event's roster, each
+ * seat carrying the member's identity and their workload.
+ */
+export async function handleListCommittee(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.evaluations.listCommittee(actor, eventId))
+}
+
+/**
+ * DELETE /api/admin/events/:slug/evaluations/committee/:contactId: give up one
+ * seat on THIS event's committee.
+ *
+ * Idempotent: removing a seat nobody holds is the state the caller asked for,
+ * not an error. The event scope is carried into the delete itself, so naming a
+ * different event's slug removes nothing rather than reaching across.
+ */
+export async function handleRemoveCommitteeMember(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const contactId = context.req.param('contactId')
+  if (slug === undefined || contactId === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  await deps.evaluations.removeCommitteeMember(actor, eventId, contactId)
+  return context.json({ removed: true })
+}
+
 /** GET /api/admin/events/:slug/submissions/:id/decision: the standing verdict. */
 export async function handleGetSubmissionDecision(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -958,6 +996,19 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleAddCommitteeMember,
+  )
+  app.get(
+    '/api/admin/events/:slug/evaluations/committee',
+    requireSession(),
+    requireActor('organizer'),
+    handleListCommittee,
+  )
+  app.delete(
+    '/api/admin/events/:slug/evaluations/committee/:contactId',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleRemoveCommitteeMember,
   )
   app.get(
     '/api/admin/events/:slug/submissions/:id/decision',

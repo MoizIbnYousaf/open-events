@@ -1,6 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types'
 
-import type { EvaluationRepository } from '../application/ports/evaluation-repository'
+import type {
+  CommitteeRosterRow,
+  EvaluationRepository,
+} from '../application/ports/evaluation-repository'
 import type {
   EvaluationAssignment,
   EvaluationCommitteeMember,
@@ -361,6 +364,62 @@ export function createEvaluationRepository(db: D1Database): EvaluationRepository
         .first<RawCommitteeMemberRow>()
       if (row === null) throw new Error('committee member insert stored no row')
       return toCommitteeMember(row)
+    },
+
+    async listCommitteeRoster(eventId: string): Promise<readonly CommitteeRosterRow[]> {
+      // ONE statement for the whole screen. The two counts are correlated
+      // subqueries over the same event scope rather than per-member round
+      // trips, and "completed" is EXISTS-a-score rather than a score join, so a
+      // multi-criterion assignment counts once instead of once per criterion.
+      const result = await db
+        .prepare(
+          `SELECT m.contact_id            AS contact_id,
+                  m.added_at              AS added_at,
+                  COALESCE(c.email, '')   AS email,
+                  COALESCE(c.name, '')    AS name,
+                  (SELECT COUNT(*) FROM evaluation_assignments a
+                    WHERE a.event_id = m.event_id
+                      AND a.evaluator_contact_id = m.contact_id) AS assigned_count,
+                  (SELECT COUNT(*) FROM evaluation_assignments a
+                    WHERE a.event_id = m.event_id
+                      AND a.evaluator_contact_id = m.contact_id
+                      AND EXISTS (SELECT 1 FROM evaluation_scores s
+                                   WHERE s.event_id = a.event_id
+                                     AND s.assignment_id = a.id)) AS completed_count
+             FROM evaluation_committee_members m
+             LEFT JOIN contacts c ON c.id = m.contact_id
+            WHERE m.event_id = ?
+            ORDER BY m.added_at, m.contact_id`,
+        )
+        .bind(eventId)
+        .all<{
+          contact_id: string
+          added_at: string
+          email: string
+          name: string
+          assigned_count: number
+          completed_count: number
+        }>()
+      return result.results.map((row) => ({
+        contactId: row.contact_id,
+        email: row.email,
+        name: row.name,
+        addedAt: row.added_at,
+        assignedCount: row.assigned_count,
+        completedCount: row.completed_count,
+      }))
+    },
+
+    async deleteCommitteeMember(eventId: string, contactId: string): Promise<void> {
+      // Event scope lives in the same statement that deletes, so naming another
+      // event's slug in the path removes nothing rather than reaching across.
+      // Nothing else is touched: the contact row and every recorded score stay.
+      await db
+        .prepare(
+          `DELETE FROM evaluation_committee_members WHERE event_id = ? AND contact_id = ?`,
+        )
+        .bind(eventId, contactId)
+        .run()
     },
 
     async listAssignmentsBySubmission(

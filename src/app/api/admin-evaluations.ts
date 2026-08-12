@@ -89,6 +89,46 @@ export function assignEvaluator(
   )
 }
 
+/** One seat on the committee, with the workload the organizer judges it by. */
+export interface CommitteeRosterEntry {
+  readonly contactId: string
+  readonly email: string
+  readonly name: string
+  readonly addedAt: string
+  readonly assignedCount: number
+  readonly completedCount: number
+}
+
+/** GET the event's committee roster. */
+export function listCommittee(slug: EventSlug): Promise<readonly CommitteeRosterEntry[]> {
+  return requestJson(`/api/admin/events/${encodeURIComponent(slug)}/evaluations/committee`)
+}
+
+/**
+ * POST a reviewer onto the committee by email, creating the contact when nobody
+ * has ever used that address. Idempotent, and scoped to this event alone.
+ */
+export function addCommitteeMember(
+  slug: EventSlug,
+  email: string,
+): Promise<CommitteeRosterEntry & { readonly created: boolean }> {
+  return requestJson(`/api/admin/events/${encodeURIComponent(slug)}/evaluations/committee`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+/** DELETE one seat. The person and their recorded scores are untouched. */
+export function removeCommitteeMember(
+  slug: EventSlug,
+  contactId: string,
+): Promise<{ readonly removed: boolean }> {
+  return requestJson(
+    `/api/admin/events/${encodeURIComponent(slug)}/evaluations/committee/${encodeURIComponent(contactId)}`,
+    { method: 'DELETE' },
+  )
+}
+
 /** GET /api/admin/submissions/:id/evaluation-summary — every round's result. */
 export function getEvaluationSummary(
   slug: EventSlug,

@@ -14,6 +14,24 @@ import type {
 } from '../../domain'
 
 /**
+ * One roster row as the database can assemble it in a single pass: the seat,
+ * the person sitting in it, and how much of their reading they have done.
+ *
+ * `email`/`name` are empty strings rather than null when the contact behind a
+ * seat has gone missing — the seat is still real and still removable, and a
+ * screen can render an id-only row where it cannot render an absent one.
+ */
+export interface CommitteeRosterRow {
+  readonly contactId: ContactId
+  readonly email: string
+  readonly name: string
+  readonly addedAt: string
+  readonly assignedCount: number
+  /** Assignments carrying at least one recorded score. Never exceeds `assignedCount`. */
+  readonly completedCount: number
+}
+
+/**
  * Persistence seam for the committee evaluation slice.
  *
  * Every list is event-scoped, so no caller can reach another event's criteria,
@@ -58,6 +76,25 @@ export interface EvaluationRepository {
   ): Promise<EvaluationCommitteeMember | null>
   /** Insert-if-absent keyed on (eventId, contactId); a repeat seat is a no-op. */
   saveCommitteeMember(member: EvaluationCommitteeMember): Promise<EvaluationCommitteeMember>
+  /**
+   * The whole roster in ONE read: every seat, the person in it, and their
+   * workload, oldest seat first.
+   *
+   * Deliberately a projection rather than the plain member list. Assembling
+   * this from primitives costs a query per member for the contact, another per
+   * member for their assignments, and one per assignment for its scores — so a
+   * thirty-person committee reading a single screen issued hundreds of round
+   * trips. The counts belong in the statement that already visits the rows.
+   */
+  listCommitteeRoster(eventId: EventId): Promise<readonly CommitteeRosterRow[]>
+  /**
+   * Gives up one seat. Removing a SEAT is not deleting a PERSON: the contact is
+   * a global identity that may be a speaker elsewhere, and any scores they
+   * recorded stay where they are — an average the committee already reached
+   * does not become untrue because someone left. Idempotent, because "they are
+   * not on the committee" is the state the caller asked for either way.
+   */
+  deleteCommitteeMember(eventId: EventId, contactId: ContactId): Promise<void>
 
   findAssignmentById(id: EvaluationAssignmentId): Promise<EvaluationAssignment | null>
   findAssignment(

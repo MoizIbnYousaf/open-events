@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 
+import type { FormDefinitionDto } from '../../../application'
 import CfpWizard from './CfpWizard'
-import { DeniedState, LoadErrorState } from '../admin/AdminStates'
+import { DeniedState, LoadErrorState, PageState } from '../admin/AdminStates'
 import { usePublishedCfp } from '../../queries/public-cfp'
+import { buttonVariants } from '../../../components/ui/button-variants'
 import { Card, CardContent } from '../../../components/ui/card'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
@@ -81,12 +83,68 @@ function CfpScreen({
       </section>
     )
   }
+  // A closed call is not a form with a disabled button: there is nothing to fill
+  // in, and offering the wizard anyway would invite four steps of work the server
+  // will refuse. The verdict comes from the server so this page and the submit
+  // gate cannot disagree about what "closed" means.
+  if (definitionQuery.data.submissionState !== 'open') {
+    return <ClosedCallState definition={definitionQuery.data} />
+  }
   return (
     <div data-tour="cfp-page">
       <CfpWizard
         form={definitionQuery.data}
         eventSlug={eventSlug ?? ''}
         formSlug={formSlug ?? ''}
+      />
+    </div>
+  )
+}
+
+const windowFormatter = new Intl.DateTimeFormat('en', {
+  timeZone: 'UTC',
+  dateStyle: 'long',
+  timeStyle: 'short',
+})
+
+function formatWindowInstant(iso: string): string | null {
+  try {
+    return `${windowFormatter.format(new Date(iso))} UTC`
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The call is not accepting proposals — either the deadline has passed or it has
+ * not opened yet. Both are one honest page state naming the date, because a
+ * visitor turned away deserves to know which side of the window they are on.
+ *
+ * One h1, and no path into the form: the whole point is that there is nothing to
+ * start here.
+ */
+function ClosedCallState({ definition }: { readonly definition: FormDefinitionDto }) {
+  const closed = definition.submissionState === 'closed'
+  const instant = closed ? definition.closesAt : definition.opensAt
+  const readable = instant === null ? null : formatWindowInstant(instant)
+  return (
+    <div className="mx-auto grid w-full max-w-[47rem] gap-5">
+      <PageState
+        title={closed ? 'Submissions are closed' : 'Submissions are not open yet'}
+        message={
+          closed
+            ? readable === null
+              ? 'The call for papers has closed and is no longer accepting proposals.'
+              : `The call for papers closed on ${readable} and is no longer accepting proposals.`
+            : readable === null
+              ? 'The call for papers has not opened yet.'
+              : `The call for papers opens on ${readable}.`
+        }
+        action={
+          <a href="/schedule/demo-conf-2026" className={buttonVariants({ variant: 'outline' })}>
+            See the public programme
+          </a>
+        }
       />
     </div>
   )

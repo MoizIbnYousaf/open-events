@@ -404,6 +404,38 @@ export async function handlePublishForm(context: ServerContext): Promise<Respons
   return context.json(detail)
 }
 
+/**
+ * PUT /api/admin/events/:slug/forms/:id/window — the organizer's own control over
+ * when the call accepts proposals. Dates only: caps are a separate concern and
+ * this route must not clear one it never asked about.
+ */
+export async function handleUpdateFormWindow(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const formId = context.req.param('id')
+  if (formId === undefined) return notFoundResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const opensAt = body.opensAt
+  const closesAt = body.closesAt
+  // Absent is not the same as null: a missing key would silently clear a date the
+  // organizer never touched, so the shape is required and null is explicit.
+  if (
+    !(opensAt === null || typeof opensAt === 'string') ||
+    !(closesAt === null || typeof closesAt === 'string')
+  ) {
+    return validationFailedResponse(context)
+  }
+  const summary = await deps.formBuilder.updateWindow(actor, eventId, formId, { opensAt, closesAt })
+  return context.json(summary)
+}
+
 /** GET /api/admin/events/:slug/submissions. */
 export async function handleListSubmissions(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -906,5 +938,12 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handlePublishForm,
+  )
+  app.put(
+    '/api/admin/events/:slug/forms/:id/window',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleUpdateFormWindow,
   )
 }

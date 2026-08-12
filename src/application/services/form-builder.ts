@@ -1,4 +1,4 @@
-import type { EventId, EventSlug } from '../../domain/event'
+import type { EventId, EventSlug, UtcInstant } from '../../domain/event'
 import type { CfpForm, FormId, FormSlug } from '../../domain/form'
 import type {
   FormElement,
@@ -9,6 +9,7 @@ import type {
 } from '../../domain/form-version'
 import { nextVersionNumber } from '../../domain/form-version'
 import { computeFormVersionContentHash } from '../../domain/invariants/content-hash'
+import { validateFormLimits } from '../../domain/invariants/form'
 import { validateVersionFreeze } from '../../domain/invariants/freeze'
 import { validateVersionRules } from '../../domain/invariants/rules'
 import type { ElementRule, RoutingRule } from '../../domain/rules'
@@ -88,6 +89,58 @@ export class FormBuilderService {
   async listByEvent(_actor: OrganizerActor, eventId: EventId): Promise<readonly FormSummaryDto[]> {
     const forms = await this.#forms.listByEvent(eventId)
     return forms.map(toFormSummaryDto)
+  }
+
+  /**
+   * Replaces the submission window an organizer published to the world.
+   *
+   * The window was enforced from the first release and settable nowhere, so the
+   * public portal announced a close date nobody could move. Validation is the
+   * domain's own `validateFormLimits`, which is what the submit gate's semantics
+   * are written against: canonical UTC instants, and `closes` strictly after
+   * `opens` when both are set. Caps are carried through untouched — this endpoint
+   * owns the dates and must not silently clear a capacity limit it never asked
+   * about.
+   */
+  async updateWindow(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    formId: FormId,
+    input: { readonly opensAt: UtcInstant | null; readonly closesAt: UtcInstant | null },
+  ): Promise<FormSummaryDto> {
+    const form = await this.#forms.findById(formId)
+    // Event scope before anything else: a form belonging to another event is a
+    // safe not-found, never someone else's window to move.
+    if (form === null || form.eventId !== eventId) {
+      throw new ApplicationError('not_found', `Form '${formId}' does not belong to this event`)
+    }
+    const limits = {
+      opensAt: input.opensAt,
+      closesAt: input.closesAt,
+      totalCap: form.limits.totalCap,
+      perIdentityLimit: form.limits.perIdentityLimit,
+    }
+    const issues = validateFormLimits(limits)
+    if (issues.length > 0) {
+      throw new ApplicationError(
+        'validation_failed',
+        issues.map((issue) => issue.message).join('; '),
+      )
+    }
+    const outcome = await this.#forms.updateWindow({
+      eventId,
+      formId,
+      opensAt: input.opensAt,
+      closesAt: input.closesAt,
+    })
+    if (outcome === 'not-found') {
+      throw new ApplicationError('not_found', `Form '${formId}' does not belong to this event`)
+    }
+    const updated = await this.#forms.findById(formId)
+    if (updated === null) {
+      throw new ApplicationError('not_found', `Form '${formId}' vanished during the update`)
+    }
+    return toFormSummaryDto(updated)
   }
 
   /** Immutable detail of any version that belongs to the form (safe null on mismatch). */
@@ -220,7 +273,7 @@ export class FormBuilderService {
     const version = await this.#versions.findById(form.publishedVersionId)
     if (version === null || version.status !== 'published') return null
     const content = await this.#content.loadByVersion(form.eventId, version.id)
-    return toFormDefinitionDto(form, event.slug, version, content)
+    return toFormDefinitionDto(form, event.slug, version, content, this.#clock.now())
   }
 
   /** Unambiguous public addressing: event slug + form slug. */
@@ -235,7 +288,7 @@ export class FormBuilderService {
     const version = await this.#versions.findById(form.publishedVersionId)
     if (version === null || version.status !== 'published') return null
     const content = await this.#content.loadByVersion(form.eventId, version.id)
-    return toFormDefinitionDto(form, event.slug, version, content)
+    return toFormDefinitionDto(form, event.slug, version, content, this.#clock.now())
   }
 
   async #taxonomyReference(eventId: EventId) {

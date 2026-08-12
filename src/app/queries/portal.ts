@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { SubmissionStatus } from '../../domain'
+import { useServerMutation } from '../../../adapters/tanstack-react-query'
+import type { SubmissionDetailDto } from '../../application'
+import type { AnswerMap, SubmissionStatus } from '../../domain'
 import { ApiClientError, requestJson } from '../api/admin-events'
 
 /**
@@ -57,5 +59,43 @@ export function useOwnSubmissions() {
     queryKey: portalQueryKeys.ownSubmissions(),
     queryFn: getOwnSubmissions,
     retry: false,
+  })
+}
+
+/**
+ * GET /api/public/submission/:id — one own submission in full, including every
+ * answer and the server's verdict on whether it may still be edited.
+ *
+ * The portal list carries a title and a status; revising a proposal needs the
+ * answers themselves, and there is no reason to ship them to a speaker who is
+ * only glancing at the list. Enabled only once a row is opened.
+ */
+export async function getOwnSubmission(id: string): Promise<SubmissionDetailDto> {
+  return requestJson<SubmissionDetailDto>(`/api/public/submission/${encodeURIComponent(id)}`)
+}
+
+export function useOwnSubmission(id: string | null) {
+  return useQuery({
+    queryKey: ['portal', 'own-submission', id ?? ''] as const,
+    queryFn: () => getOwnSubmission(id as string),
+    enabled: id !== null,
+    retry: false,
+  })
+}
+
+/** PUT /api/public/submission/:id — revise an own proposal while the call is open. */
+export function useEditOwnSubmission(id: string) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: (input: { readonly title: string; readonly answers: AnswerMap }) =>
+      requestJson<SubmissionDetailDto>(`/api/public/submission/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (updated: SubmissionDetailDto) => {
+      queryClient.setQueryData(['portal', 'own-submission', id] as const, updated)
+      // The list row shows the title, which an edit can change.
+      void queryClient.invalidateQueries({ queryKey: portalQueryKeys.ownSubmissions() })
+    },
   })
 }

@@ -250,7 +250,7 @@ export class OnboardingService {
       throw new ApplicationError('not_found', `Task '${id}' not found`)
     }
     const content = await this.#content.loadByVersion(task.eventId, version.id)
-    return toFormDefinitionDto(form, event.slug, version, content)
+    return toFormDefinitionDto(form, event.slug, version, content, this.#clock.now())
   }
 
   /**

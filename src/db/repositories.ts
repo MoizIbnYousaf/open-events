@@ -384,6 +384,20 @@ export function createSubmissionRepository(db: D1Database): SubmissionRepository
         .orderBy(desc(proposalSubmissions.submittedAt), asc(proposalSubmissions.id))
       return rows.map(toProposalSubmission)
     },
+    async updateOwnContent(input) {
+      // event + id + owner all in the predicate: the ownership test IS the write.
+      const result = await database
+        .update(proposalSubmissions)
+        .set({ title: input.title, answersJson: JSON.stringify(input.answers) })
+        .where(
+          and(
+            eq(proposalSubmissions.eventId, input.eventId),
+            eq(proposalSubmissions.id, input.submissionId),
+            eq(proposalSubmissions.ownerContactId, input.ownerContactId),
+          ),
+        )
+      return (result.meta?.changes ?? 0) > 0 ? 'updated' : 'not-found'
+    },
     async listContributorsBySubmission(eventId: string, submissionId: string) {
       const rows = await database
         .select()
@@ -424,6 +438,16 @@ export function createFormRepository(db: D1Database): FormRepository {
         .where(eq(cfpForms.eventId, eventId))
         .orderBy(asc(cfpForms.slug))
       return rows.map(toCfpForm)
+    },
+    async updateWindow(input) {
+      // Both keys in the predicate: naming this event's slug in the path while
+      // passing another event's form id must move nothing.
+      const result = await database
+        .update(cfpForms)
+        .set({ opensAt: input.opensAt, closesAt: input.closesAt })
+        .where(and(eq(cfpForms.eventId, input.eventId), eq(cfpForms.id, input.formId)))
+      const changes = result.meta?.changes ?? 0
+      return changes > 0 ? 'updated' : 'not-found'
     },
   }
 }

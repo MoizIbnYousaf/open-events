@@ -1,3 +1,4 @@
+import type { AnswerMap } from '../../domain'
 import type { CapturedMessage } from '../../domain/confirmation'
 import type { Contact } from '../../domain/contact'
 import { MAX_CO_SPEAKERS } from '../../domain/contact'
@@ -6,6 +7,7 @@ import type { CfpForm } from '../../domain/form'
 import type { FormVersion } from '../../domain/form-version'
 import { computeSubmissionContentHash } from '../../domain/invariants/content-hash'
 import { isValidEmailAddress, normalizeEmail } from '../../domain/invariants/email'
+import { isSubmissionEditable } from '../../domain/invariants/cfp'
 import { validateAnswersAgainstVersion } from '../../domain/invariants/submission'
 import { applyRoutingRules } from '../../domain/rules'
 import type { ProposalSubmission, SubmissionId } from '../../domain/submission'
@@ -224,9 +226,76 @@ export class SubmitService {
     return this.#detail(submission)
   }
 
+  /**
+   * Revises a proposal its own submitter already sent.
+   *
+   * Every gate is re-evaluated here, on the server, because the portal cannot be
+   * trusted to have asked: the actor must own this submission, it must belong to
+   * their event, the answers must still satisfy the published form, and the call
+   * must still be open. The last one is the point of the deadline — after it the
+   * programme reads what it has, and an edit landing a minute later would change
+   * a proposal underneath a committee already reviewing it.
+   */
+  async editOwn(
+    actor: SubmitterActor,
+    id: SubmissionId,
+    input: { readonly title: string; readonly answers: AnswerMap },
+  ): Promise<SubmissionDetailDto> {
+    const submission = await this.#submissions.findById(id)
+    // Ownership and event scope answer as one safe not-found: a stranger learns
+    // nothing about whether the id exists.
+    if (
+      submission === null ||
+      submission.ownerContactId !== actor.contactId ||
+      submission.eventId !== actor.eventId
+    ) {
+      throw new ApplicationError('not_found', `Submission '${id}' not found`)
+    }
+    const version = await this.#versions.findById(submission.formVersionId)
+    if (version === null) {
+      throw new ApplicationError(
+        'not_found',
+        `Form version '${submission.formVersionId}' not found`,
+      )
+    }
+    const form = await this.#forms.findById(version.formId)
+    if (form === null || form.eventId !== actor.eventId) {
+      throw new ApplicationError('not_found', `Form for submission '${id}' not found`)
+    }
+    if (!isSubmissionEditable(form.limits, this.#clock.now())) {
+      throw new ApplicationError(
+        'conflict',
+        'The call for papers is closed, so this proposal can no longer be edited',
+      )
+    }
+    // Validated against the version the proposal was SUBMITTED under, not the
+    // newest one: a republished form must not retroactively invalidate a proposal
+    // its author answered honestly.
+    const content = await this.#content.loadByVersion(actor.eventId, version.id)
+    const issues = validateAnswersAgainstVersion(content, input.answers)
+    if (issues.length > 0) {
+      throw new ValidationFailedError('Answers failed server-side validation', issues)
+    }
+    const outcome = await this.#submissions.updateOwnContent({
+      eventId: actor.eventId,
+      submissionId: id,
+      ownerContactId: actor.contactId,
+      title: input.title,
+      answers: input.answers,
+    })
+    if (outcome === 'not-found') {
+      throw new ApplicationError('not_found', `Submission '${id}' not found`)
+    }
+    const updated = await this.#submissions.findById(id)
+    if (updated === null) {
+      throw new ApplicationError('not_found', `Submission '${id}' not found`)
+    }
+    return this.#detail(updated)
+  }
+
   async #detail(submission: ProposalSubmission): Promise<SubmissionDetailDto> {
     const { form, version, contributors } = await this.#context(submission)
-    return toSubmissionDetailDto(submission, form, version, contributors)
+    return toSubmissionDetailDto(submission, form, version, contributors, this.#clock.now())
   }
 
   async #listItem(submission: ProposalSubmission): Promise<SubmissionListItemDto> {

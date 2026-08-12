@@ -396,7 +396,8 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     expect(organizerCookies.some((cookie) => cookie.httpOnly)).toBe(true)
 
     await adminPage.getByLabel('Venue').fill(VENUE)
-    await adminPage.getByRole('button', { name: 'Save' }).click()
+    // Exact: the CFP settings card on this page has its own Save control.
+    await adminPage.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(adminPage.getByRole('status').filter({ hasText: 'Saved' })).toContainText('Saved')
     await adminPage.goto(`/admin/events/${EVENT_SLUG}`)
     await expect(adminPage.getByLabel('Venue')).toHaveValue(VENUE)

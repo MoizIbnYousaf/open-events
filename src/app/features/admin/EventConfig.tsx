@@ -4,7 +4,12 @@ import { Controller, useForm, type FieldPath } from 'react-hook-form'
 import { z } from 'zod'
 
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
-import { useEventConfig, useFormsList, useUpdateEventConfig } from '../../queries/admin-events'
+import {
+  useEventConfig,
+  useFormsList,
+  useUpdateEventConfig,
+  useUpdateFormWindow,
+} from '../../queries/admin-events'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
 import {
@@ -39,6 +44,8 @@ import type {
   AdminEventConfigDto,
   UpdateEventConfigInput,
 } from '../../../application/dtos/event-config.dto'
+import type { FormSummaryDto } from '../../../application/dtos/form-definition.dto'
+import type { EventSlug } from '../../../domain/event'
 import { EVENT_STATUSES } from '../../../domain/event'
 
 import AppShell from '../nav/AppShell'
@@ -184,6 +191,7 @@ function EventConfigScreen() {
           navigateToLogin={() => void navigate({ to: '/admin' })}
         />
         <FormsList query={formsQuery} slug={slug ?? ''} />
+        <CfpSettings query={formsQuery} slug={slug ?? ''} />
         <PublicLinks query={formsQuery} slug={slug ?? ''} />
         <ManageLinks slug={slug ?? ''} />
       </div>
@@ -197,6 +205,109 @@ function EventConfigScreen() {
  * handed to the primitive's `render` escape rather than reproduced by a
  * hand-written h2 wearing a copy of the card's class string.
  */
+/**
+ * CFP settings: when the call accepts proposals.
+ *
+ * The window was enforced from the first release and settable nowhere, so the
+ * public portal announced a close date no organizer could move. It sits on the
+ * event settings page beside the forms it governs, because "when does my call
+ * close" is a question about the event, not about a form's questions.
+ *
+ * Dates are typed as UTC instants — the same wire format the rest of the product
+ * uses — and the server validates them; this card does not re-implement the
+ * ordering rule, it reports what the server says about it.
+ */
+function CfpSettings({
+  query,
+  slug,
+}: {
+  readonly query: ReturnType<typeof useFormsList>
+  readonly slug: EventSlug
+}) {
+  const forms = query.data ?? []
+  const form = forms[0]
+  if (form === undefined) return null
+  return <CfpWindowForm slug={slug} formId={form.formId} form={form} />
+}
+
+function CfpWindowForm({
+  slug,
+  formId,
+  form,
+}: {
+  readonly slug: EventSlug
+  readonly formId: string
+  readonly form: FormSummaryDto
+}) {
+  const update = useUpdateFormWindow(slug, formId)
+  const [opensAt, setOpensAt] = useState(form.opensAt ?? '')
+  const [closesAt, setClosesAt] = useState(form.closesAt ?? '')
+  const [message, setMessage] = useState<string | null>(null)
+
+  return (
+    <Card>
+      <CardHeader>
+        <SectionTitle>Call for papers settings</SectionTitle>
+        <CardDescription>
+          When this call accepts proposals. Speakers see the close date on the public portal, and
+          submissions and edits stop once it passes.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (update.isPending) return
+            setMessage(null)
+            update.mutate(
+              {
+                opensAt: opensAt.trim() === '' ? null : opensAt.trim(),
+                closesAt: closesAt.trim() === '' ? null : closesAt.trim(),
+              },
+              {
+                onSuccess: () => setMessage('Saved'),
+                onError: (error) =>
+                  setMessage(getApiErrorMessage(error, 'Unable to save the submission window.')),
+              },
+            )
+          }}
+          noValidate
+        >
+          <Field>
+            <FieldLabel htmlFor="cfp-opens-at">Submissions open</FieldLabel>
+            <Input
+              id="cfp-opens-at"
+              value={opensAt}
+              placeholder="2026-01-01T00:00:00.000Z"
+              onChange={(event) => setOpensAt(event.target.value)}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="cfp-closes-at">Submissions close</FieldLabel>
+            <Input
+              id="cfp-closes-at"
+              value={closesAt}
+              placeholder="2026-12-31T23:59:59.000Z"
+              onChange={(event) => setClosesAt(event.target.value)}
+            />
+          </Field>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit" pending={update.isPending}>
+              {update.isPending ? 'Saving…' : 'Save CFP settings'}
+            </Button>
+            {/* Mounted with the form and empty until there is something to say,
+                so the polite region is in the tree before its text arrives. */}
+            <StatusLive aria-live="polite" aria-label="Call for papers settings status">
+              {update.isPending ? null : message}
+            </StatusLive>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
 function SectionTitle({ children }: { readonly children: ReactNode }) {
   return <CardTitle level={2}>{children}</CardTitle>
 }
@@ -507,7 +618,7 @@ function EventConfigForm({ dto, save, navigateToLogin }: EventConfigFormProps) {
               is not in the accessibility tree when the text arrives, so it
               announces nothing. The saved chip is cleared at submit, so the
               in-flight message never overwrites a live one. */}
-          <StatusLive aria-live="polite" className="text-xs">
+          <StatusLive aria-live="polite" aria-label="Event settings status" className="text-xs">
             {save.isPending ? 'Saving the event settings…' : savedMessage}
           </StatusLive>
           {/* The visible label is the accessible name; a duplicate

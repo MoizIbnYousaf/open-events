@@ -30,6 +30,7 @@ import type {
   VersionNumber,
   VersionStatus,
 } from '../../domain'
+import { submissionStateOf, type SubmissionState } from '../../domain'
 
 export interface FormPageDto {
   readonly id: PageId
@@ -106,6 +107,12 @@ export interface FormDefinitionDto {
    */
   readonly opensAt: UtcInstant | null
   readonly closesAt: UtcInstant | null
+  /**
+   * The window's verdict, decided by the server. The portal renders a closed call
+   * without re-deriving it from a date and a clock it cannot be trusted to share
+   * with the submit gate.
+   */
+  readonly submissionState: SubmissionState
   readonly pages: readonly FormPageDto[]
   readonly elements: readonly FormElementDto[]
   readonly conditionRules: readonly ElementRuleDto[]
@@ -144,6 +151,9 @@ export interface FormSummaryDto {
   readonly slug: FormSlug
   readonly status: FormStatus
   readonly publishedVersionId: VersionId | null
+  /** The submission window an organizer owns, so the settings card can show it. */
+  readonly opensAt: UtcInstant | null
+  readonly closesAt: UtcInstant | null
 }
 
 /** Full replace of the draft version content (PUT /draft body). */
@@ -159,6 +169,7 @@ export function toFormDefinitionDto(
   eventSlug: EventSlug,
   version: FormVersion,
   content: FormVersionContent,
+  now: UtcInstant,
 ): FormDefinitionDto {
   if (
     version.status !== 'published' ||
@@ -178,6 +189,7 @@ export function toFormDefinitionDto(
     publishedAt: version.publishedAt,
     opensAt: form.limits.opensAt,
     closesAt: form.limits.closesAt,
+    submissionState: submissionStateOf(form.limits, now),
     pages: content.pages.map(toFormPageDto),
     elements: content.elements.map(toFormElementDto),
     conditionRules: content.conditionRules.map(toElementRuleDto),
@@ -223,6 +235,8 @@ export function toFormSummaryDto(form: CfpForm): FormSummaryDto {
     slug: form.slug,
     status: form.status,
     publishedVersionId: form.publishedVersionId,
+    opensAt: form.limits.opensAt,
+    closesAt: form.limits.closesAt,
   }
 }
 

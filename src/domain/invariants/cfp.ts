@@ -73,3 +73,30 @@ export function evaluateFormSubmitGate(
   if (!isFormAcceptingVersion(form, formVersionId)) return { allowed: false, reason: 'closed' }
   return evaluateSubmitGate(form.limits, now, totalCount, identityCount)
 }
+
+/**
+ * What a call's window means right now, named rather than left as a date for
+ * every reader to judge for itself.
+ *
+ * The public portal, the submit gate and the edit gate all have to agree about
+ * whether a call is open, and a date plus a clock is not agreement — it is three
+ * chances to disagree. `submissionState` is the one verdict they all read.
+ */
+export type SubmissionState = 'not-yet-open' | 'open' | 'closed'
+
+export function submissionStateOf(limits: FormLimits, now: UtcInstant): SubmissionState {
+  const nowMs = Date.parse(now)
+  if (limits.opensAt !== null && nowMs < Date.parse(limits.opensAt)) return 'not-yet-open'
+  if (limits.closesAt !== null && nowMs >= Date.parse(limits.closesAt)) return 'closed'
+  return 'open'
+}
+
+/**
+ * A submitted proposal may be revised only while the call is open. The deadline
+ * is the point after which the programme reads what it has, so an edit landing a
+ * minute later would change a proposal underneath a committee already reviewing
+ * it.
+ */
+export function isSubmissionEditable(limits: FormLimits, now: UtcInstant): boolean {
+  return submissionStateOf(limits, now) === 'open'
+}

@@ -1,3 +1,4 @@
+import { isSubmissionEditable } from '../../domain/invariants/cfp'
 import type {
   AnswerMap,
   CfpForm,
@@ -40,6 +41,12 @@ export interface SubmissionDetailDto {
   readonly contributors: readonly ContributorDto[]
   readonly createdAt: UtcInstant
   readonly submittedAt: UtcInstant
+  /**
+   * Whether the submitter may still revise this proposal — the server's verdict,
+   * so the portal shows or hides its edit affordance without re-deriving a
+   * deadline from a clock the write path does not share with it.
+   */
+  readonly editable: boolean
 }
 
 /** Narrow organizer-list row derived from the same persisted submission. */
@@ -102,6 +109,7 @@ export function toSubmissionDetailDto(
   form: CfpForm,
   version: FormVersion,
   contributors: readonly ContributorDto[],
+  now: UtcInstant,
 ): SubmissionDetailDto {
   return {
     id: submission.id,
@@ -117,6 +125,7 @@ export function toSubmissionDetailDto(
     contributors,
     createdAt: submission.createdAt,
     submittedAt: submission.submittedAt,
+    editable: isSubmissionEditable(form.limits, now),
   }
 }
 

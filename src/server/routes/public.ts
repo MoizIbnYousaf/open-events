@@ -242,6 +242,30 @@ export async function handleGetOwnSubmission(context: ServerContext): Promise<Re
 }
 
 /**
+ * PUT /api/public/submission/:id — a submitter revising their own proposal while
+ * the call is open. Every gate lives in the service: ownership, event scope, the
+ * published form's validation, and the window.
+ */
+export async function handleEditOwnSubmission(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const submissionId = context.req.param('id')
+  if (submissionId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const title = body.title
+  const answers = body.answers
+  if (typeof title !== 'string' || !isRecord(answers)) return validationFailedResponse(context)
+  const detail = await deps.submit.editOwn(actor, submissionId, {
+    title,
+    answers: answers as AnswerMap,
+  })
+  return context.json(detail)
+}
+
+/**
  * GET /api/public/submissions: the session speaker's own submissions, each
  * carrying its acceptance state. The persisted status can only ever be
  * 'pending', so the acceptance record — read back through the actor-scoped
@@ -700,5 +724,14 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('submitter'),
     handleGetOwnSubmission,
+  )
+  app.put(
+    // Same path as the GET above: a proposal is one resource, and an edit that
+    // lived at a different URL from its read would be two.
+    '/api/public/submission/:id',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handleEditOwnSubmission,
   )
 }

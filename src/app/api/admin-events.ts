@@ -73,6 +73,18 @@ export function updateEventConfig(
   })
 }
 
+/** PUT /api/admin/events/:slug/forms/:formId/window */
+export function updateFormWindow(
+  slug: EventSlug,
+  formId: string,
+  input: { readonly opensAt: string | null; readonly closesAt: string | null },
+): Promise<FormSummaryDto> {
+  return requestJson(
+    `/api/admin/events/${encodeURIComponent(slug)}/forms/${encodeURIComponent(formId)}/window`,
+    { method: 'PUT', body: JSON.stringify(input) },
+  )
+}
+
 /** GET /api/admin/events/:slug/forms */
 export function listForms(slug: EventSlug): Promise<readonly FormSummaryDto[]> {
   return requestJson(`/api/admin/events/${encodeURIComponent(slug)}/forms`)

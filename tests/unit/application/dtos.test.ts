@@ -10,6 +10,9 @@ import {
 import { createContent, createForm, createSubmission, createVersion } from '../helpers/fixtures'
 import { EVENT_SLUG } from '../helpers/fixtures'
 
+/** The definition now carries the window's verdict, so it needs an instant. */
+const NOW = '2026-06-01T00:00:00.000Z'
+
 describe('toFormDefinitionDto', () => {
   it('exposes only published versions and omits routing rules', () => {
     const form = createForm({ status: 'published', publishedVersionId: 'version-1' })
@@ -19,7 +22,7 @@ describe('toFormDefinitionDto', () => {
       publishedAt: '2026-05-01T00:00:00.000Z',
     })
 
-    const dto = toFormDefinitionDto(form, EVENT_SLUG, version, createContent())
+    const dto = toFormDefinitionDto(form, EVENT_SLUG, version, createContent(), NOW)
 
     expect(dto.status).toBe('published')
     expect(dto.eventSlug).toBe(EVENT_SLUG)
@@ -32,7 +35,7 @@ describe('toFormDefinitionDto', () => {
     const form = createForm()
     const draft = createVersion({ status: 'draft', contentHash: null, publishedAt: null })
 
-    expect(() => toFormDefinitionDto(form, EVENT_SLUG, draft, createContent())).toThrow(
+    expect(() => toFormDefinitionDto(form, EVENT_SLUG, draft, createContent(), NOW)).toThrow(
       'Cannot build a public definition',
     )
   })
@@ -50,6 +53,8 @@ describe('toFormSummaryDto', () => {
       slug: 'cfp',
       status: 'published',
       publishedVersionId: 'version-1',
+      opensAt: null,
+      closesAt: null,
     })
   })
 })
@@ -75,7 +80,7 @@ describe('DTO round-trip fidelity (element page membership and rule order)', () 
       publishedAt: '2026-05-01T00:00:00.000Z',
     })
 
-    const definition = toFormDefinitionDto(form, EVENT_SLUG, version, createContent())
+    const definition = toFormDefinitionDto(form, EVENT_SLUG, version, createContent(), NOW)
 
     for (const element of createContent().elements) {
       const dtoElement = definition.elements.find((candidate) => candidate.id === element.id)
@@ -103,7 +108,7 @@ describe('DTO round-trip fidelity (element page membership and rule order)', () 
       publishedAt: '2026-05-01T00:00:00.000Z',
     })
 
-    const definition = toFormDefinitionDto(form, EVENT_SLUG, version, createContent())
+    const definition = toFormDefinitionDto(form, EVENT_SLUG, version, createContent(), NOW)
 
     for (const rule of createContent().conditionRules) {
       const dtoRule = definition.conditionRules.find((candidate) => candidate.id === rule.id)

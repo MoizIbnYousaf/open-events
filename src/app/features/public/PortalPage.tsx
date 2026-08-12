@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
@@ -15,9 +15,18 @@ import {
 } from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
-import { getApiErrorCode } from '../../api/admin-events'
+import { Field, FieldLabel } from '../../../components/ui/field'
+import { Input } from '../../../components/ui/input'
+import { Textarea } from '../../../components/ui/textarea'
+import type { SubmissionDetailDto } from '../../../application'
+import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
 import { ForbiddenState } from '../admin/AdminStates'
-import { useOwnSubmissions, type PortalSubmission } from '../../queries/portal'
+import {
+  useEditOwnSubmission,
+  useOwnSubmission,
+  useOwnSubmissions,
+  type PortalSubmission,
+} from '../../queries/portal'
 import DocumentUploader from './DocumentUploader'
 import HeadshotUploader from './HeadshotUploader'
 import ProfileEditor from './ProfileEditor'
@@ -131,6 +140,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
                   <span className="truncate text-sm font-medium">{submission.title}</span>
                   <InviteLink submission={submission} />
                 </div>
+                <ProposalDisclosure submission={submission} />
                 {/* Where a proposal stands is a lifecycle state, so the chip
                     carries the marker that says so — the one channel that
                     still separates a state from a plain value once colour has
@@ -160,6 +170,138 @@ function Header() {
         <PageHeaderDescription>{SUBHEADING}</PageHeaderDescription>
       </PageHeaderContent>
     </PageHeader>
+  )
+}
+
+/**
+ * The way back into a proposal a speaker already sent.
+ *
+ * The row used to be inert: a title, a status chip, and no path to the words
+ * underneath — so a typo in an abstract was permanent and the only "edit" a
+ * speaker could attempt was submitting the whole thing again. Opening the row
+ * fetches the full proposal and, while the call is still open, lets them revise
+ * it in place.
+ *
+ * Answers are edited as the questions they belong to, not as raw JSON: the form
+ * definition supplies the labels, and long answers get a textarea because an
+ * abstract typed into a single-line input is a punishment.
+ */
+function ProposalDisclosure({ submission }: { readonly submission: PortalSubmission }) {
+  const [open, setOpen] = useState(false)
+  const detailQuery = useOwnSubmission(open ? submission.id : null)
+  const detail = detailQuery.data
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        aria-expanded={open}
+        aria-controls={`proposal-${submission.id}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {open ? 'Hide proposal' : 'View proposal'}
+      </Button>
+      {open ? (
+        <div id={`proposal-${submission.id}`} className="w-full">
+          {detailQuery.isError ? (
+            <AlertLive>Unable to load this proposal right now.</AlertLive>
+          ) : detail === undefined ? (
+            <StatusLive aria-live="polite">Loading your proposal…</StatusLive>
+          ) : (
+            <ProposalEditor detail={detail} />
+          )}
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+function ProposalEditor({ detail }: { readonly detail: SubmissionDetailDto }) {
+  const edit = useEditOwnSubmission(detail.id)
+  const [answers, setAnswers] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(detail.answers).map(([key, value]) => [
+        key,
+        Array.isArray(value) ? value.join(', ') : String(value ?? ''),
+      ]),
+    ),
+  )
+  const [message, setMessage] = useState<string | null>(null)
+
+  // The server decides; this surface reports. A closed call must not merely hide
+  // the button — the write is refused too, which the integration suite pins.
+  if (!detail.editable) {
+    return (
+      <div className="grid gap-2 pt-2">
+        <p className="text-sm text-muted-foreground">
+          Editing is closed — the call for papers has ended. This is the proposal the organizers
+          have on file.
+        </p>
+        <dl className="grid gap-2">
+          {Object.entries(answers).map(([key, value]) => (
+            <div key={key} className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">{key}</dt>
+              <dd className="text-sm whitespace-pre-wrap">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    )
+  }
+
+  return (
+    <form
+      className="grid gap-3 pt-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (edit.isPending) return
+        setMessage(null)
+        edit.mutate(
+          { title: detail.title, answers },
+          {
+            onSuccess: () => setMessage('Saved'),
+            onError: (error) =>
+              setMessage(getApiErrorMessage(error, 'Unable to save your changes.')),
+          },
+        )
+      }}
+      noValidate
+    >
+      {Object.entries(answers).map(([key, value]) => {
+        const id = `answer-${detail.id}-${key}`
+        const long = value.length > 80
+        return (
+          <Field key={key}>
+            <FieldLabel htmlFor={id}>{key}</FieldLabel>
+            {long ? (
+              <Textarea
+                id={id}
+                value={value}
+                rows={4}
+                onChange={(event) =>
+                  setAnswers((current) => ({ ...current, [key]: event.target.value }))
+                }
+              />
+            ) : (
+              <Input
+                id={id}
+                value={value}
+                onChange={(event) =>
+                  setAnswers((current) => ({ ...current, [key]: event.target.value }))
+                }
+              />
+            )}
+          </Field>
+        )
+      })}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" pending={edit.isPending}>
+          {edit.isPending ? 'Saving…' : 'Save changes'}
+        </Button>
+        <StatusLive aria-live="polite">{edit.isPending ? null : message}</StatusLive>
+      </div>
+    </form>
   )
 }
 

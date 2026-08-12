@@ -35,6 +35,7 @@ const PUBLISHED_FORM: FormDefinitionDto = {
   publishedAt: '2026-08-08T09:00:00.000Z',
   opensAt: '2026-01-01T00:00:00.000Z',
   closesAt: '2026-12-31T23:59:59.000Z',
+  submissionState: 'open',
   pages: [
     { id: 'p-1', position: 0, kind: 'welcome', title: 'Welcome', content: 'Introduction' },
     { id: 'p-2', position: 1, kind: 'info', title: 'About your proposal', content: '' },

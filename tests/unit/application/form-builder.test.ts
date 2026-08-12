@@ -193,6 +193,8 @@ describe('FormBuilderService P0 contracts', () => {
       slug: 'cfp',
       status: 'draft',
       publishedVersionId: null,
+      opensAt: null,
+      closesAt: null,
     })
     expect(await service.listByEvent(organizerActor, 'event-unknown')).toEqual([])
   })

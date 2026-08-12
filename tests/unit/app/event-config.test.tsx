@@ -200,7 +200,9 @@ describe('event config screen', () => {
     await user.type(venue, 'Hamburg Messe')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent('Saved')
+    expect(await screen.findByRole('status', { name: 'Event settings status' })).toHaveTextContent(
+      'Saved',
+    )
     const patch = fetchCall('/api/admin/events/demo-conf-2026', 'PATCH')
     expect(patch).toBeDefined()
     expect(JSON.parse(String(patch?.body))).toEqual({ venue: 'Hamburg Messe' })
@@ -390,7 +392,9 @@ describe('event config screen', () => {
     await user.type(venue, 'Hamburg Messe')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent('Saved')
+    expect(await screen.findByRole('status', { name: 'Event settings status' })).toHaveTextContent(
+      'Saved',
+    )
     expect(dispatchBeforeUnload().defaultPrevented).toBe(false)
   })
 

@@ -1,4 +1,5 @@
 import type {
+  AnswerMap,
   CapturedMessage,
   CfpForm,
   ConfirmationRecord,
@@ -81,6 +82,22 @@ export class InMemoryFormRepository implements FormRepository {
 
   async listByEvent(eventId: string): Promise<readonly CfpForm[]> {
     return [...this.#forms.values()].filter((form) => form.eventId === eventId)
+  }
+
+  /** Mirrors the adapter: scoped by BOTH event and form id, never by id alone. */
+  async updateWindow(input: {
+    readonly eventId: string
+    readonly formId: FormId
+    readonly opensAt: string | null
+    readonly closesAt: string | null
+  }): Promise<'updated' | 'not-found'> {
+    const form = this.#forms.get(input.formId)
+    if (form === undefined || form.eventId !== input.eventId) return 'not-found'
+    this.#forms.set(input.formId, {
+      ...form,
+      limits: { ...form.limits, opensAt: input.opensAt, closesAt: input.closesAt },
+    })
+    return 'updated'
   }
 
   async save(form: CfpForm): Promise<void> {
@@ -312,6 +329,30 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
           ? left.id.localeCompare(right.id)
           : right.submittedAt.localeCompare(left.submittedAt),
       )
+  }
+
+  /** Mirrors the adapter: event + id + owner all decide the match. */
+  async updateOwnContent(input: {
+    readonly eventId: string
+    readonly submissionId: string
+    readonly ownerContactId: string
+    readonly title: string
+    readonly answers: AnswerMap
+  }): Promise<'updated' | 'not-found'> {
+    const submission = this.#submissions.get(input.submissionId)
+    if (
+      submission === undefined ||
+      submission.eventId !== input.eventId ||
+      submission.ownerContactId !== input.ownerContactId
+    ) {
+      return 'not-found'
+    }
+    this.#submissions.set(input.submissionId, {
+      ...submission,
+      title: input.title,
+      answers: input.answers,
+    })
+    return 'updated'
   }
 
   async countByForm(eventId: string, formId: FormId): Promise<number> {

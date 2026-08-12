@@ -9,6 +9,7 @@ import {
   listForms,
   replaceTaxonomies,
   updateEventConfig,
+  updateFormWindow,
 } from '../api/admin-events'
 import type {
   AdminEventConfigDto,
@@ -42,6 +43,19 @@ export function useUpdateEventConfig(slug: EventSlug) {
     mutationFn: (input: UpdateEventConfigInput) => updateEventConfig(slug, input),
     onSuccess: (updated: AdminEventConfigDto) => {
       queryClient.setQueryData(adminQueryKeys.config(slug), updated)
+    },
+  })
+}
+
+export function useUpdateFormWindow(slug: EventSlug, formId: string) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: (input: { readonly opensAt: string | null; readonly closesAt: string | null }) =>
+      updateFormWindow(slug, formId, input),
+    onSuccess: () => {
+      // The public definition's submissionState is derived from these dates, so
+      // the forms list is refetched rather than patched from the response.
+      void queryClient.invalidateQueries({ queryKey: adminQueryKeys.forms(slug) })
     },
   })
 }

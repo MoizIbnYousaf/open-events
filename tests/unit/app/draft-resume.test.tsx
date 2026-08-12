@@ -29,6 +29,8 @@ const PUBLISHED_FORM: FormDefinitionDto = {
   status: 'published',
   contentHash: 'a'.repeat(64),
   publishedAt: '2026-08-08T09:00:00.000Z',
+  opensAt: '2026-01-01T00:00:00.000Z',
+  closesAt: '2026-12-31T23:59:59.000Z',
   pages: [
     { id: 'p-1', position: 0, kind: 'welcome', title: 'Welcome', content: 'Introduction' },
     { id: 'p-2', position: 1, kind: 'info', title: 'About your proposal', content: '' },
@@ -205,7 +207,7 @@ describe('public CFP draft save and resume', () => {
 
     // No Next click: a restored draft now lands on the step that holds it. This
     // case used to walk there itself, which is exactly how it kept passing while
-    // a returning speaker saw an apparently empty welcome step (CFP-07).
+    // a returning speaker saw an apparently empty welcome step.
     const format = await screen.findByLabelText(/format/i)
     expect(format).toHaveValue('talk')
     expect(await screen.findByLabelText(/title/i)).toHaveValue('Resumed talk')
@@ -476,13 +478,12 @@ describe('public CFP draft save and resume', () => {
 })
 
 /**
- * CFP-07, made literal.
+ * Resuming a title-only draft, made literal.
  *
- * The official evaluator saved a title-only draft with an authenticated speaker
- * session, saw "Saved", walked to /portal and back, and reported the draft lost.
- * It was not lost — the server round trip is sound, and a direct API check
- * confirms the row is returned to a brand-new session for the same identity.
- * What was lost was any way to SEE it: the wizard hydrates the title into an
+ * Save a draft holding only a title, walk to the portal and back, and the draft
+ * looked lost. It was not: the server round trip is sound, and the row is
+ * returned to a brand-new session for the same identity. What was lost was any
+ * way to SEE it: the wizard hydrates the title into an
  * editor whose step indicator still reads step 1 "Welcome", and the title field
  * lives on the proposal step. Nothing on arrival says a draft was found.
  *
@@ -523,7 +524,7 @@ function renderPartialDraftUi() {
   }
 }
 
-describe('resuming a partial draft after navigating away (CFP-07)', () => {
+describe('resuming a partial draft after navigating away', () => {
   it('shows the saved title on arrival, without the speaker hunting for it', async () => {
     const user = userEvent.setup()
     let stored: DraftDto | null = null
@@ -549,7 +550,7 @@ describe('resuming a partial draft after navigating away (CFP-07)', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/))
 
     // Navigating to /portal and back unmounts the wizard and mounts it again
-    // with a cold cache. This is the exact trip the evaluator took.
+    // with a cold cache. This is the exact trip that lost the draft.
     first.unmount()
     cleanup()
     renderPartialDraftUi()

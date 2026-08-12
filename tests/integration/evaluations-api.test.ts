@@ -9,7 +9,7 @@ import {
   DEMO_CONF_2026_ROUND_ID,
   DEMO_CONF_2026_VERSION_ID,
 } from '../../src/db'
-import { applyMigrations, seedDemoConf } from './m2b-helpers'
+import { SEEDED_WORKSHOP_ANSWERS, applyMigrations, seedDemoConf } from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -155,7 +155,7 @@ async function submitProposal(cookie: string, title: string): Promise<string> {
         originDraftId: draftId,
         formVersionId: DEMO_CONF_2026_VERSION_ID,
         title,
-        answers: { format: 'workshop', workshop_details: 'Hands-on' },
+        answers: SEEDED_WORKSHOP_ANSWERS,
         coSpeakers: [],
       }),
     },

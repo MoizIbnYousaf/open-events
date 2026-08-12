@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { env, reset } from 'cloudflare:test'
 
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
-import { applyMigrations, countRows, seedDemoConf } from './m2b-helpers'
+import {
+  SEEDED_TALK_ANSWERS,
+  SEEDED_WORKSHOP_ANSWERS,
+  applyMigrations,
+  countRows,
+  seedDemoConf,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -71,7 +77,7 @@ describe('submitter drafts are own-only', () => {
           formId: DEMO_CONF_2026_FORM_ID,
           formVersionId: DEMO_CONF_2026_VERSION_ID,
           title: 'My draft',
-          answers: { format: 'talk' },
+          answers: SEEDED_TALK_ANSWERS,
         }),
       },
       bindings(),
@@ -161,7 +167,7 @@ describe('submitter submit', () => {
     originDraftId: 'draft-route-1',
     formVersionId: DEMO_CONF_2026_VERSION_ID,
     title: 'Route submission',
-    answers: { format: 'workshop', workshop_details: 'Hands-on' },
+    answers: SEEDED_WORKSHOP_ANSWERS,
     coSpeakers: [],
   }
 
@@ -264,7 +270,7 @@ describe('own submission reads', () => {
       originDraftId: draftId,
       formVersionId: DEMO_CONF_2026_VERSION_ID,
       title: 'Route submission',
-      answers: { format: 'workshop', workshop_details: 'Hands-on' },
+      answers: SEEDED_WORKSHOP_ANSWERS,
       coSpeakers: [],
     })
     expect(submitted.status).toBe(200)

@@ -142,7 +142,7 @@ describe('public schedule API', () => {
     expect(body.sessions[0]).toEqual({
       submissionId: 'submission-1',
       title: 'My talk',
-      track: 'Talk',
+      track: 'AI Engineering',
       room: 'Main hall',
       day: '2026-05-13',
       start: '2026-05-13T09:00:00.000Z',

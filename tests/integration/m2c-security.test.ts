@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { env, reset } from 'cloudflare:test'
 
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
-import { applyMigrations, seedDemoConf } from './m2b-helpers'
+import { SEEDED_WORKSHOP_ANSWERS, applyMigrations, seedDemoConf } from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -161,7 +161,7 @@ describe('CSRF gate on all six authenticated mutations', () => {
         originDraftId: 'draft-csrf',
         formVersionId: DEMO_CONF_2026_VERSION_ID,
         title: 't',
-        answers: { format: 'workshop', workshop_details: 'x' },
+        answers: SEEDED_WORKSHOP_ANSWERS,
         coSpeakers: [],
       },
     },

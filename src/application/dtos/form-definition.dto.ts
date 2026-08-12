@@ -97,6 +97,15 @@ export interface FormDefinitionDto {
   readonly status: 'published'
   readonly contentHash: string
   readonly publishedAt: UtcInstant
+  /**
+   * The submission window, as the public portal needs to state it. The window was
+   * always enforced on the write path, so a visitor could spend an evening on a
+   * proposal and be refused by a date nothing had shown them. Capacity limits
+   * stay internal — a cap is the programme's business, a deadline is the
+   * submitter's.
+   */
+  readonly opensAt: UtcInstant | null
+  readonly closesAt: UtcInstant | null
   readonly pages: readonly FormPageDto[]
   readonly elements: readonly FormElementDto[]
   readonly conditionRules: readonly ElementRuleDto[]
@@ -167,6 +176,8 @@ export function toFormDefinitionDto(
     status: 'published',
     contentHash: version.contentHash,
     publishedAt: version.publishedAt,
+    opensAt: form.limits.opensAt,
+    closesAt: form.limits.closesAt,
     pages: content.pages.map(toFormPageDto),
     elements: content.elements.map(toFormElementDto),
     conditionRules: content.conditionRules.map(toElementRuleDto),

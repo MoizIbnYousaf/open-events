@@ -9,7 +9,12 @@ import { createAcceptUnitOfWork } from '../../src/db'
 import { DEMO_CONF_2026_ID } from '../../src/db'
 import type { SpeakerTask } from '../../src/domain'
 import { SPEAKER_TASK_KINDS } from '../../src/domain'
-import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
+import {
+  SEEDED_WORKSHOP_ANSWERS,
+  applyMigrations,
+  seedDemoConf,
+  splitSqlStatements,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -78,7 +83,7 @@ async function submitProposal(cookie: string): Promise<string> {
         originDraftId: draftId,
         formVersionId: 'f0000000-0000-4000-8000-000000000002',
         title: 'Workshop proposal',
-        answers: { format: 'workshop', workshop_details: 'Hands-on' },
+        answers: SEEDED_WORKSHOP_ANSWERS,
         coSpeakers: [{ name: 'Speaker B', email: CO_SPEAKER_EMAIL }],
       }),
     },

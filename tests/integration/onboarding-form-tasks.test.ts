@@ -6,7 +6,13 @@ import migration0007Sql from '../../migrations/0007_create_speaker_task_tables.s
 import migration0011Sql from '../../migrations/0011_add_form_tasks.sql?raw'
 import app from '../../src/server'
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
-import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
+import {
+  SEEDED_TALK_ANSWERS,
+  SEEDED_WORKSHOP_ANSWERS,
+  applyMigrations,
+  seedDemoConf,
+  splitSqlStatements,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -61,7 +67,7 @@ async function submitProposal(cookie: string): Promise<string> {
         originDraftId: draftId,
         formVersionId: DEMO_CONF_2026_VERSION_ID,
         title: 'Workshop proposal',
-        answers: { format: 'talk' },
+        answers: SEEDED_TALK_ANSWERS,
         coSpeakers: [{ name: 'Speaker B', email: CO_SPEAKER_EMAIL }],
       }),
     },
@@ -232,7 +238,12 @@ describe('speaker form read and completion', () => {
     expect(missingBody.status).toBe(400)
     const missingRequired = await completeTask(speaker, task.id, {})
     expect(missingRequired.status).toBe(400)
-    const hiddenRequired = await completeTask(speaker, task.id, { format: 'workshop' })
+    // Complete in every respect EXCEPT the question the Workshop format makes
+    // mandatory, so the 400 can only be the conditional require rule firing.
+    const hiddenRequired = await completeTask(speaker, task.id, {
+      ...SEEDED_TALK_ANSWERS,
+      format: 'Workshop',
+    })
     expect(hiddenRequired.status).toBe(400)
 
     const row = await env.DB.prepare('SELECT status, response FROM speaker_tasks WHERE id = ?')
@@ -244,24 +255,24 @@ describe('speaker form read and completion', () => {
 
   it('persists validated answers, completes idempotently, and clears readiness', async () => {
     const { speaker, organizer, task } = await acceptAndAssign()
-    const valid = await completeTask(speaker, task.id, { format: 'talk' })
+    const valid = await completeTask(speaker, task.id, SEEDED_TALK_ANSWERS)
     expect(valid.status).toBe(200)
     const body = (await valid.json()) as FormTaskBody
     expect(body.status).toBe('completed')
-    expect(body.response).toEqual({ format: 'talk' })
+    expect(body.response).toEqual(SEEDED_TALK_ANSWERS)
 
     const row = await env.DB.prepare('SELECT response FROM speaker_tasks WHERE id = ?')
       .bind(task.id)
       .first<{ response: string | null }>()
-    expect(JSON.parse(row?.response ?? 'null')).toEqual({ format: 'talk' })
+    expect(JSON.parse(row?.response ?? 'null')).toEqual(SEEDED_TALK_ANSWERS)
 
-    const repeat = await completeTask(speaker, task.id, { format: 'workshop' })
+    const repeat = await completeTask(speaker, task.id, SEEDED_WORKSHOP_ANSWERS)
     expect(repeat.status).toBe(200)
-    expect(((await repeat.json()) as FormTaskBody).response).toEqual({ format: 'talk' })
+    expect(((await repeat.json()) as FormTaskBody).response).toEqual(SEEDED_TALK_ANSWERS)
     const kept = await env.DB.prepare('SELECT response FROM speaker_tasks WHERE id = ?')
       .bind(task.id)
       .first<{ response: string | null }>()
-    expect(JSON.parse(kept?.response ?? 'null')).toEqual({ format: 'talk' })
+    expect(JSON.parse(kept?.response ?? 'null')).toEqual(SEEDED_TALK_ANSWERS)
 
     const readiness = await app.request(
       '/api/admin/readiness?eventSlug=demo-conf-2026',

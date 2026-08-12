@@ -5,7 +5,12 @@ import migration0006Sql from '../../migrations/0006_create_agenda_tables.sql?raw
 import migration0007Sql from '../../migrations/0007_create_speaker_task_tables.sql?raw'
 import migration0011Sql from '../../migrations/0011_add_form_tasks.sql?raw'
 import { DEMO_CONF_2026_VERSION_ID } from '../../src/db'
-import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
+import {
+  SEEDED_TALK_ANSWERS,
+  applyMigrations,
+  seedDemoConf,
+  splitSqlStatements,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -115,7 +120,7 @@ async function submitAs(cookie: string, title: string): Promise<string> {
         originDraftId: draftId,
         formVersionId: DEMO_CONF_2026_VERSION_ID,
         title,
-        answers: { format: 'talk' },
+        answers: SEEDED_TALK_ANSWERS,
         coSpeakers: [],
       }),
     },

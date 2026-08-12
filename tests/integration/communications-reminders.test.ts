@@ -8,7 +8,13 @@ import migration0011Sql from '../../migrations/0011_add_form_tasks.sql?raw'
 import migration0012Sql from '../../migrations/0012_add_message_kinds.sql?raw'
 import app from '../../src/server'
 import { DEMO_CONF_2026_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
-import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
+import {
+  SEEDED_TALK_ANSWERS,
+  applyMigrations,
+  migrationsUpTo,
+  seedDemoConf,
+  splitSqlStatements,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -76,14 +82,38 @@ async function insertKindRow(
 }
 
 describe('migration 0012 backfill', () => {
+  /**
+   * A backfill can only be observed against rows that PREDATE it, so this block
+   * deliberately stops the baseline at 0011 instead of applying the shared
+   * `applyMigrations`, which now runs the whole history including 0012 — rows
+   * inserted afterwards are born with a kind and there is nothing left to fill.
+   *
+   * The DemoConf seed is not used here either: it configures a question carrying
+   * two condition rules, which needs 0015, and 0015 sits after the very migration
+   * under test. A bare event row is all `captured_messages.event_id` requires.
+   */
   beforeEach(async () => {
     await reset()
-    await applyMigrations(env.DB)
-    await applyD1Migrations(env.DB, EXTRA_MIGRATIONS)
-    await seedDemoConf(env.DB)
+    await applyD1Migrations(env.DB, migrationsUpTo('0011_add_form_tasks.sql'))
+    await env.DB.prepare(
+      `INSERT INTO events (id, slug, name, timezone, status, starts_at, ends_at,
+         website_url, organizer_contact, venue, event_type)
+       VALUES (?, 'pre-0012-event', 'Pre 0012', 'UTC', 'draft',
+         '2026-05-13T08:00:00.000Z', '2026-05-15T17:00:00.000Z',
+         'https://example.test/pre-0012', 'programme@example.test', 'Venue', 'conference')`,
+    )
+      .bind(EVENT_ID)
+      .run()
   })
 
   it('backfills submission-linked rows to acceptance and unlinked rows to confirmation', async () => {
+    // Legacy shape: no `kind` column exists yet, which is what makes these rows
+    // legacy rather than merely old.
+    const columns = await env.DB.prepare(
+      `SELECT * FROM pragma_table_info('captured_messages')`,
+    ).all<{ name: string }>()
+    expect(columns.results.map((column) => column.name)).not.toContain('kind')
+
     await insertLegacyRow('message-start', null)
     await insertLegacyRow('message-acceptance', 'submission-legacy')
     await applyD1Migrations(env.DB, [MIGRATION_0012])
@@ -193,7 +223,7 @@ describe('reminder routes and audience fan-out', () => {
           originDraftId: draftId,
           formVersionId: DEMO_CONF_2026_VERSION_ID,
           title: 'Fan-out talk',
-          answers: { format: 'talk' },
+          answers: SEEDED_TALK_ANSWERS,
           coSpeakers: [{ name: 'Speaker B', email: 'Speaker-B@Example.Test' }],
         }),
       },
@@ -314,7 +344,7 @@ describe('reminder routes and audience fan-out', () => {
           originDraftId: draftId,
           formVersionId: DEMO_CONF_2026_VERSION_ID,
           title: 'Unaccepted talk',
-          answers: { format: 'talk' },
+          answers: SEEDED_TALK_ANSWERS,
           coSpeakers: [],
         }),
       },

@@ -15,7 +15,7 @@ const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
  * The two guards below are the security boundary, and they are absolute: a
  * deployed build answers 404 to every caller, organizer or not. Inside local
  * dev the session requirement was doing no security work and real harm — an
- * automated evaluator drives each persona in an isolated browser context, so a
+ * automated test harness drives each persona in an isolated browser context, so a
  * speaker or reviewer holds no organizer cookie and could never read the magic
  * link addressed to it. The whole speaker journey was unreachable to anything
  * but a single context holding every identity at once.

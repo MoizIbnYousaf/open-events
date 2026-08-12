@@ -18,13 +18,20 @@ VALUES (
 )
 ON CONFLICT(slug) DO NOTHING;
 
+-- Formats and tracks are the programme's own vocabulary, and the public call for
+-- papers offers these exact labels as its options. Tracks used to be a copy of
+-- the format list ('Workshop', 'Talk'), which made the track question meaningless
+-- — a submitter picked a format twice and the programme learned nothing about
+-- subject matter.
 INSERT INTO taxonomy_items (event_id, id, kind, key, label, position) VALUES
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000501', 'format', 'workshop', 'Workshop', 0),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000502', 'format', 'talk', 'Talk', 1),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000507', 'format', 'lightning-talk', 'Lightning talk', 2),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000505', 'room', 'main-hall', 'Main hall', 0),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000506', 'room', 'workshop-a', 'Workshop A', 1),
-  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000503', 'track', 'workshop', 'Workshop', 0),
-  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000504', 'track', 'talk', 'Talk', 1)
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000503', 'track', 'platform-infra', 'Platform & Infra', 0),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000504', 'track', 'ai-engineering', 'AI Engineering', 1),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000508', 'track', 'developer-experience', 'Developer Experience', 2)
 ON CONFLICT(event_id, id) DO NOTHING;
 
 INSERT INTO cfp_forms (event_id, id, slug, status, published_version_id,
@@ -71,27 +78,74 @@ INSERT INTO cfp_pages (event_id, id, version_id, position, kind, title, content)
    'Review your answers and submit.')
 ON CONFLICT(event_id, id) DO NOTHING;
 
+-- The call itself. This used to ask for a session format and, if that format was
+-- Workshop, some details — so a proposal could be submitted complete with nothing
+-- but a title, and the programme committee had nothing to review. Every question
+-- below is an ordinary builder element: an organizer can retitle, reorder, retype,
+-- or delete any of them, and the runtime reads the definition rather than knowing
+-- these keys.
+--
+-- Option values are the labels a submitter reads. They are what the answer stores
+-- and what the organizer sees on the submission, and they match the event's own
+-- format and track vocabulary above.
 INSERT INTO cfp_elements (event_id, id, version_id, page_id, position, kind,
                           field_key, label, required, max_length, question_type, options_json) VALUES
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000201',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
-   0, 'question', 'format', 'Session format', 1, NULL, 'single_choice', '["workshop","talk"]'),
+   0, 'question', 'format', 'Session format', 1, NULL, 'single_choice',
+   '["Talk","Workshop","Lightning talk"]'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000203',
+   'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
+   1, 'question', 'track', 'Track', 1, NULL, 'single_choice',
+   '["Platform & Infra","AI Engineering","Developer Experience"]'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000204',
+   'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
+   2, 'question', 'abstract', 'Abstract', 1, 2000, 'long_text', NULL),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000205',
+   'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
+   3, 'question', 'audience_level', 'Audience level', 1, NULL, 'single_choice',
+   '["Beginner","Intermediate","Advanced"]'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000206',
+   'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
+   4, 'question', 'key_takeaway', 'Key takeaway', 1, 200, 'short_text', NULL),
+  -- Optional on its own and made mandatory by rule when the format is Workshop.
+  -- The column flag stays 0 deliberately: a required-but-hidden field blocks a
+  -- Talk submission on a question the submitter was never shown.
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000202',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
-   1, 'question', 'workshop_details', 'Workshop details', 1, 2000, 'long_text', NULL)
+   5, 'question', 'workshop_details', 'Workshop details', 0, 2000, 'long_text', NULL),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000207',
+   'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000102',
+   0, 'question', 'speaker_bio', 'Speaker bio', 1, 1000, 'long_text', NULL),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000208',
+   'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000102',
+   1, 'question', 'job_title', 'Job title', 0, 120, 'short_text', NULL),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000209',
+   'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000102',
+   2, 'question', 'company', 'Company', 0, 120, 'short_text', NULL)
 ON CONFLICT(event_id, id) DO NOTHING;
 
+-- Two effects on one question, because "appears for a workshop" and "must be
+-- answered for a workshop" are different promises and the form has to keep both.
+-- Show alone leaves an optional field nobody fills; require alone makes a hidden
+-- question mandatory. The value is the option label, which is what the answer
+-- holds.
 INSERT INTO cfp_condition_rules (event_id, id, rule_id, version_id, element_id,
                                  group_index, condition_index, operator,
                                  operand_key, value_json, effect, position)
-VALUES (
-  'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
-  'f0000000-0000-4000-8000-000000000302',
-  'f0000000-0000-4000-8000-000000000301',
-  'f0000000-0000-4000-8000-000000000002',
-  'f0000000-0000-4000-8000-000000000202',
-  0, 0, 'eq', 'format', '"workshop"', 'show', 0
-)
+VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'f0000000-0000-4000-8000-000000000302',
+   'f0000000-0000-4000-8000-000000000301',
+   'f0000000-0000-4000-8000-000000000002',
+   'f0000000-0000-4000-8000-000000000202',
+   0, 0, 'eq', 'format', '"Workshop"', 'show', 0),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'f0000000-0000-4000-8000-000000000304',
+   'f0000000-0000-4000-8000-000000000303',
+   'f0000000-0000-4000-8000-000000000002',
+   'f0000000-0000-4000-8000-000000000202',
+   0, 0, 'eq', 'format', '"Workshop"', 'require', 1)
 ON CONFLICT(event_id, id) DO NOTHING;
 
 INSERT INTO cfp_routing_rules (event_id, id, version_id, position,
@@ -101,9 +155,11 @@ VALUES (
   'f0000000-0000-4000-8000-000000000401',
   'f0000000-0000-4000-8000-000000000002',
   0,
-  '{"groups":[{"conditions":[{"operator":"eq","operandKey":"format","value":"workshop"}]}]}',
+  -- Routing reads the submitted answer, so it matches the option label the
+  -- submitter actually chose; the target is still a taxonomy KEY.
+  '{"groups":[{"conditions":[{"operator":"eq","operandKey":"track","value":"Platform & Infra"}]}]}',
   'assign_track',
-  'workshop'
+  'platform-infra'
 )
 ON CONFLICT(event_id, id) DO NOTHING;
 

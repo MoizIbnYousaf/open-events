@@ -11,6 +11,11 @@ import migration0007Sql from '../../migrations/0007_create_speaker_task_tables.s
 import migration0008Sql from '../../migrations/0008_create_uploaded_files_table.sql?raw'
 import migration0009Sql from '../../migrations/0009_add_captured_message_submission.sql?raw'
 import migration0010Sql from '../../migrations/0010_create_evaluation_tables.sql?raw'
+import migration0011Sql from '../../migrations/0011_add_form_tasks.sql?raw'
+import migration0012Sql from '../../migrations/0012_add_message_kinds.sql?raw'
+import migration0013Sql from '../../migrations/0013_add_contact_bio.sql?raw'
+import migration0014Sql from '../../migrations/0014_widen_uploaded_file_kinds.sql?raw'
+import migration0015Sql from '../../migrations/0015_fix_condition_rule_unique_grain.sql?raw'
 import seedSql from '../../src/db/seed.sql?raw'
 import type { CoSpeakerIntent, SubmitBatchInput } from '../../src/application'
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
@@ -42,7 +47,30 @@ export const MIGRATIONS: D1Migration[] = [
     queries: splitSqlStatements(migration0009Sql),
   },
   { name: '0010_create_evaluation_tables.sql', queries: splitSqlStatements(migration0010Sql) },
+  { name: '0011_add_form_tasks.sql', queries: splitSqlStatements(migration0011Sql) },
+  { name: '0012_add_message_kinds.sql', queries: splitSqlStatements(migration0012Sql) },
+  { name: '0013_add_contact_bio.sql', queries: splitSqlStatements(migration0013Sql) },
+  {
+    name: '0014_widen_uploaded_file_kinds.sql',
+    queries: splitSqlStatements(migration0014Sql),
+  },
+  {
+    name: '0015_fix_condition_rule_unique_grain.sql',
+    queries: splitSqlStatements(migration0015Sql),
+  },
 ]
+
+/**
+ * The baseline truncated after `lastName`, for a suite that must stand on the
+ * schema as it was BEFORE some migration — a backfill can only be observed
+ * against rows that predate it. Throws on an unknown name so a rename cannot
+ * silently produce an empty prefix that tests nothing.
+ */
+export function migrationsUpTo(lastName: string): D1Migration[] {
+  const index = MIGRATIONS.findIndex((migration) => migration.name === lastName)
+  if (index < 0) throw new Error(`No such migration in the baseline: '${lastName}'`)
+  return MIGRATIONS.slice(0, index + 1)
+}
 
 /** Applies the baseline migrations to the pool D1 database. */
 export async function applyMigrations(db: D1Database): Promise<void> {
@@ -159,6 +187,37 @@ export async function expectRejects(
 }
 
 /**
+ * A complete set of answers to the SEEDED call for papers, as a speaker would
+ * leave them.
+ *
+ * The published form asks for a real proposal — abstract, track, audience level
+ * and key takeaway are required, and the participant step asks for a bio — and
+ * choice answers hold the option VALUE a submitter picked, which is the
+ * presentable label the programme's own format and track vocabulary uses. A
+ * fixture answering `format: 'workshop'` is not merely stale: it is an answer no
+ * option offers, and the same server-side validation that protects a real
+ * submitter rejects it.
+ *
+ * Two variants, because the format is what drives the conditional question:
+ * Workshop makes `workshop_details` visible AND required, Talk leaves it hidden
+ * and unasked.
+ */
+export const SEEDED_TALK_ANSWERS = {
+  format: 'Talk',
+  track: 'Platform & Infra',
+  abstract: 'How incremental builds cut a 40-minute CI pipeline down to minutes.',
+  audience_level: 'Intermediate',
+  key_takeaway: 'Which incremental-build investments actually pay off.',
+  speaker_bio: 'Platform engineer working on build systems.',
+} as const
+
+export const SEEDED_WORKSHOP_ANSWERS = {
+  ...SEEDED_TALK_ANSWERS,
+  format: 'Workshop',
+  workshop_details: 'Laptops with Node 20 and a checkout of the sample repository.',
+} as const
+
+/**
  * Builds a valid `SubmitBatchInput` against the seeded DemoConf 2026 published
  * form/version. Override the seeded ids for gate tests.
  */
@@ -193,9 +252,9 @@ export function buildSubmitBatch(
     originDraftId,
     status: 'pending',
     title: opts.title ?? 'Workshop proposal',
-    answers: opts.answers ?? { format: 'workshop', title: 'Workshop proposal' },
+    answers: opts.answers ?? SEEDED_WORKSHOP_ANSWERS,
     contentHash: 'a'.repeat(64),
-    routing: { actionKind: 'assign_track', actionTarget: 'workshop' },
+    routing: { actionKind: 'assign_track', actionTarget: 'platform-infra' },
     createdAt: submittedAt,
     submittedAt,
   }

@@ -9,7 +9,12 @@ import migration0011Sql from '../../migrations/0011_add_form_tasks.sql?raw'
 import migration0012Sql from '../../migrations/0012_add_message_kinds.sql?raw'
 import app from '../../src/server'
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
-import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
+import {
+  SEEDED_TALK_ANSWERS,
+  applyMigrations,
+  seedDemoConf,
+  splitSqlStatements,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -73,7 +78,7 @@ async function submitAccepted(token: string): Promise<string> {
         originDraftId: draftId,
         formVersionId: DEMO_CONF_2026_VERSION_ID,
         title: 'Scope talk',
-        answers: { format: 'talk' },
+        answers: SEEDED_TALK_ANSWERS,
         coSpeakers: [],
       }),
     },

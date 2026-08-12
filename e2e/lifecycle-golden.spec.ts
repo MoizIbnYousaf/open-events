@@ -432,8 +432,17 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
       await expect(speakerPage).toHaveURL(`/cfp/${EVENT_SLUG}/${FORM_SLUG}`)
 
       await speakerPage.getByRole('button', { name: 'Next' }).click()
-      await speakerPage.getByLabel('Session format').selectOption('workshop')
+      // The published call asks for a whole proposal: every required question has
+      // to be answered before the wizard will advance, and Workshop is the format
+      // whose rule makes the conditional question appear and mandatory.
+      await speakerPage.getByLabel('Session format').selectOption('Workshop')
+      await speakerPage.getByLabel('Track', { exact: true }).selectOption('Platform & Infra')
       await speakerPage.getByLabel('Proposal title').fill(title)
+      await speakerPage
+        .getByLabel('Abstract')
+        .fill('A hands-on lifecycle session on incremental builds.')
+      await speakerPage.getByLabel('Audience level').selectOption('Intermediate')
+      await speakerPage.getByLabel('Key takeaway').fill('Where incremental builds pay off.')
       await speakerPage.getByLabel('Workshop details').fill('A hands-on lifecycle workshop.')
       await speakerPage.getByRole('button', { name: 'Save' }).click()
       await expect(speakerPage.getByRole('status').filter({ hasText: 'Saved' })).toContainText(
@@ -442,6 +451,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
       // Committed wizard ordering (m2d-golden): the co-speaker card lives on
       // the participant step, two Next presses after the proposal fields.
       await speakerPage.getByRole('button', { name: 'Next' }).click()
+      await speakerPage.getByLabel('Speaker bio').fill('Platform engineer on build systems.')
       await speakerPage.getByRole('button', { name: 'Next' }).click()
       if (withCoSpeaker) {
         await speakerPage.getByRole('button', { name: 'Add co-speaker' }).click()

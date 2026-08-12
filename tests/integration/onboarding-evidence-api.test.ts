@@ -9,7 +9,12 @@ import migration0013Sql from '../../migrations/0013_add_contact_bio.sql?raw'
 import migration0014Sql from '../../migrations/0014_widen_uploaded_file_kinds.sql?raw'
 import app from '../../src/server'
 import { DEMO_CONF_2026_VERSION_ID } from '../../src/db'
-import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
+import {
+  SEEDED_TALK_ANSWERS,
+  applyMigrations,
+  seedDemoConf,
+  splitSqlStatements,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -60,7 +65,7 @@ async function acceptedSpeaker(): Promise<{ speaker: string; organizer: string }
         originDraftId: draftId,
         formVersionId: DEMO_CONF_2026_VERSION_ID,
         title: 'Evidence talk',
-        answers: { format: 'talk' },
+        answers: SEEDED_TALK_ANSWERS,
         coSpeakers: [],
       }),
     },

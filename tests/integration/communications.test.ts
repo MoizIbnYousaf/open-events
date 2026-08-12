@@ -9,7 +9,12 @@ import migration0012Sql from '../../migrations/0012_add_message_kinds.sql?raw'
 import migration0009Sql from '../../migrations/0009_add_captured_message_submission.sql?raw'
 import app from '../../src/server'
 import { DEMO_CONF_2026_FORM_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
-import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
+import {
+  SEEDED_WORKSHOP_ANSWERS,
+  applyMigrations,
+  seedDemoConf,
+  splitSqlStatements,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -108,7 +113,7 @@ async function createSubmission(cookie: string, title: string): Promise<string> 
         originDraftId: draftId,
         formVersionId: DEMO_CONF_2026_VERSION_ID,
         title,
-        answers: { format: 'workshop', workshop_details: 'Hands-on' },
+        answers: SEEDED_WORKSHOP_ANSWERS,
         coSpeakers: [],
       }),
     },

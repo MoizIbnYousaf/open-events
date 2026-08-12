@@ -26,6 +26,8 @@ const PUBLISHED_FORM: FormDefinitionDto = {
   status: 'published',
   contentHash: 'a'.repeat(64),
   publishedAt: '2026-08-08T09:00:00.000Z',
+  opensAt: '2026-01-01T00:00:00.000Z',
+  closesAt: '2026-12-31T23:59:59.000Z',
   pages: [
     { id: 'p-1', position: 0, kind: 'welcome', title: 'Welcome', content: 'Introduction' },
     { id: 'p-2', position: 1, kind: 'info', title: 'Proposal information', content: '' },
@@ -185,7 +187,7 @@ async function mountWizard() {
  *
  * How we get there depends on whether a draft is being restored, and the caller
  * always knows which: a restored draft moves the wizard to the step holding it
- * (CFP-07), while a fresh form waits on Welcome for a Next. Deciding by reading
+ * holding it, while a fresh form waits on Welcome for a Next. Deciding by reading
  * `aria-current` instead is a race — the restore lands in an effect, so a read
  * that happens a tick early presses Next INTO the transition and overshoots to
  * the following step.

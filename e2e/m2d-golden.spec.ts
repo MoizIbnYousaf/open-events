@@ -274,8 +274,19 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
 
     // 4. Conditional reveal + required fields + save + refresh/resume.
     await speakerPage.getByRole('button', { name: 'Next' }).click()
-    await speakerPage.getByLabel('Session format').selectOption('workshop')
+    // The call asks for a real proposal now: format, track, abstract, audience
+    // level and a key takeaway are all required, and Workshop is the format that
+    // makes the conditional question appear AND mandatory.
+    await speakerPage.getByLabel('Session format').selectOption('Workshop')
+    await speakerPage.getByLabel('Track', { exact: true }).selectOption('Platform & Infra')
     await speakerPage.getByLabel('Proposal title').fill('My talk')
+    await speakerPage
+      .getByLabel('Abstract')
+      .fill('How incremental builds cut a 40-minute CI pipeline down to minutes.')
+    await speakerPage.getByLabel('Audience level').selectOption('Intermediate')
+    await speakerPage
+      .getByLabel('Key takeaway')
+      .fill('Which incremental-build investments actually pay off.')
     await expect(speakerPage.getByLabel('Workshop details')).toBeVisible()
     await speakerPage
       .getByLabel('Workshop details')
@@ -289,14 +300,16 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     await expect(
       speakerPage.getByRole('heading', { level: 1, name: 'Call for papers' }),
     ).toBeVisible()
-    await speakerPage.getByRole('button', { name: 'Next' }).click()
-    await expect(speakerPage.getByLabel('Session format')).toHaveValue('workshop')
+    // A saved draft now lands on the step holding the work, so no Next is needed
+    // to reach it.
+    await expect(speakerPage.getByLabel('Session format')).toHaveValue('Workshop')
     await expect(speakerPage.getByLabel('Workshop details')).toHaveValue(
       'An interactive workshop on accessibility.',
     )
 
-    // 5. Co-speaker + submit + focused confirmation (single h1).
+    // 5. Participant step, then co-speaker + submit + focused confirmation.
     await speakerPage.getByRole('button', { name: 'Next' }).click()
+    await speakerPage.getByLabel('Speaker bio').fill('Platform engineer working on build systems.')
     await speakerPage.getByRole('button', { name: 'Next' }).click()
     await speakerPage.getByRole('button', { name: 'Add co-speaker' }).click()
     await speakerPage.getByLabel('First name').fill('Ada')

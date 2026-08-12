@@ -127,12 +127,12 @@ export function useSaveDraft() {
  * A visitor can fill four steps of the call for papers before anything asks
  * who they are, and the first Save is what asks. Replacing the wizard with the
  * "identify yourself" state is the honest answer — but the editor lives in
- * memory, so the trip to /start used to take every typed word with it. The
- * evaluator scored that as silent data loss, correctly.
+ * memory, so the trip to /start used to take every typed word with it. That is
+ * silent data loss.
  *
  * Keyed by form VERSION, not form id: a republished form can drop or rename
  * fields, and rehydrating answers into questions that no longer exist would be
- * a different kind of lie. `sessionStorage` matches the evaluator draft stash —
+ * a different kind of lie. `sessionStorage` matches the evaluation draft stash —
  * the work belongs to this tab's visit, not to the machine.
  */
 export interface CfpDraftStash {

@@ -80,34 +80,49 @@ describe('D1 adapter row decoding round-trips', () => {
       DEMO_CONF_2026_VERSION_ID,
     )
     expect(content.pages.map((page) => page.position)).toEqual([0, 1, 2, 3])
-    expect(content.elements.map((element) => element.fieldKey)).toEqual([
+    // Sorted: this case is about faithful DECODING, and element order is the
+    // content loader's contract, asserted where that ordering matters.
+    expect([...content.elements.map((element) => element.fieldKey)].sort()).toEqual([
+      'abstract',
+      'audience_level',
+      'company',
       'format',
+      'job_title',
+      'key_takeaway',
+      'speaker_bio',
+      'track',
       'workshop_details',
     ])
-    expect(content.conditionRules).toHaveLength(1)
-    expect(content.conditionRules[0]).toMatchObject({
-      effect: 'show',
-      groups: [
+    // The conditional question carries both effects, so it decodes to two rules.
+    expect(content.conditionRules).toHaveLength(2)
+    expect([...content.conditionRules].map((rule) => rule.effect).sort()).toEqual([
+      'require',
+      'show',
+    ])
+    for (const rule of content.conditionRules) {
+      expect(rule.groups).toEqual([
         {
           groupIndex: 0,
-          conditions: [{ operator: 'eq', operandKey: 'format', value: 'workshop' }],
+          conditions: [{ operator: 'eq', operandKey: 'format', value: 'Workshop' }],
         },
-      ],
-    })
+      ])
+    }
     expect(content.routingRules).toHaveLength(1)
     expect(content.routingRules[0]).toMatchObject({
       actionKind: 'assign_track',
-      actionTarget: 'workshop',
+      actionTarget: 'platform-infra',
     })
 
     const taxonomy = await createTaxonomyRepository(env.DB).listByEvent(DEMO_CONF_2026_ID)
     expect(taxonomy.map((item) => `${item.kind}:${item.key}`)).toEqual([
       'format:workshop',
       'format:talk',
+      'format:lightning-talk',
       'room:main-hall',
       'room:workshop-a',
-      'track:workshop',
-      'track:talk',
+      'track:platform-infra',
+      'track:ai-engineering',
+      'track:developer-experience',
     ])
   })
 

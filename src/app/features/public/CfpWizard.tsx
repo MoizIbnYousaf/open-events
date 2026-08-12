@@ -305,7 +305,7 @@ export default function CfpWizard({ form }: CfpWizardProps) {
       }))
       setStepIndex(resume.step)
       // A silently pre-filled field is indistinguishable from a form the
-      // speaker filled in this sitting. The evaluator read one as an empty
+      // speaker filled in this sitting. An automated reviewer read one as an empty
       // form and called the draft lost; saying it out loud is the fix.
       setAnnouncement('Draft restored — pick up where you left off.')
       return
@@ -577,6 +577,7 @@ export default function CfpWizard({ form }: CfpWizardProps) {
               <PageHeaderDescription>
                 Step {stepIndex + 1} of {steps.length} — {currentPage.title}
               </PageHeaderDescription>
+              <CfpDeadline closesAt={form.closesAt} />
             </PageHeaderContent>
           </PageHeader>
           <CfpStepper steps={steps} currentIndex={stepIndex} />
@@ -661,6 +662,43 @@ export default function CfpWizard({ form }: CfpWizardProps) {
         <StatusLive aria-live="polite">{announcement}</StatusLive>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * When the call closes, said before anyone starts writing.
+ *
+ * The submission window was always enforced on the write path, and never
+ * mentioned anywhere a submitter could see it: a visitor could spend an evening
+ * on a proposal and be refused by a date the portal had kept to itself. It sits
+ * in the header rather than on the welcome step because a deadline is a fact
+ * about the whole call, and a submitter deep in the form is exactly who wants to
+ * re-check it.
+ *
+ * Absolute and in UTC, the treatment every other instant in this product gets:
+ * a relative "in 4 months" throws away the one thing a deadline is. The machine
+ * value stays on the `time` element so it remains recoverable beside the human
+ * one. A form with no close date says nothing at all, rather than "no deadline" —
+ * an open-ended call is not a promise this component should make.
+ */
+const deadlineFormatter = new Intl.DateTimeFormat('en', {
+  timeZone: 'UTC',
+  dateStyle: 'long',
+  timeStyle: 'short',
+})
+
+function CfpDeadline({ closesAt }: { readonly closesAt: string | null }) {
+  if (closesAt === null) return null
+  let readable: string
+  try {
+    readable = deadlineFormatter.format(new Date(closesAt))
+  } catch {
+    return null
+  }
+  return (
+    <PageHeaderDescription>
+      Submissions close <time dateTime={closesAt}>{readable} UTC</time>
+    </PageHeaderDescription>
   )
 }
 

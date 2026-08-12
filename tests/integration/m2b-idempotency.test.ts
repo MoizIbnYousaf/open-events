@@ -15,11 +15,12 @@ import { DEMO_CONF_2026_ID, DEMO_CONF_2026_VERSION_ID } from '../../src/db'
 import { MAX_CO_SPEAKERS } from '../../src/domain'
 import { FIXED_NOW, NOW, createSubmitterSession } from '../unit/helpers/fixtures'
 import {
+  SEEDED_CONTACTS,
+  SEEDED_WORKSHOP_ANSWERS,
   applyMigrations,
   buildSubmitBatch,
   countRows,
   expectRejects,
-  SEEDED_CONTACTS,
   seedDemoConf,
 } from './m2b-helpers'
 
@@ -97,10 +98,10 @@ describe('originDraftId idempotent retry', () => {
 
     expect(retry.outcome).toBe('existing-idempotent')
     if (retry.outcome === 'existing-idempotent') {
-      expect(retry.submission.answers).toEqual({ format: 'workshop', title: 'Workshop proposal' })
+      expect(retry.submission.answers).toEqual(SEEDED_WORKSHOP_ANSWERS)
       expect(retry.submission.routing).toEqual({
         actionKind: 'assign_track',
-        actionTarget: 'workshop',
+        actionTarget: 'platform-infra',
       })
     }
   })
@@ -132,7 +133,7 @@ describe('originDraftId idempotent retry', () => {
       expect(retry.submission.answers).toEqual(answers)
       expect(retry.submission.routing).toEqual({
         actionKind: 'assign_track',
-        actionTarget: 'workshop',
+        actionTarget: 'platform-infra',
       })
     }
   })
@@ -290,7 +291,7 @@ function buildInput(overrides: Partial<SubmitInput> = {}): SubmitInput {
     originDraftId: 'draft-origin-1',
     formVersionId: DEMO_CONF_2026_VERSION_ID,
     title: 'Workshop proposal',
-    answers: { format: 'workshop', workshop_details: 'Hands-on lab' },
+    answers: SEEDED_WORKSHOP_ANSWERS,
     coSpeakers: [],
     ...overrides,
   }

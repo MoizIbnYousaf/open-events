@@ -6,7 +6,12 @@ import migration0007Sql from '../../migrations/0007_create_speaker_task_tables.s
 import migration0011Sql from '../../migrations/0011_add_form_tasks.sql?raw'
 import app from '../../src/server'
 import { DEMO_CONF_2026_ID } from '../../src/db'
-import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
+import {
+  SEEDED_WORKSHOP_ANSWERS,
+  applyMigrations,
+  seedDemoConf,
+  splitSqlStatements,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -102,7 +107,7 @@ async function submitProposal(cookie: string, title: string): Promise<string> {
         originDraftId: draftId,
         formVersionId: 'f0000000-0000-4000-8000-000000000002',
         title,
-        answers: { format: 'workshop', workshop_details: 'Hands-on' },
+        answers: SEEDED_WORKSHOP_ANSWERS,
         coSpeakers: [],
       }),
     },
@@ -203,7 +208,11 @@ describe('GET /api/admin/events/:slug/agenda', () => {
     expect(board.days[0]?.slots.at(-1)).toEqual({ startTime: '23:00', endTime: '00:00' })
     expect(board.days[2]?.slots.at(-1)).toEqual({ startTime: '16:00', endTime: '17:00' })
     expect(board.rooms.map((room) => room.key)).toEqual(['main-hall', 'workshop-a'])
-    expect(board.tracks.map((track) => track.key)).toEqual(['workshop', 'talk'])
+    expect(board.tracks.map((track) => track.key)).toEqual([
+      'platform-infra',
+      'ai-engineering',
+      'developer-experience',
+    ])
     expect(board.sessions).toHaveLength(1)
     expect(board.sessions[0]).toMatchObject({
       submissionId,
@@ -256,7 +265,7 @@ describe('PUT /api/admin/events/:slug/agenda/:submissionId', () => {
       roomId: ROOM_MAIN_HALL,
       roomLabel: 'Main hall',
       trackId: TRACK_TALK,
-      trackLabel: 'Talk',
+      trackLabel: 'AI Engineering',
       position: 0,
       status: 'draft',
       assignment: 'scheduled',
@@ -563,7 +572,7 @@ describe('placement and publish reach the public schedule', () => {
       {
         submissionId,
         title: 'Workshop proposal',
-        track: 'Talk',
+        track: 'AI Engineering',
         room: 'Workshop A',
         day: DAY,
         start: START,

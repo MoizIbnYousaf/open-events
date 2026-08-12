@@ -63,6 +63,11 @@ describe('migration apply from an empty local D1', () => {
       '0008_create_uploaded_files_table.sql',
       '0009_add_captured_message_submission.sql',
       '0010_create_evaluation_tables.sql',
+      '0011_add_form_tasks.sql',
+      '0012_add_message_kinds.sql',
+      '0013_add_contact_bio.sql',
+      '0014_widen_uploaded_file_kinds.sql',
+      '0015_fix_condition_rule_unique_grain.sql',
     ])
 
     const tables = await env.DB.prepare(
@@ -98,10 +103,13 @@ describe('migration apply from an empty local D1', () => {
     expect(await countRows(env.DB, 'cfp_forms')).toBe(1)
     expect(await countRows(env.DB, 'cfp_form_versions')).toBe(1)
     expect(await countRows(env.DB, 'cfp_pages')).toBe(4)
-    expect(await countRows(env.DB, 'cfp_elements')).toBe(2)
-    expect(await countRows(env.DB, 'cfp_condition_rules')).toBe(1)
+    // Nine questions across the proposal and participant steps, and the
+    // conditional one carries BOTH a show and a require rule (two rows).
+    expect(await countRows(env.DB, 'cfp_elements')).toBe(9)
+    expect(await countRows(env.DB, 'cfp_condition_rules')).toBe(2)
     expect(await countRows(env.DB, 'cfp_routing_rules')).toBe(1)
-    expect(await countRows(env.DB, 'taxonomy_items')).toBe(6)
+    // Three formats, three tracks, two rooms.
+    expect(await countRows(env.DB, 'taxonomy_items')).toBe(8)
     expect(await countRows(env.DB, 'contacts')).toBe(SEEDED_CONTACTS)
     expect(await countRows(env.DB, 'evaluation_criteria')).toBe(1)
     expect(await countRows(env.DB, 'evaluation_rounds')).toBe(1)

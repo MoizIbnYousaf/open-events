@@ -10,9 +10,8 @@ import {
  * A visitor who fills the public call for papers and presses Save without a
  * speaker session is shown one honest page state — and used to lose every word
  * they had typed, because the wizard's editor lives in memory and the identity
- * detour navigates away from it. The evaluator scored that as a critical
- * silent-data-loss defect, and it is: the form invites four steps of work
- * before it ever mentions signing in.
+ * detour navigates away from it. That is silent data loss, and a serious one:
+ * the form invites four steps of work before it ever mentions signing in.
  *
  * The stash is what makes that detour a resumption. It mirrors the evaluator's
  * own draft stash — same storage, same tolerance for a storage-less browser —

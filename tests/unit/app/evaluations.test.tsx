@@ -719,6 +719,35 @@ describe('evaluations UI', () => {
   })
 
   /**
+   * The rubric asks for this in the reviewer's own scoring view, and the point
+   * of it is that the proposal stops being asked about — so the assertion is
+   * that the request is made from there, not that a button exists.
+   */
+  it('lets the reviewer declare a conflict from the card they are scoring', async () => {
+    const user = userEvent.setup()
+    let recused: unknown = null
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) return jsonResponse([UNSCORED_ROW])
+      if (method === 'POST' && url === `${EVALUATIONS_URL}/recuse`) {
+        recused = JSON.parse(String(init?.body))
+        return new Response(null, { status: 204 })
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /declare a conflict of interest/i }))
+    // Confirmed rather than instant: it cannot be undone from this surface, and
+    // the dialog says so.
+    await user.click(await screen.findByRole('button', { name: /^declare a conflict$/i }))
+
+    await waitFor(() =>
+      expect(recused).toEqual({ submissionId: 'submission-1', roundId: 'round-1' }),
+    )
+  })
+
+  /**
    * A committee running two rounds at once hands one reviewer the same proposal
    * twice, each round asking its own questions. Everything on this screen used
    * to be identified by the proposal alone, so the two cards collided: one

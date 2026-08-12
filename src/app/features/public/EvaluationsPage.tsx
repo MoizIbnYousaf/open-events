@@ -25,6 +25,7 @@ import { Skeleton } from '../../../components/ui/skeleton'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { InboxIcon } from '../../../components/ui/icons'
 import { StatusLive } from '../../../components/ui/status-live'
+import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
 import { Textarea } from '../../../components/ui/textarea'
 import { getApiErrorCode } from '../../api/admin-events'
 import {
@@ -34,6 +35,7 @@ import {
   recoverEvaluationSession,
   stashEvaluationDraft,
   usePublicEvaluations,
+  useRecuseFromEvaluation,
   useSubmitEvaluation,
   type EvaluationRow,
   type EvaluationRowCriterion,
@@ -75,6 +77,51 @@ const recordedAtFormatter = new Intl.DateTimeFormat('en-US', {
  */
 function rowKey(row: EvaluationRow): string {
   return `${row.submissionId}:${row.roundId}`
+}
+
+/**
+ * Stepping back from a proposal you should not be judging.
+ *
+ * Behind a confirmation because it cannot be undone from here: declaring a
+ * conflict is a statement about a relationship, not a filter to toggle, and an
+ * organizer who needs it reversed is having a conversation rather than
+ * clicking. The wording says what actually happens — the proposal leaves the
+ * queue — instead of the euphemism a reviewer would have to interpret.
+ */
+function RecuseControl({ row }: { readonly row: EvaluationRow }) {
+  const queryClient = useQueryClient()
+  const recuse = useRecuseFromEvaluation()
+  const [asking, setAsking] = useState(false)
+
+  return (
+    <>
+      <Button type="button" variant="outline" onClick={() => setAsking(true)}>
+        Declare a conflict of interest
+      </Button>
+      {recuse.error != null ? (
+        <AlertLive>That conflict could not be recorded.</AlertLive>
+      ) : null}
+      <ConfirmDialog
+        open={asking}
+        onOpenChange={setAsking}
+        title="Declare a conflict of interest?"
+        description={`“${row.sessionTitle}” will leave your queue and you will not be asked to score it. This cannot be undone here — ask an organizer if you change your mind.`}
+        confirmLabel="Declare a conflict"
+        pending={recuse.isPending}
+        onConfirm={() => {
+          recuse.mutate(
+            { submissionId: row.submissionId, roundId: row.roundId },
+            {
+              onSuccess: () => {
+                setAsking(false)
+                void queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all })
+              },
+            },
+          )
+        }}
+      />
+    </>
+  )
 }
 
 function formatRecordedAt(value: string): string {
@@ -384,10 +431,11 @@ function TypedEvaluationCard({
         ) : null}
         <StatusLive aria-label="Review save state">{submittedMessage}</StatusLive>
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex-wrap gap-3">
         <Button type="button" pending={submit.isPending} disabled={closed} onClick={handleSubmit}>
           {submit.isPending ? 'Saving…' : 'Save review'}
         </Button>
+        {closed ? null : <RecuseControl row={row} />}
       </CardFooter>
     </Card>
   )
@@ -592,6 +640,7 @@ function EvaluationCard({
             the same sentence slot, so the submit result is never spoken twice.
             Politeness is declared here rather than inherited silently, so the
             announcement contract is legible where the outcome is written. */}
+        {row.roundStatus === 'closed' ? null : <RecuseControl row={row} />}
         <StatusLive aria-live="polite">
           {submit.isPending ? 'Submitting your evaluation…' : submittedMessage}
         </StatusLive>

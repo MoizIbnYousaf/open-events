@@ -185,6 +185,13 @@ export interface DistributeRoundResultDto {
   readonly unassigned: number
 }
 
+/** Which piece of reading a reviewer is stepping back from. */
+export interface RecuseInput {
+  readonly submissionId: SubmissionId
+  /** Absent means the one round they hold it in, which is the usual case. */
+  readonly roundId?: EvaluationRoundId
+}
+
 export interface AssignEvaluatorInput {
   readonly evaluatorEmail: string
   /** Defaults to the live round: the highest-numbered open round. */
@@ -560,6 +567,7 @@ export class EvaluationService {
         submissionId: pairing.submissionId,
         evaluatorContactId: pairing.contactId,
         createdAt: now,
+        recusedAt: null,
       })
     }
 
@@ -865,6 +873,7 @@ export class EvaluationService {
       submissionId: submission.id,
       evaluatorContactId: contact.id,
       createdAt: this.#clock.now(),
+      recusedAt: null,
     })
     return toEvaluationAssignmentDto(assignment, contact.email, contact.name)
   }
@@ -1094,7 +1103,12 @@ export class EvaluationService {
       // One row per submission AND round. A reviewer sitting on two rounds is
       // being asked two different sets of questions, and showing only the
       // newest round meant the round they were seated in never reached them.
-      selectQueueAssignments(assignments, rounds).map(async (assignment) => {
+      // Anything they have recused themselves from is gone from the queue —
+      // the point of declaring a conflict is to stop being asked.
+      selectQueueAssignments(
+        assignments.filter((assignment) => assignment.recusedAt === null),
+        rounds,
+      ).map(async (assignment) => {
         // Each row asks whatever ITS round asks. Two rounds of one event may
         // carry different scorecards, so the shape is decided per assignment
         // rather than once for the whole queue.
@@ -1129,15 +1143,25 @@ export class EvaluationService {
     // which is what every caller predating round scorecards means. Both resolve
     // to an assignment the caller actually holds, so naming a round they were
     // never put on is refused exactly like naming someone else's submission.
+    // Reading they have stepped back from is set aside FIRST, so a reviewer who
+    // recused themselves in one round can still answer another. Resolving over
+    // every assignment and refusing afterwards would have let a recusal in the
+    // newest round block a review they legitimately owe in an older one.
+    const live = assignments.filter((candidate) => candidate.recusedAt === null)
+    const matches = (candidate: EvaluationAssignment): boolean =>
+      candidate.submissionId === input.submissionId &&
+      (input.roundId === undefined || candidate.roundId === input.roundId)
     const assignment =
       input.roundId === undefined
-        ? selectSurfaceAssignments(assignments, rounds).get(input.submissionId)
-        : assignments.find(
-            (candidate) =>
-              candidate.submissionId === input.submissionId &&
-              candidate.roundId === input.roundId,
-          )
+        ? selectSurfaceAssignments(live, rounds).get(input.submissionId)
+        : live.find(matches)
     if (assignment === undefined) {
+      // Refused with the real reason rather than a flat "not yours", and
+      // refused on the SERVER rather than merely hidden: a surface that stops
+      // offering a control still receives whatever a stale tab sends.
+      if (assignments.some(matches)) {
+        throw new ApplicationError('conflict', 'You have stepped back from that proposal')
+      }
       throw new ApplicationError('forbidden', 'You are not assigned to that submission')
     }
 
@@ -1181,6 +1205,37 @@ export class EvaluationService {
       updatedAt: now,
     })
     return this.#toRow(assignment, criterion, assignments, rounds)
+  }
+
+  /**
+   * A reviewer declares a conflict of interest and steps back from one
+   * proposal.
+   *
+   * The honest response to "I know this person" is to stop asking them, not to
+   * let them score it anyway and hope. So the proposal leaves their queue: a
+   * recused assignment is no longer something they can answer, and the write
+   * path refuses it for the same reason the queue stops offering it.
+   *
+   * The assignment is kept rather than deleted. It is the record that this
+   * reviewer was asked and stepped back, it is what stops a later share-out
+   * handing them the same proposal to refuse a second time, and it is the row
+   * any answer they had already recorded points at.
+   *
+   * Reversal is deliberately not offered here. Declaring a conflict is a
+   * statement about a relationship, not a filter to toggle, and an organizer
+   * who needs to undo one is having a conversation rather than clicking.
+   */
+  async recuse(actor: SubmitterActor, input: RecuseInput): Promise<void> {
+    const assignments = await this.#requireAssignments(actor)
+    const assignment = assignments.find(
+      (candidate) =>
+        candidate.submissionId === input.submissionId &&
+        (input.roundId === undefined || candidate.roundId === input.roundId),
+    )
+    if (assignment === undefined) {
+      throw new ApplicationError('forbidden', 'You are not assigned to that submission')
+    }
+    await this.#evaluations.recuseAssignment(actor.eventId, assignment.id, this.#clock.now())
   }
 
   /**

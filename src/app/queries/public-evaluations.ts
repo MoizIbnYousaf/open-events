@@ -110,6 +110,24 @@ export function useSubmitEvaluation() {
   return useServerMutation({ mutationFn: submitEvaluation, retry: false })
 }
 
+/** Which piece of reading the reviewer is stepping back from. */
+export interface RecuseInput {
+  readonly submissionId: string
+  readonly roundId?: string
+}
+
+/** POST /api/public/evaluations/recuse — declare a conflict of interest. */
+export async function recuseFromEvaluation(input: RecuseInput): Promise<void> {
+  await requestJson<null>('/api/public/evaluations/recuse', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function useRecuseFromEvaluation() {
+  return useServerMutation({ mutationFn: recuseFromEvaluation, retry: false })
+}
+
 /** What the evaluator had typed but not yet stored, per assigned submission. */
 export interface EvaluationDraft {
   readonly rating: number | null

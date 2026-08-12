@@ -46,6 +46,7 @@ function assignment(overrides: Partial<EvaluationAssignment> = {}): EvaluationAs
     submissionId: SUBMISSION_ID,
     evaluatorContactId: 'contact-reviewer-one',
     createdAt: '2026-05-20T09:00:00.000Z',
+    recusedAt: null,
     ...overrides,
   }
 }

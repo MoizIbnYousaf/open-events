@@ -45,6 +45,7 @@ interface RawAssignmentRow {
   readonly submission_id: string
   readonly evaluator_contact_id: string
   readonly created_at: string
+  readonly recused_at: string | null
 }
 
 interface RawCommitteeMemberRow {
@@ -68,7 +69,7 @@ const CRITERION_COLUMNS = 'event_id, id, name, weight, position'
 const ROUND_COLUMNS = `event_id, id, number, name, status, weights_json, opens_at,
                 closes_at, anonymize`
 const ASSIGNMENT_COLUMNS = `event_id, id, round_id, submission_id, evaluator_contact_id,
-                created_at`
+                created_at, recused_at`
 const COMMITTEE_MEMBER_COLUMNS = 'event_id, contact_id, added_at'
 const SCORE_COLUMNS = `event_id, id, assignment_id, criterion_id, rating, comment,
                 created_at, updated_at`
@@ -130,6 +131,7 @@ function toAssignment(row: RawAssignmentRow): EvaluationAssignment {
     submissionId: row.submission_id,
     evaluatorContactId: row.evaluator_contact_id,
     createdAt: row.created_at,
+    recusedAt: row.recused_at ?? null,
   }
 }
 
@@ -617,6 +619,25 @@ export function createEvaluationRepository(db: D1Database): EvaluationRepository
         .first<RawRoundScoreRow>()
       if (stored === null) throw new Error('round score upsert stored no row')
       return toRoundScore(stored)
+    },
+
+    async recuseAssignment(
+      eventId: string,
+      assignmentId: string,
+      recusedAt: string,
+    ): Promise<void> {
+      // Event scope sits in the same statement that writes, so naming another
+      // event's assignment updates nothing rather than reaching across.
+      // COALESCE keeps the FIRST declaration: stepping back twice is the same
+      // act, and re-stamping it would rewrite when the conflict was raised.
+      await db
+        .prepare(
+          `UPDATE evaluation_assignments
+              SET recused_at = COALESCE(recused_at, ?)
+            WHERE event_id = ? AND id = ?`,
+        )
+        .bind(recusedAt, eventId, assignmentId)
+        .run()
     },
 
     async listRoundPool(eventId: string, roundId: string): Promise<readonly string[]> {

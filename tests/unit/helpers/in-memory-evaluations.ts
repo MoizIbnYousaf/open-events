@@ -319,6 +319,20 @@ export class InMemoryEvaluationRepository implements EvaluationRepository {
     return assignment
   }
 
+  async recuseAssignment(
+    eventId: string,
+    assignmentId: string,
+    recusedAt: string,
+  ): Promise<void> {
+    const held = this.#assignments.get(assignmentId)
+    if (held === undefined || held.eventId !== eventId) return
+    // First declaration stands, exactly as the SQL COALESCE does.
+    this.#assignments.set(assignmentId, {
+      ...held,
+      recusedAt: held.recusedAt ?? recusedAt,
+    })
+  }
+
   async listAssignmentsBySubmission(
     eventId: string,
     submissionId: string,

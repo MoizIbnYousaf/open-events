@@ -163,6 +163,12 @@ export interface EvaluationRepository {
   ): Promise<EvaluationAssignment | null>
   /** Insert-if-absent keyed on (round, submission, evaluator). */
   saveAssignment(assignment: EvaluationAssignment): Promise<EvaluationAssignment>
+  /** Records that a reviewer has stepped back from one assignment. */
+  recuseAssignment(
+    eventId: EventId,
+    assignmentId: EvaluationAssignmentId,
+    recusedAt: UtcInstant,
+  ): Promise<void>
   listAssignmentsBySubmission(
     eventId: EventId,
     submissionId: SubmissionId,

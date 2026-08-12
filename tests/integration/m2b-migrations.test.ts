@@ -72,6 +72,7 @@ describe('migration apply from an empty local D1', () => {
       '0016_create_submission_decisions.sql',
       '0017_configurable_review_rounds.sql',
       '0018_cascade_round_scores_to_criteria.sql',
+      '0019_add_assignment_recusal.sql',
     ])
 
     const tables = await env.DB.prepare(

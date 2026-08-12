@@ -175,6 +175,13 @@ export interface EvaluationAssignment {
   readonly submissionId: SubmissionId
   readonly evaluatorContactId: ContactId
   readonly createdAt: UtcInstant
+  /**
+   * When this reviewer declared a conflict, or null while they are still
+   * reading it. A time rather than a flag: "when did they step back" is a
+   * question a chair asks, and the assignment is kept so that sharing the
+   * round out again does not hand them the same proposal to refuse twice.
+   */
+  readonly recusedAt: UtcInstant | null
 }
 
 /**

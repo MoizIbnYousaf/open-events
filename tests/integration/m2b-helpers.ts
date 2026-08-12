@@ -17,6 +17,7 @@ import migration0013Sql from '../../migrations/0013_add_contact_bio.sql?raw'
 import migration0014Sql from '../../migrations/0014_widen_uploaded_file_kinds.sql?raw'
 import migration0015Sql from '../../migrations/0015_fix_condition_rule_unique_grain.sql?raw'
 import migration0018Sql from '../../migrations/0018_cascade_round_scores_to_criteria.sql?raw'
+import migration0019Sql from '../../migrations/0019_add_assignment_recusal.sql?raw'
 import migration0016Sql from '../../migrations/0016_create_submission_decisions.sql?raw'
 import migration0017Sql from '../../migrations/0017_configurable_review_rounds.sql?raw'
 import seedSql from '../../src/db/seed.sql?raw'
@@ -72,6 +73,10 @@ export const MIGRATIONS: D1Migration[] = [
   {
     name: '0018_cascade_round_scores_to_criteria.sql',
     queries: splitSqlStatements(migration0018Sql),
+  },
+  {
+    name: '0019_add_assignment_recusal.sql',
+    queries: splitSqlStatements(migration0019Sql),
   },
 ]
 

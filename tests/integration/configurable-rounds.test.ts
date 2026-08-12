@@ -1280,3 +1280,95 @@ describe('an organizer shares a round out among its reviewers', () => {
     expect((await distribute(organizer, roundId, { perReviewerCap: 0 })).status).toBe(400)
   })
 })
+
+/**
+ * A reviewer who knows the author should not be scoring the proposal, and the
+ * honest response to that is to stop asking them rather than to let them score
+ * it and hope.
+ */
+describe('a reviewer declares a conflict of interest', () => {
+  async function recuse(
+    cookie: string,
+    submissionId: string,
+    origin = ALLOWED_ORIGIN,
+  ): Promise<Response> {
+    return app.request(
+      '/api/public/evaluations/recuse',
+      {
+        method: 'POST',
+        headers: { cookie: cookieHeader(cookie), origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ submissionId }),
+      },
+      bindings(),
+    )
+  }
+
+  async function queueOf(reviewer: string): Promise<readonly EvaluationRowDto[]> {
+    return (await (
+      await app.request(
+        '/api/public/evaluations',
+        { headers: { cookie: cookieHeader(reviewer) } },
+        bindings(),
+      )
+    ).json()) as readonly EvaluationRowDto[]
+  }
+
+  it('takes the proposal out of their queue', async () => {
+    const organizer = await organizerCookie()
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+    expect(await queueOf(reviewer)).toHaveLength(1)
+
+    expect((await recuse(reviewer, submissionId)).status).toBe(204)
+
+    expect(await queueOf(reviewer)).toHaveLength(0)
+  })
+
+  it('refuses a score afterwards, rather than merely hiding the form', async () => {
+    const organizer = await organizerCookie()
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+    await recuse(reviewer, submissionId)
+
+    // A surface that stops offering a control still receives whatever a stale
+    // tab sends, so the refusal has to live on the server.
+    const posted = await app.request(
+      '/api/public/evaluations',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(reviewer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ submissionId, rating: 5 }),
+      },
+      bindings(),
+    )
+    expect(posted.status).toBe(409)
+  })
+
+  it('keeps the assignment, so a later share-out does not ask them again', async () => {
+    const organizer = await organizerCookie()
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+    await recuse(reviewer, submissionId)
+
+    const assignments = (await (
+      await app.request(
+        `/api/admin/events/demo-conf-2026/submissions/${submissionId}/assignments`,
+        { headers: { cookie: cookieHeader(organizer) } },
+        bindings(),
+      )
+    ).json()) as readonly unknown[]
+
+    // Deleting it would lose the fact that they were ever asked and stepped
+    // back, and the next share-out would hand it straight back to them.
+    expect(assignments).toHaveLength(1)
+  })
+
+  it('is same-origin only, and refuses a proposal that is not theirs', async () => {
+    const organizer = await organizerCookie()
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+
+    expect((await recuse(reviewer, submissionId, 'https://evil.test')).status).toBe(403)
+    expect((await recuse(reviewer, 'not-a-submission')).status).toBe(403)
+  })
+})

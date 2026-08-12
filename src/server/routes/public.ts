@@ -428,6 +428,30 @@ export async function handleSubmitEvaluation(context: ServerContext): Promise<Re
   return context.json(await deps.evaluations.upsertScore(actor, input))
 }
 
+/**
+ * POST /api/public/evaluations/recuse: the reviewer declares a conflict of
+ * interest and stops being asked about one proposal.
+ */
+export async function handleRecuseEvaluation(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const submissionId = body.submissionId
+  const roundId = body.roundId
+  if (typeof submissionId !== 'string') return validationFailedResponse(context)
+  if (roundId !== undefined && typeof roundId !== 'string') {
+    return validationFailedResponse(context)
+  }
+  await deps.evaluations.recuse(actor, {
+    submissionId,
+    ...(typeof roundId === 'string' ? { roundId } : {}),
+  })
+  return context.body(null, 204)
+}
+
 /** True when the client declares a body that already exceeds the budget. */
 function declaresOversizeBody(contentLength: string | undefined): boolean {
   if (contentLength === undefined) return false
@@ -715,6 +739,13 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('submitter'),
     handleSubmitEvaluation,
+  )
+  app.post(
+    '/api/public/evaluations/recuse',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handleRecuseEvaluation,
   )
 
   app.put(

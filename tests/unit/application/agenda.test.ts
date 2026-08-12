@@ -524,6 +524,62 @@ describe('agenda retraction', () => {
     expect((await service.publish(organizerActor, EVENT_SLUG)).publishedCount).toBe(0)
   })
 
+  /**
+   * Retraction must survive the rejection that makes it necessary.
+   *
+   * Placement is guarded against rejected talks, and unplace used to share that
+   * guard — so the moment a published talk was rejected it became impossible to
+   * take off the programme. Its row stayed `published` for good, hidden only by
+   * the runtime filters on the board and the public schedule, and reinstating
+   * the speaker later would have silently put a published session back in front
+   * of the public with no organizer action.
+   *
+   * The guard belongs on the way IN. Removing something from the programme is
+   * always allowed.
+   */
+  it('retracts a published session that has since been rejected', async () => {
+    const { service, agenda, submissions } = buildHarness()
+    await service.place(organizerActor, EVENT_SLUG, 'submission-1', placement())
+    await service.publish(organizerActor, EVENT_SLUG)
+    await submissions.recordDecision({
+      id: 'decision-1',
+      eventId: EVENT_ID,
+      submissionId: 'submission-1',
+      outcome: 'rejected',
+      decidedBy: 'organizer',
+      decidedAt: NOW,
+    })
+
+    await service.unplace(organizerActor, EVENT_SLUG, 'submission-1')
+
+    // Retracted in STORAGE, not merely filtered out of the read: a row left
+    // 'published' would return to the public schedule the moment the rejection
+    // was reversed.
+    expect(await agenda.findBySubmission(EVENT_ID, 'submission-1')).toMatchObject({
+      status: 'draft',
+      assignment: 'unassigned',
+      roomId: null,
+    })
+  })
+
+  /** Placement stays guarded: the way in is where the verdict is enforced. */
+  it('still refuses to place a rejected talk', async () => {
+    const { service, submissions } = buildHarness()
+    await submissions.recordDecision({
+      id: 'decision-1',
+      eventId: EVENT_ID,
+      submissionId: 'submission-1',
+      outcome: 'rejected',
+      decidedBy: 'organizer',
+      decidedAt: NOW,
+    })
+
+    await expectRejection(
+      service.place(organizerActor, EVENT_SLUG, 'submission-1', placement()),
+      'not_found',
+    )
+  })
+
   it('is idempotent for a session that is already unplaced', async () => {
     const { service } = buildHarness()
 

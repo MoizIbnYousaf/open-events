@@ -1,7 +1,11 @@
 import type { CapturedMessage } from '../../domain/confirmation'
 import type { Event, EventId } from '../../domain/event'
 import { buildCalendarInvite } from '../../domain/invite'
-import type { ProposalSubmission, SubmissionId } from '../../domain/submission'
+import type {
+  ProposalSubmission,
+  SubmissionId,
+  SubmissionOutcome,
+} from '../../domain/submission'
 import type { OrganizerActor, SubmitterActor } from '../actors'
 import type {
   AcceptancePreviewDto,
@@ -165,6 +169,7 @@ export class CommunicationsService {
       subject: rendered.subject,
       body: rendered.body,
       accepted: await this.#isAccepted(rendered.submission),
+      decision: await this.#standingDecision(rendered.submission),
       alreadySent: audience.length > 0 && audience.every((recipient) => recipient.alreadySent),
       audience,
     }
@@ -177,7 +182,12 @@ export class CommunicationsService {
     kind: OrganizerMessageKind,
   ): Promise<readonly CapturedMessageDto[]> {
     const rendered = await this.#render(eventId, submissionId, kind)
-    if (!(await this.#isAccepted(rendered.submission))) {
+    // The STANDING decision, not the acceptance record. Both templates state
+    // outright that the proposal is accepted, and a rejection deliberately
+    // leaves the acceptance row in place, so gating on that row would announce
+    // an acceptance to somebody who has just been rejected. Undecided is
+    // refused by the same comparison: nothing has been decided to announce.
+    if ((await this.#standingDecision(rendered.submission)) !== 'accepted') {
       throw new ApplicationError(
         'conflict',
         `Submission '${submissionId}' has not been accepted yet`,
@@ -262,9 +272,16 @@ export class CommunicationsService {
   }
 
   /**
-   * Renders the .ics for the OWNING submitter only; every other actor (a
-   * different speaker, another event, an unknown id) gets null so the route
-   * answers an indistinguishable 404.
+   * Renders the .ics for the OWNING submitter of an ACCEPTED proposal only;
+   * every other actor (a different speaker, another event, an unknown id) gets
+   * null so the route answers an indistinguishable 404.
+   *
+   * The verdict gate is not decoration. Ownership alone let a speaker whose
+   * proposal was rejected — or never decided at all — download a real calendar
+   * hold for an event that had turned them down, and a saved .ics keeps
+   * claiming that appointment long after any screen would have corrected it.
+   * Undecided is refused for the same reason as rejected: there is nothing yet
+   * to put in a diary.
    */
   async buildInvite(actor: SubmitterActor, submissionId: SubmissionId): Promise<string | null> {
     const submission = await this.#submissions.findById(submissionId)
@@ -272,6 +289,7 @@ export class CommunicationsService {
     if (submission.eventId !== actor.eventId || submission.ownerContactId !== actor.contactId) {
       return null
     }
+    if ((await this.#standingDecision(submission)) !== 'accepted') return null
     const event = await this.#requireEvent(submission)
     if (event.dates === null) {
       throw new ApplicationError('conflict', 'Event dates are not configured')
@@ -333,6 +351,28 @@ export class CommunicationsService {
 
   async #isAccepted(submission: ProposalSubmission): Promise<boolean> {
     return (await this.#acceptances.findAcceptance(submission.eventId, submission.id)) !== null
+  }
+
+  /**
+   * The standing verdict on one submission: 'pending' while nobody has ruled.
+   *
+   * The decision record is the authority. Where there is none, an ACCEPTANCE
+   * RECORD still means accepted — the same fallback migration 0016 applies when
+   * it backfills a verdict for every acceptance that predates the table, and
+   * the same one the speaker's own portal reads through `listOwnDecisions`.
+   *
+   * Without this fallback the two surfaces disagreed about the same proposal.
+   * `accept()` and `decide()` are two separate writes (the accept route makes
+   * both), so a failure between them leaves an acceptance with no decision — a
+   * speaker who genuinely was accepted, with a materialised checklist and an
+   * agenda session to prove it. Reading that as undecided showed them an
+   * "Accepted" badge beside an invite link that answered 404. Deriving both
+   * from one rule is what makes the badge and the download agree.
+   */
+  async #standingDecision(submission: ProposalSubmission): Promise<SubmissionOutcome> {
+    const decision = await this.#submissions.findDecision(submission.eventId, submission.id)
+    if (decision !== null) return decision.outcome
+    return (await this.#isAccepted(submission)) ? 'accepted' : 'pending'
   }
 
   async #requireSubmission(

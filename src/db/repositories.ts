@@ -15,7 +15,13 @@ import type { SessionRepository } from '../application/ports/session-repository'
 import type { SubmissionRepository } from '../application/ports/submission-repository'
 import type { TaxonomyRepository } from '../application/ports/taxonomy-repository'
 import type { TokenRepository } from '../application/ports/token-repository'
-import type { Event, EventId, EventSlug } from '../domain'
+import type {
+  Event,
+  EventId,
+  EventSlug,
+  SubmissionDecision,
+  SubmissionDecisionOutcome,
+} from '../domain'
 import {
   toCapturedMessage,
   toCfpForm,
@@ -66,6 +72,46 @@ function eventInsertValues(event: Event) {
     organizerContact: event.organizerContact ?? null,
     venue: event.venue ?? null,
     eventType: event.eventType ?? null,
+  }
+}
+
+interface RawDecisionRow {
+  readonly event_id: string
+  readonly id: string
+  readonly submission_id: string
+  readonly sequence: number
+  readonly outcome: SubmissionDecisionOutcome
+  readonly decided_by: string
+  readonly decided_at: string
+}
+
+const DECISION_COLUMNS = 'event_id, id, submission_id, sequence, outcome, decided_by, decided_at'
+
+/**
+ * The predicate that picks the STANDING verdict out of the append-only trail:
+ * the highest sequence for that submission. Written as a correlated subquery
+ * rather than a window function so both adapters and every SQLite build agree.
+ */
+/** The decision columns qualified by a join alias. */
+function d(alias: string): string {
+  return DECISION_COLUMNS.split(', ')
+    .map((column) => `${alias}.${column}`)
+    .join(', ')
+}
+
+const LATEST_DECISION_PREDICATE = `d.sequence = (
+  SELECT MAX(x.sequence) FROM submission_decisions x
+   WHERE x.event_id = d.event_id AND x.submission_id = d.submission_id)`
+
+function toSubmissionDecision(row: RawDecisionRow): SubmissionDecision {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    submissionId: row.submission_id,
+    sequence: row.sequence,
+    outcome: row.outcome,
+    decidedBy: row.decided_by,
+    decidedAt: row.decided_at,
   }
 }
 
@@ -142,6 +188,27 @@ export function createContactRepository(db: D1Database): ContactRepository {
         .update(contacts)
         .set({ name: fields.name, bio: fields.bio })
         .where(eq(contacts.id, id))
+    },
+    async ensureByEmail(input) {
+      // Insert-if-absent on the email key, then read the row that actually
+      // won: two organizers inviting the same reviewer at once must converge
+      // on one identity rather than race to create two.
+      await db
+        .prepare(
+          `INSERT INTO contacts (id, email, name, created_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(email) DO NOTHING`,
+        )
+        .bind(input.id, input.email, input.name, input.createdAt)
+        .run()
+      const rows = await database
+        .select()
+        .from(contacts)
+        .where(eq(contacts.email, input.email))
+        .limit(1)
+      const row = rows[0]
+      if (row === undefined) throw new Error('contact upsert stored no row')
+      return toContact(row)
     },
   }
 }
@@ -410,6 +477,85 @@ export function createSubmissionRepository(db: D1Database): SubmissionRepository
         )
         .orderBy(asc(submissionContributors.position))
       return rows.map(toSubmissionContributor)
+    },
+    async findDecision(eventId: string, submissionId: string) {
+      const row = await db
+        .prepare(
+          `SELECT ${DECISION_COLUMNS} FROM submission_decisions
+            WHERE event_id = ? AND submission_id = ?
+            ORDER BY sequence DESC LIMIT 1`,
+        )
+        .bind(eventId, submissionId)
+        .first<RawDecisionRow>()
+      return row === null ? null : toSubmissionDecision(row)
+    },
+    async listDecisionHistory(eventId: string, submissionId: string) {
+      const result = await db
+        .prepare(
+          `SELECT ${DECISION_COLUMNS} FROM submission_decisions
+            WHERE event_id = ? AND submission_id = ? ORDER BY sequence`,
+        )
+        .bind(eventId, submissionId)
+        .all<RawDecisionRow>()
+      return result.results.map(toSubmissionDecision)
+    },
+    async listDecisionsByOwner(eventId: string, ownerContactId: string) {
+      // Owner scope and event scope are both in the predicate that reads: a
+      // speaker must never be able to see a verdict on someone else's proposal.
+      const result = await db
+        .prepare(
+          `SELECT ${d('d')} FROM submission_decisions d
+             JOIN proposal_submissions s
+               ON s.event_id = d.event_id AND s.id = d.submission_id
+            WHERE d.event_id = ? AND s.owner_contact_id = ? AND ${LATEST_DECISION_PREDICATE}`,
+        )
+        .bind(eventId, ownerContactId)
+        .all<RawDecisionRow>()
+      return result.results.map(toSubmissionDecision)
+    },
+    async listDecisionsByEvent(eventId: string) {
+      const result = await db
+        .prepare(
+          `SELECT ${d('d')} FROM submission_decisions d
+            WHERE d.event_id = ? AND ${LATEST_DECISION_PREDICATE}`,
+        )
+        .bind(eventId)
+        .all<RawDecisionRow>()
+      return result.results.map(toSubmissionDecision)
+    },
+    async recordDecision(input) {
+      // Append, never overwrite: `sequence` is computed inside the statement
+      // from the rows already there, so the trail stays gapless under a
+      // concurrent second write instead of two verdicts claiming one slot —
+      // the UNIQUE (event, submission, sequence) rejects the loser outright.
+      //
+      // The EXISTS guard is the event scope: a submission id that does not live
+      // in this event inserts nothing, so the zero-row result IS the refusal.
+      const result = await db
+        .prepare(
+          `INSERT INTO submission_decisions
+             (event_id, id, submission_id, sequence, outcome, decided_by, decided_at)
+           SELECT ?, ?, ?,
+             COALESCE((SELECT MAX(x.sequence) FROM submission_decisions x
+                        WHERE x.event_id = ? AND x.submission_id = ?), 0) + 1,
+             ?, ?, ?
+            WHERE EXISTS (
+              SELECT 1 FROM proposal_submissions WHERE event_id = ? AND id = ?)`,
+        )
+        .bind(
+          input.eventId,
+          input.id,
+          input.submissionId,
+          input.eventId,
+          input.submissionId,
+          input.outcome,
+          input.decidedBy,
+          input.decidedAt,
+          input.eventId,
+          input.submissionId,
+        )
+        .run()
+      return result.meta.changes > 0 ? 'recorded' : 'not-found'
     },
   }
 }

@@ -10,7 +10,11 @@ import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
-import type { EvaluationRoundSummaryDto } from '../../../application'
+import type {
+  EvaluationAssignmentDto,
+  EvaluationReviewDto,
+  EvaluationRoundSummaryDto,
+} from '../../../application'
 import type { EventSlug, SubmissionId } from '../../../domain'
 import { getApiErrorCode } from '../../api/admin-events'
 import {
@@ -61,6 +65,38 @@ function averageText(centis: number): string {
   return (centis / 100).toFixed(2)
 }
 
+/** "1 rating" — a count whose noun agrees with it, on a list that reaches 1 often. */
+function ratingCountText(count: number): string {
+  return count === 1 ? '1 rating' : `${count} ratings`
+}
+
+// The local `SubmittedReview` shape and its `isSubmittedReview` row guard are
+// gone with the cast that needed them. `EvaluationReviewDto` from the
+// application layer is the one definition of a review now, so the panel and the
+// server cannot drift apart without the compiler saying so.
+
+/**
+ * The individual verdicts behind a round's average — the ONLY place this panel
+ * reaches for them.
+ *
+ * The organizer summary once carried counts and a weighted average and nothing
+ * else, so the committee's actual words never reached the person deciding the
+ * proposal. `reviews` is now a typed field on the round summary, so this reads
+ * it directly.
+ *
+ * It used to reach the same data through a structural cast
+ * (`round as { reviews?: unknown }`) with a runtime row guard, because the
+ * server half had not landed. That shape could not fail typecheck: if the
+ * server renamed or dropped the field, the cast would keep compiling, the
+ * guard would filter every row away, and the panel would quietly fall back to
+ * the roster — showing an organizer a plausible list of reviewer names with no
+ * sign that the scores and comments had been dropped. Reading the typed field
+ * means that divergence is a build error instead of a silent omission.
+ */
+function reviewsOf(round: EvaluationRoundSummaryDto): readonly EvaluationReviewDto[] {
+  return round.reviews
+}
+
 /**
  * Organizer review-committee panel: who is reviewing this submission, which
  * round they are reviewing it in, and what every round concluded.
@@ -96,6 +132,24 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
   const loadError = rounds.error ?? assignments.error ?? summary.error
   const isRetrying = rounds.isFetching || assignments.isFetching || summary.isFetching
   const liveRound = (rounds.data ?? []).filter((entry) => entry.status === 'open').at(-1) ?? null
+  const summaryRounds = summary.data?.rounds ?? []
+  const assignmentList = assignments.data ?? []
+  /**
+   * The committee, split by the round each person was asked in.
+   *
+   * The roster used to be one flat list of names printed above a separate list
+   * of round results, so an organizer could read that two people were reviewing
+   * and that some round averaged 4.40, with nothing on the page connecting the
+   * two. Which round a rating answers is the fact that makes it usable — the
+   * same proposal comes back round after round — so the people and the number
+   * are now shown together, under the round they belong to.
+   */
+  const reviewersByRound = new Map(
+    summaryRounds.map((entry) => [
+      entry.roundId,
+      assignmentList.filter((assignment) => assignment.roundId === entry.roundId),
+    ]),
+  )
   const highestNumber = (rounds.data ?? []).reduce((best, entry) => Math.max(best, entry.number), 0)
   const nextNumber = highestNumber + 1
 
@@ -156,7 +210,11 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
         <>
           <div className="flex flex-col gap-2">
             <h3 className={groupTitleClass}>Review rounds</h3>
-            <StatusLive>
+            {/* Named, because it is not the only polite region on the
+                submission page — the communications panel owns one too, and two
+                unlabelled role="status" nodes are one indistinguishable pair to
+                a reader moving between them (DEC-014). */}
+            <StatusLive aria-label="Review round state">
               {liveRound === null
                 ? 'No review round is open.'
                 : `Round ${liveRound.number} is open.`}
@@ -241,26 +299,36 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
           </div>
 
           <div className="flex flex-col gap-2">
-            <h3 className={groupTitleClass}>Evaluators on this submission</h3>
-            {(assignments.data ?? []).length === 0 ? (
+            <h3 className={groupTitleClass}>Reviews</h3>
+            {summaryRounds.length === 0 ? (
               <EmptyState
                 icon={<StarIcon size={20} />}
                 className="px-4 py-6"
-                title="Staff this proposal"
-                description="Assign an evaluator by email and they will see it in their queue."
+                title="No reviews yet"
+                description="Open a review round and assign an evaluator by email. Every rating they record shows up here, under the round they gave it in."
               />
             ) : (
               <ul className="-my-1 divide-y divide-border">
-                {(assignments.data ?? []).map((assignment) => (
-                  <li key={assignment.id} className="flex flex-col gap-0.5 py-2">
-                    <span className="font-medium">{assignment.evaluatorName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {assignment.evaluatorEmail}
+                {summaryRounds.map((entry) => (
+                  <li key={entry.roundId} className="flex flex-col gap-1.5 py-2">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{`Round ${entry.number}: ${entry.name}`}</span>
+                      {entry.status === 'closed' ? <Badge variant="outline">closed</Badge> : null}
                     </span>
+                    <RoundResult round={entry} />
+                    <RoundReviews
+                      round={entry}
+                      reviewers={reviewersByRound.get(entry.roundId) ?? []}
+                    />
+                    <RoundCriteria round={entry} />
                   </li>
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <h3 className={groupTitleClass}>Add an evaluator</h3>
             <div className="flex flex-wrap items-end gap-2">
               <Field className="min-w-48 flex-1">
                 <FieldLabel htmlFor="evaluation-assign-email">Evaluator email</FieldLabel>
@@ -291,28 +359,102 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
             </StatusLive>
             {assign.isError ? <AlertLive>{assignmentRefusal(assign.error)}</AlertLive> : null}
           </div>
-
-          <div className="flex flex-col gap-2">
-            <h3 className={groupTitleClass}>Result by round</h3>
-            {(summary.data?.rounds ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No review round has run yet.</p>
-            ) : (
-              <ul className="-my-1 divide-y divide-border">
-                {(summary.data?.rounds ?? []).map((entry) => (
-                  <li key={entry.roundId} className="flex flex-col gap-0.5 py-2">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{`Round ${entry.number}: ${entry.name}`}</span>
-                      {entry.status === 'closed' ? <Badge variant="outline">closed</Badge> : null}
-                    </span>
-                    <RoundResult round={entry} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         </>
       )}
     </section>
+  )
+}
+
+/**
+ * What the committee said about this proposal in this round.
+ *
+ * Ratings and comment text both persisted from the day the evaluator surface
+ * existed and neither was ever shown to the organizer, who was left deciding a
+ * proposal from a single weighted average. There is no blind or anonymised
+ * review anywhere in this product, so the reviewer is named: an unattributed
+ * verdict is one the organizer cannot weigh or follow up on.
+ *
+ * The comment is the reviewer's own prose, so it is printed whole and wrapped
+ * rather than truncated — the sentence after the one that fits is usually the
+ * reason for the score. Its line breaks are the reviewer's, and they survive.
+ *
+ * With no verdicts to show, the round falls back to naming who it asked.
+ */
+function RoundReviews({
+  round,
+  reviewers,
+}: {
+  readonly round: EvaluationRoundSummaryDto
+  readonly reviewers: readonly EvaluationAssignmentDto[]
+}) {
+  const reviews = reviewsOf(round)
+  if (reviews.length === 0) return <RoundReviewers reviewers={reviewers} />
+  return (
+    <ul aria-label={`Reviews in round ${round.number}`} className="grid gap-2">
+      {reviews.map((review) => (
+        <li key={review.assignmentId} className="grid gap-0.5">
+          {/* A reviewer provisioned by email may have no name yet; their
+              address is the identifying fact we actually hold, and it is
+              better than an empty line where a person should be. */}
+          <span className="text-sm font-medium">{review.evaluatorName ?? review.evaluatorEmail}</span>
+          <span className="text-xs text-muted-foreground">{review.evaluatorEmail}</span>
+          <span className="text-xs text-muted-foreground">
+            {review.rating === null ? 'No rating recorded yet' : `Rated ${review.rating} of 5`}
+          </span>
+          {review.comment === null || review.comment.length === 0 ? null : (
+            <p className="text-sm whitespace-pre-wrap text-foreground">{review.comment}</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * Who this round asked. A round with an entry in the summary but nobody on it
+ * is a real state — the organizer opened it and has not staffed it yet — and it
+ * says so rather than leaving the group looking truncated.
+ */
+function RoundReviewers({ reviewers }: { readonly reviewers: readonly EvaluationAssignmentDto[] }) {
+  if (reviewers.length === 0) {
+    return <span className="text-xs text-muted-foreground">No evaluator is on this round yet</span>
+  }
+  return (
+    <ul className="grid gap-1">
+      {reviewers.map((reviewer) => (
+        <li key={reviewer.id} className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">{reviewer.evaluatorName}</span>
+          <span className="text-xs text-muted-foreground">{reviewer.evaluatorEmail}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * The criteria behind the round's one number.
+ *
+ * A weighted average of 4.40 built from a 4.50 on relevance and a 4.00 on
+ * experience describes a different proposal from one built the other way round,
+ * and the organizer deciding it had only the 4.40. The breakdown was on the
+ * wire from the day the summary existed and nothing rendered it. Each row says
+ * how many ratings it averages, because a criterion one person answered and one
+ * the whole round answered do not deserve equal weight in a reader's head.
+ */
+function RoundCriteria({ round }: { readonly round: EvaluationRoundSummaryDto }) {
+  if (round.criteria.length === 0) return null
+  return (
+    <ul aria-label={`Criteria in round ${round.number}`} className="grid gap-0.5">
+      {round.criteria.map((criterion) => (
+        <li key={criterion.criterionId} className="text-xs text-muted-foreground">
+          {criterion.scoreCount === 0
+            ? `${criterion.name} (weight ${criterion.weight}) — no ratings yet`
+            : `${criterion.name} (weight ${criterion.weight}) — ${averageText(
+                Math.round((criterion.ratingSum * 100) / criterion.scoreCount),
+              )} from ${ratingCountText(criterion.scoreCount)}`}
+        </li>
+      ))}
+    </ul>
   )
 }
 

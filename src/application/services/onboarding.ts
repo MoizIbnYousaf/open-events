@@ -8,7 +8,12 @@ import {
   type SpeakerTask,
   type SpeakerTaskId,
 } from '../../domain/speaker-task'
-import type { ProposalSubmission, SubmissionId } from '../../domain/submission'
+import type {
+  ProposalSubmission,
+  SubmissionDecision,
+  SubmissionDecisionOutcome,
+  SubmissionId,
+} from '../../domain/submission'
 import { defaultAgendaSlot } from '../../domain/agenda'
 import { validateAnswersAgainstVersion } from '../../domain/invariants/submission'
 import type { OrganizerActor, SubmitterActor } from '../actors'
@@ -18,6 +23,7 @@ import type {
   SpeakerTaskDto,
   SubmissionReadinessDto,
 } from '../dtos/speaker-task.dto'
+import type { SubmissionDecisionDto } from '../dtos/submission.dto'
 import type { FormDefinitionDto } from '../dtos/form-definition.dto'
 import { toFormDefinitionDto } from '../dtos/form-definition.dto'
 import { toSpeakerTaskDto, toSubmissionReadinessDto } from '../dtos/speaker-task.dto'
@@ -152,9 +158,172 @@ export class OnboardingService {
     }
   }
 
-  /** Every onboarding task owned by the calling speaker, in checklist order. */
+  /**
+   * Records the programme's verdict on one submission, in either direction.
+   *
+   * Accepting routes through `accept`, so an acceptance still materialises the
+   * onboarding checklist and the agenda draft exactly as it always did; this
+   * only adds the verdict itself, which is the part the schema could not hold.
+   *
+   * Rejecting deliberately leaves the acceptance ROW, and the checklist and
+   * agenda draft that hang their composite foreign keys off it, in place rather
+   * than unwinding them — retracting it would delete work the speaker had
+   * already done. The decision is the authority on the outcome instead, and
+   * every acceptance-derived read filters through it: `listTasks`, `readiness`,
+   * `listAcceptedOwnSubmissionIds`, the agenda board and the calendar invite
+   * all drop a rejected submission. An acceptance record is not a verdict.
+   *
+   * The trail is append-only, so each transition is its own auditable row and
+   * 'accepted, then rejected, then accepted' stays answerable after the fact.
+   *
+   * THE TRANSITION RULE: a verdict may be changed for as long as nobody has
+   * acted on it, and becomes final the moment the accepted speaker completes
+   * any onboarding task. Before that a decision is only an organizer's own
+   * bookkeeping; after it, reversing one silently voids work a person did
+   * because they were told they were in. Re-recording the SAME verdict stays
+   * allowed forever, because it changes nothing.
+   */
+  async decide(
+    actor: OrganizerActor,
+    eventId: EventId,
+    submissionId: SubmissionId,
+    outcome: SubmissionDecisionOutcome,
+  ): Promise<SubmissionDecisionDto> {
+    const submission = await this.#submissions.findById(submissionId)
+    if (submission === null || submission.eventId !== eventId) {
+      // Cross-event and absent are deliberately the same safe answer.
+      throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
+    }
+    const existing = await this.#submissions.findDecision(submission.eventId, submission.id)
+    // Re-recording the standing verdict appends nothing. Without this an
+    // idempotent retry would grow the trail with rows that record no change,
+    // and the history would stop being a record of anyone changing their mind.
+    if (existing !== null && existing.outcome === outcome) {
+      return this.#decisionDto(submission.eventId, submission.id, existing, false)
+    }
+    if (existing !== null) await this.#requireReversible(submission.eventId, submission.id)
+
+    if (outcome === 'accepted') {
+      const acceptance = await this.#tasks.findAcceptance(submission.eventId, submission.id)
+      if (acceptance === null) await this.accept(actor, submission.eventId, submission.id)
+    }
+    const written = await this.#submissions.recordDecision({
+      id: crypto.randomUUID(),
+      eventId: submission.eventId,
+      submissionId: submission.id,
+      outcome,
+      decidedBy: actor.kind,
+      decidedAt: this.#clock.now(),
+    })
+    if (written === 'not-found') {
+      throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
+    }
+    const recorded = await this.#submissions.findDecision(submission.eventId, submission.id)
+    return this.#decisionDto(submission.eventId, submission.id, recorded, true)
+  }
+
+  /**
+   * The standing verdict on one submission plus the whole trail behind it, so
+   * an organizer can see that a proposal was accepted and then rejected rather
+   * than only where it ended up.
+   */
+  async getDecision(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    submissionId: SubmissionId,
+  ): Promise<SubmissionDecisionDto> {
+    const submission = await this.#submissions.findById(submissionId)
+    if (submission === null || submission.eventId !== eventId) {
+      throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
+    }
+    const decision = await this.#submissions.findDecision(submission.eventId, submission.id)
+    return this.#decisionDto(submission.eventId, submission.id, decision, false)
+  }
+
+  /** One decision on the wire, with its trail. */
+  async #decisionDto(
+    eventId: EventId,
+    submissionId: SubmissionId,
+    decision: SubmissionDecision | null,
+    changed: boolean,
+  ): Promise<SubmissionDecisionDto> {
+    const history = await this.#submissions.listDecisionHistory(eventId, submissionId)
+    return {
+      submissionId,
+      eventId,
+      // 'pending' is the one spelling of undecided on every wire this product
+      // owns; `decidedBy`/`decidedAt` stay null because there genuinely is
+      // nobody and no instant to name until a verdict exists.
+      decision: decision?.outcome ?? 'pending',
+      decidedBy: decision?.decidedBy ?? null,
+      decidedAt: decision?.decidedAt ?? null,
+      changed,
+      history: history.map((entry) => ({
+        sequence: entry.sequence,
+        decision: entry.outcome,
+        decidedBy: entry.decidedBy,
+        decidedAt: entry.decidedAt,
+      })),
+    }
+  }
+
+  /**
+   * The calling speaker's own verdicts, keyed by submission.
+   *
+   * A submission with an acceptance record but no decision row reads as
+   * accepted: the decision table is backfilled from the acceptances that
+   * predate it, and this keeps the two consistent even if a crash lands
+   * between the acceptance batch and the decision write.
+   */
+  async listOwnDecisions(
+    actor: SubmitterActor,
+  ): Promise<ReadonlyMap<SubmissionId, SubmissionDecision>> {
+    const [decisions, acceptedIds] = await Promise.all([
+      this.#submissions.listDecisionsByOwner(actor.eventId, actor.contactId),
+      this.listAcceptedOwnSubmissionIds(actor),
+    ])
+    const byId = new Map(decisions.map((decision) => [decision.submissionId, decision]))
+    for (const submissionId of acceptedIds) {
+      if (byId.has(submissionId)) continue
+      const acceptance = await this.#tasks.findAcceptance(actor.eventId, submissionId)
+      if (acceptance === null) continue
+      byId.set(submissionId, {
+        id: `acceptance-${submissionId}`,
+        eventId: actor.eventId,
+        submissionId,
+        sequence: 1,
+        outcome: 'accepted',
+        decidedBy: 'organizer',
+        decidedAt: acceptance.acceptedAt,
+      })
+    }
+    return byId
+  }
+
+  /** Conflict once the accepted speaker has completed any onboarding task. */
+  async #requireReversible(eventId: EventId, submissionId: SubmissionId): Promise<void> {
+    const tasks = await this.#tasks.listBySubmission(eventId, submissionId)
+    if (tasks.some((task) => task.status === 'completed')) {
+      throw new ApplicationError(
+        'conflict',
+        'That decision has been acted on by the speaker and can no longer be changed',
+      )
+    }
+  }
+
+  /**
+   * Every onboarding task owned by the calling speaker, in checklist order —
+   * minus any whose proposal has since been rejected. The acceptance row those
+   * tasks hang off survives a rejection on purpose (it is their foreign key),
+   * so filtering here is what stops a rejected speaker from still being asked
+   * to confirm participation in a talk that is no longer happening.
+   */
   async listTasks(actor: SubmitterActor): Promise<readonly SpeakerTaskDto[]> {
-    const tasks = await this.#tasks.listByContact(actor.eventId, actor.contactId)
+    const [all, rejected] = await Promise.all([
+      this.#tasks.listByContact(actor.eventId, actor.contactId),
+      this.#rejectedSubmissionIds(actor.eventId),
+    ])
+    const tasks = all.filter((task) => !rejected.has(task.submissionId))
     const submissionIds = [...new Set(tasks.map((task) => task.submissionId))]
     const submissions = await Promise.all(
       submissionIds.map((submissionId) => this.#submissions.findById(submissionId)),
@@ -182,8 +351,16 @@ export class OnboardingService {
     if (submission === null || submission.eventId !== eventId) {
       throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
     }
-    const acceptance = await this.#tasks.findAcceptance(submission.eventId, submission.id)
-    if (acceptance === null) {
+    // Acceptance AND the standing verdict. A rejection deliberately leaves the
+    // acceptance row in place, so it cannot by itself say whether this speaker
+    // is still in the programme — and the checklist read that would surface
+    // this task already filters rejections, so assigning one here would create
+    // work nobody could ever see. Same not-found as every other miss.
+    const [acceptance, decision] = await Promise.all([
+      this.#tasks.findAcceptance(submission.eventId, submission.id),
+      this.#submissions.findDecision(submission.eventId, submission.id),
+    ])
+    if (acceptance === null || decision?.outcome === 'rejected') {
       throw new ApplicationError('not_found', `Submission '${submissionId}' is not accepted`)
     }
     const contributors = await this.#submissions.listContributorsBySubmission(
@@ -269,6 +446,16 @@ export class OnboardingService {
     if (task === null || task.eventId !== actor.eventId || task.contactId !== actor.contactId) {
       throw new ApplicationError('not_found', `Task '${id}' not found`)
     }
+    // A rejected proposal's checklist is REFUSED here, not merely hidden by the
+    // list read. The ids were handed out before the rejection and completion is
+    // by id, so hiding alone left the work reachable — and completing anything
+    // makes the verdict final (`#requireReversible`), which would let a rejected
+    // speaker permanently strip the organizer of the ability to change their
+    // mind in either direction. Same not-found as every other miss.
+    const decision = await this.#submissions.findDecision(task.eventId, task.submissionId)
+    if (decision?.outcome === 'rejected') {
+      throw new ApplicationError('not_found', `Task '${id}' not found`)
+    }
     if (task.status === 'pending' && task.kind === 'submit_bio') {
       const contact = await this.#contacts.findById(actor.contactId)
       const bio = contact?.bio ?? null
@@ -318,19 +505,42 @@ export class OnboardingService {
    * disclose another speaker's decision.
    */
   async listAcceptedOwnSubmissionIds(actor: SubmitterActor): Promise<readonly SubmissionId[]> {
-    const own = await this.#submissions.listByOwner(actor.eventId, actor.contactId)
+    const [own, rejected] = await Promise.all([
+      this.#submissions.listByOwner(actor.eventId, actor.contactId),
+      this.#rejectedSubmissionIds(actor.eventId),
+    ])
     const acceptances = await Promise.all(
       own.map((submission) => this.#tasks.findAcceptance(actor.eventId, submission.id)),
     )
-    return own.flatMap((submission, index) => (acceptances[index] === null ? [] : [submission.id]))
+    return own.flatMap((submission, index) =>
+      acceptances[index] === null || rejected.has(submission.id) ? [] : [submission.id],
+    )
+  }
+
+  /** The submissions of one event whose STANDING verdict is a rejection. */
+  async #rejectedSubmissionIds(eventId: EventId): Promise<ReadonlySet<SubmissionId>> {
+    const decisions = await this.#submissions.listDecisionsByEvent(eventId)
+    return new Set(
+      decisions
+        .filter((decision) => decision.outcome === 'rejected')
+        .map((decision) => decision.submissionId),
+    )
   }
 
   /** Organizer readiness aggregate over every accepted submission. */
   async readiness(_actor: OrganizerActor, eventId: EventId): Promise<EventReadinessDto> {
-    const [acceptances, tasks] = await Promise.all([
+    const [allAcceptances, allTasks, rejected] = await Promise.all([
       this.#tasks.listAcceptancesByEvent(eventId),
       this.#tasks.listByEvent(eventId),
+      this.#rejectedSubmissionIds(eventId),
     ])
+    // A rejected proposal is not an accepted speaker with outstanding work: it
+    // would otherwise sit in the readiness aggregate for ever at 0% and read as
+    // a speaker who has gone quiet.
+    const acceptances = allAcceptances.filter(
+      (acceptance) => !rejected.has(acceptance.submissionId),
+    )
+    const tasks = allTasks.filter((task) => !rejected.has(task.submissionId))
     const acceptedSubmissions = await Promise.all(
       acceptances.map((acceptance) => this.#submissions.findById(acceptance.submissionId)),
     )

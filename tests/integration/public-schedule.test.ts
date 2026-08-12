@@ -169,6 +169,77 @@ describe('public schedule API', () => {
     expect(JSON.stringify(body)).not.toContain('submission-2')
   })
 
+  /**
+   * The published session stays exactly as it was — still `published`, still
+   * `scheduled`, still carrying its acceptance record — and only a rejection is
+   * recorded above it. That is precisely the state the product produces:
+   * rejecting deliberately leaves the acceptance row and the agenda row alone,
+   * because `speaker_tasks` and `agenda_sessions` hang composite foreign keys
+   * off the acceptance and unwinding it would delete a speaker's own work.
+   *
+   * The publish-time guard cannot cover this. A talk can be published first and
+   * rejected afterwards, so the programme has to be filtered where it is READ,
+   * not only where it is written — and this is the one surface an anonymous
+   * visitor can reach.
+   */
+  it('drops a rejected talk from the public programme even once published', async () => {
+    await env.DB.prepare(
+      `INSERT INTO submission_decisions
+         (event_id, id, submission_id, sequence, outcome, decided_by, decided_at)
+       VALUES (?, 'decision-1', 'submission-1', 1, 'rejected', 'organizer', ?)`,
+    )
+      .bind(DEMO_CONF_2026_ID, NOW)
+      .run()
+
+    const response = await app.request(SCHEDULE_PATH, undefined, bindings())
+    const body = (await response.json()) as { sessions: Array<{ submissionId: string }> }
+
+    expect(response.status).toBe(200)
+    expect(body.sessions).toEqual([])
+    expect(JSON.stringify(body)).not.toContain('My talk')
+  })
+
+  /**
+   * The mirror case, so the filter is proven to exclude rejections rather than
+   * simply to empty the programme: an accepted verdict on the same row leaves
+   * the talk exactly where it was.
+   */
+  it('keeps a published talk whose standing verdict is accepted', async () => {
+    await env.DB.prepare(
+      `INSERT INTO submission_decisions
+         (event_id, id, submission_id, sequence, outcome, decided_by, decided_at)
+       VALUES (?, 'decision-1', 'submission-1', 1, 'accepted', 'organizer', ?)`,
+    )
+      .bind(DEMO_CONF_2026_ID, NOW)
+      .run()
+
+    const response = await app.request(SCHEDULE_PATH, undefined, bindings())
+    const body = (await response.json()) as { sessions: Array<{ submissionId: string }> }
+
+    expect(body.sessions.map((session) => session.submissionId)).toEqual(['submission-1'])
+  })
+
+  /**
+   * The trail decides, not any single row: a talk rejected and then reinstated
+   * is on the programme, and reading the FIRST verdict rather than the standing
+   * one would wrongly hide it.
+   */
+  it('follows the standing verdict when a rejection was later reversed', async () => {
+    await env.DB.prepare(
+      `INSERT INTO submission_decisions
+         (event_id, id, submission_id, sequence, outcome, decided_by, decided_at)
+       VALUES (?, 'decision-1', 'submission-1', 1, 'rejected', 'organizer', ?),
+              (?, 'decision-2', 'submission-1', 2, 'accepted', 'organizer', ?)`,
+    )
+      .bind(DEMO_CONF_2026_ID, NOW, DEMO_CONF_2026_ID, NOW)
+      .run()
+
+    const response = await app.request(SCHEDULE_PATH, undefined, bindings())
+    const body = (await response.json()) as { sessions: Array<{ submissionId: string }> }
+
+    expect(body.sessions.map((session) => session.submissionId)).toEqual(['submission-1'])
+  })
+
   it('returns a uniform 404 for an unknown event slug', async () => {
     const response = await app.request(
       '/api/public/events/no-such-event/schedule',

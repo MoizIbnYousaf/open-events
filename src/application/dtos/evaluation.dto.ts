@@ -7,6 +7,7 @@ import type {
   EvaluationRound,
   EvaluationRoundId,
   EvaluationRoundStatus,
+  EvaluationScore,
   EventId,
   SubmissionId,
   UtcInstant,
@@ -44,6 +45,33 @@ export interface EvaluationAssignmentDto {
   readonly evaluatorEmail: string
   readonly evaluatorName: string
   readonly createdAt: UtcInstant
+  /**
+   * What this reviewer actually said, on the event's default criterion. Null
+   * while the assignment is unscored — an unscored reviewer is reported as
+   * unscored rather than dropped, because 'nobody has read this yet' and 'one
+   * of three has read it' are different things for an organizer deciding.
+   */
+  readonly rating: number | null
+  readonly comment: string | null
+  readonly updatedAt: UtcInstant | null
+}
+
+/**
+ * One reviewer's review of one submission in one round, for the ORGANIZER.
+ *
+ * There is no blind or anonymised review anywhere in this domain today, so
+ * naming the reviewer here regresses nothing. IF blinding is ever introduced,
+ * THIS is the DTO that has to learn about it: it is the only place an
+ * individual reviewer's identity and their words travel together.
+ */
+export interface EvaluationReviewDto {
+  readonly assignmentId: EvaluationAssignmentId
+  readonly evaluatorContactId: ContactId
+  readonly evaluatorEmail: string
+  readonly evaluatorName: string | null
+  readonly rating: number | null
+  readonly comment: string | null
+  readonly updatedAt: UtcInstant | null
 }
 
 /** What one evaluator recorded in a round that is behind them. */
@@ -107,6 +135,12 @@ export interface EvaluationRoundSummaryDto {
   readonly scoredCount: number
   readonly scoreCount: number
   readonly weightSum: number
+  /**
+   * The individual reviews behind the aggregates, ordered by assignment. An
+   * organizer deciding a proposal has to be able to read what the committee
+   * SAID, not only the weighted number it came to.
+   */
+  readonly reviews: readonly EvaluationReviewDto[]
   readonly weightedTotal: number
   /** Weighted average rating in hundredths of a rating point (4.75 -> 475). */
   readonly weightedAverageCentis: number
@@ -136,6 +170,8 @@ export interface EvaluationSummaryDto {
   /** Weighted average rating in hundredths of a rating point (4.75 -> 475). */
   readonly weightedAverageCentis: number
   readonly criteria: readonly EvaluationCriterionSummaryDto[]
+  /** The current round's individual reviews, mirroring `rounds[current]`. */
+  readonly reviews: readonly EvaluationReviewDto[]
   readonly rounds: readonly EvaluationRoundSummaryDto[]
 }
 
@@ -163,6 +199,7 @@ export function toEvaluationAssignmentDto(
   assignment: EvaluationAssignment,
   evaluatorEmail: string,
   evaluatorName: string,
+  score: EvaluationScore | null = null,
 ): EvaluationAssignmentDto {
   return {
     id: assignment.id,
@@ -173,5 +210,8 @@ export function toEvaluationAssignmentDto(
     evaluatorEmail,
     evaluatorName,
     createdAt: assignment.createdAt,
+    rating: score?.rating ?? null,
+    comment: score?.comment ?? null,
+    updatedAt: score?.updatedAt ?? null,
   }
 }

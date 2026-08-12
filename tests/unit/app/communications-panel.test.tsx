@@ -108,10 +108,28 @@ async function confirmSend(user: ReturnType<typeof userEvent.setup>): Promise<vo
   await user.click(await screen.findByRole('button', { name: 'Send the email' }))
 }
 
+/**
+ * The decision passes through a confirmation too, for the same reason the send
+ * does: it is what the organizer is about to tell a speaker, and there is no
+ * polite way to take back a mis-click on a rejection.
+ */
+async function confirmAccept(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(await screen.findByRole('button', { name: 'Confirm acceptance' }))
+}
+
 function defaultHandler(url: string, init?: RequestInit): Response {
   const method = init?.method ?? 'GET'
   if (method === 'GET' && url === PREVIEW_PATH) {
-    return jsonResponse({ ...PREVIEW, accepted, alreadySent: history.length > 0 })
+    // The real preview derives BOTH fields from the same state, so the fixture
+    // does too: a stub that sent `accepted` without a matching `decision`
+    // would be a payload the server cannot produce, and any assertion built on
+    // it would be measuring the stub rather than the product.
+    return jsonResponse({
+      ...PREVIEW,
+      accepted,
+      decision: accepted ? 'accepted' : 'pending',
+      alreadySent: history.length > 0,
+    })
   }
   if (method === 'GET' && url === MESSAGES_PATH) {
     return jsonResponse(history)
@@ -317,9 +335,10 @@ describe('communications panel', () => {
 
     await screen.findByText(PREVIEW.subject)
     expect(screen.getByRole('button', { name: 'Send acceptance' })).toBeDisabled()
-    expect(screen.getByText(/not accepted yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/not yet decided/i)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Accept proposal' }))
+    await confirmAccept(user)
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Send acceptance' })).toBeEnabled(),
@@ -334,7 +353,7 @@ describe('communications panel', () => {
 
     await screen.findByText(PREVIEW.subject)
     expect(screen.queryByRole('button', { name: 'Accept proposal' })).not.toBeInTheDocument()
-    expect(screen.getByText('Acceptance recorded')).toBeInTheDocument()
+    expect(screen.getByText(/^Accepted$/)).toBeInTheDocument()
   })
 
   it('surfaces an accept failure as an alert without claiming acceptance', async () => {
@@ -350,8 +369,13 @@ describe('communications panel', () => {
 
     await screen.findByText(PREVIEW.subject)
     await user.click(screen.getByRole('button', { name: 'Accept proposal' }))
+    await confirmAccept(user)
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // The failure keeps the ask open over the action that caused it, so the
+    // panel behind it is only reachable again once the dialog is dismissed —
+    // and nothing about the proposal has moved.
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('button', { name: 'Send acceptance' })).toBeDisabled()
   })
 
@@ -365,12 +389,18 @@ describe('communications panel', () => {
     await screen.findByText(PREVIEW.subject)
 
     await user.click(screen.getByRole('button', { name: 'Accept proposal' }))
+    await confirmAccept(user)
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Accept proposal' })).not.toBeInTheDocument(),
     )
 
     const heading = screen.getByRole('heading', { name: 'Acceptance' })
-    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 5000 })
+    // Deliberately BELOW the 5s test timeout. At 5000 the two deadlines raced,
+    // and the test timeout won every time — so a focus that never arrived was
+    // always reported as "Test timed out", never as "expected the heading to
+    // have focus". A waitFor that cannot outlive its own test can only ever
+    // hide the assertion it exists to make.
+    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 2000 })
     expect(document.activeElement).not.toBe(document.body)
   })
 
@@ -388,7 +418,12 @@ describe('communications panel', () => {
     )
 
     const heading = screen.getByRole('heading', { name: 'Acceptance' })
-    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 5000 })
+    // Deliberately BELOW the 5s test timeout. At 5000 the two deadlines raced,
+    // and the test timeout won every time — so a focus that never arrived was
+    // always reported as "Test timed out", never as "expected the heading to
+    // have focus". A waitFor that cannot outlive its own test can only ever
+    // hide the assertion it exists to make.
+    await waitFor(() => expect(heading).toHaveFocus(), { timeout: 2000 })
     expect(document.activeElement).not.toBe(document.body)
   })
 

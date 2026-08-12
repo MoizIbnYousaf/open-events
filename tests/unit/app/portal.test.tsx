@@ -36,6 +36,10 @@ const SUBMISSIONS_ENVELOPE = {
       title: 'Deterministic conflict detection at scale',
       status: 'pending',
       accepted: false,
+      // `status` is pinned to 'pending' for a submission's whole life, so it
+      // says nothing about the verdict; `decision` is the field that does, and
+      // the server states it on every row.
+      decision: 'pending',
       inviteAvailable: false,
       formSlug: 'cfp',
       version: 1,
@@ -47,6 +51,7 @@ const SUBMISSIONS_ENVELOPE = {
       title: 'Base UI in production',
       status: 'pending',
       accepted: true,
+      decision: 'accepted',
       inviteAvailable: true,
       formSlug: 'cfp',
       version: 1,

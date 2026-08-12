@@ -3,6 +3,7 @@ import type {
   CapturedMessageId,
   CapturedMessageKind,
   SubmissionId,
+  SubmissionOutcome,
   UtcInstant,
 } from '../../domain'
 
@@ -28,6 +29,16 @@ export interface AcceptancePreviewDto {
    * offering an action the API will refuse.
    */
   readonly accepted: boolean
+  /**
+   * The standing programme verdict, and 'pending' while nobody has ruled —
+   * one spelling of undecided, never null and never absent.
+   *
+   * `accepted` above reports only whether the acceptance RECORD exists, and
+   * that record survives a later rejection because the onboarding checklist
+   * hangs its foreign key off it — so this is the field that says what the
+   * organizer actually decided.
+   */
+  readonly decision: SubmissionOutcome
   /** True once every resolved recipient has a stored row of this kind. */
   readonly alreadySent: boolean
   /** Owner plus contributors, deduped case-insensitively, owner first. */

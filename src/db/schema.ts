@@ -18,7 +18,7 @@ import { FORM_STATUSES } from '../domain/form'
 import { ELEMENT_KINDS, PAGE_KINDS, QUESTION_TYPES, VERSION_STATUSES } from '../domain/form-version'
 import { CONDITION_EFFECTS, CONDITION_OPERATORS, ROUTING_ACTIONS } from '../domain/rules'
 import { ALL_SPEAKER_TASK_KINDS, SPEAKER_TASK_STATUSES } from '../domain/speaker-task'
-import { SUBMISSION_STATUSES } from '../domain/submission'
+import { SUBMISSION_DECISION_OUTCOMES, SUBMISSION_STATUSES } from '../domain/submission'
 import { TAXONOMY_KINDS } from '../domain/taxonomy'
 
 /**
@@ -523,6 +523,43 @@ export const submissionAcceptances = sqliteTable(
   ],
 )
 
+/**
+ * Decision (0016) mirror. Separate from the acceptance record because that row
+ * is what onboarding and the agenda hang their composite FKs off; this one
+ * carries the verdict itself, in both directions, append-only, with who
+ * recorded it and when. The standing decision is the highest `sequence`.
+ */
+export const submissionDecisions = sqliteTable(
+  'submission_decisions',
+  {
+    eventId: text('event_id').notNull(),
+    id: text('id').notNull(),
+    submissionId: text('submission_id').notNull(),
+    sequence: integer('sequence').notNull(),
+    outcome: text('outcome', { enum: [...SUBMISSION_DECISION_OUTCOMES] }).notNull(),
+    decidedBy: text('decided_by').notNull(),
+    decidedAt: text('decided_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('idx_submission_decisions_id').on(table.id),
+    uniqueIndex('submission_decisions_event_submission_sequence').on(
+      table.eventId,
+      table.submissionId,
+      table.sequence,
+    ),
+    index('idx_submission_decisions_event_submission').on(
+      table.eventId,
+      table.submissionId,
+      table.sequence,
+    ),
+    foreignKey({
+      columns: [table.eventId, table.submissionId],
+      foreignColumns: [proposalSubmissions.eventId, proposalSubmissions.id],
+    }),
+  ],
+)
+
 export const speakerTasks = sqliteTable(
   'speaker_tasks',
   {
@@ -582,6 +619,7 @@ export type ConfirmationRecordRow = typeof confirmationRecords.$inferSelect
 export type AgendaSessionRow = typeof agendaSessions.$inferSelect
 export type AgendaSessionSpeakerRow = typeof agendaSessionSpeakers.$inferSelect
 export type SubmissionAcceptanceRow = typeof submissionAcceptances.$inferSelect
+export type SubmissionDecisionRow = typeof submissionDecisions.$inferSelect
 export type SpeakerTaskRow = typeof speakerTasks.$inferSelect
 
 /** Drizzle mirror of migrations/0008_create_uploaded_files_table.sql. */

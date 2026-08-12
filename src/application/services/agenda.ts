@@ -176,7 +176,9 @@ export class AgendaService {
     submissionId: SubmissionId,
   ): Promise<AgendaBoardDto> {
     const event = await this.#eventOrNotFound(slug)
-    const session = await this.#placeableSession(event, submissionId)
+    // `#existingSession`, not `#placeableSession`: taking a talk OFF the
+    // programme is exactly what an organizer needs to do after rejecting it.
+    const session = await this.#existingSession(event, submissionId)
     if (session.assignment === 'scheduled' || session.status === 'published') {
       await this.#agenda.saveSession({
         ...session,
@@ -204,9 +206,23 @@ export class AgendaService {
   async publish(_actor: OrganizerActor, slug: EventSlug): Promise<AgendaPublishResultDto> {
     const event = await this.#eventOrNotFound(slug)
     const now = this.#clock.now()
-    const sessions = await this.#agenda.listByEvent(event.id)
+    const [sessions, decisions] = await Promise.all([
+      this.#agenda.listByEvent(event.id),
+      this.#submissions.listDecisionsByEvent(event.id),
+    ])
+    // Publishing is the moment a session becomes public, so the rejection check
+    // is repeated here rather than trusted from the board read: a talk rejected
+    // between loading the board and pressing publish must not go out.
+    const rejected = new Set(
+      decisions
+        .filter((decision) => decision.outcome === 'rejected')
+        .map((decision) => decision.submissionId),
+    )
     const publishable = sessions.filter(
-      (session) => session.assignment === 'scheduled' && session.status === 'draft',
+      (session) =>
+        session.assignment === 'scheduled' &&
+        session.status === 'draft' &&
+        !rejected.has(session.submissionId),
     )
     await Promise.all(
       publishable.map((session) =>
@@ -227,11 +243,14 @@ export class AgendaService {
   }
 
   /**
-   * The agenda row a placement may touch: the submission has to belong to this
-   * event, carry an acceptance record, and already have the session acceptance
+   * The agenda row an organizer may touch at all: the submission has to belong
+   * to this event, carry an acceptance record, and already have its session
    * materialised. Every miss is the same not-found.
+   *
+   * Deliberately says nothing about the verdict, because REMOVING something
+   * from the programme must never depend on it. See `#placeableSession`.
    */
-  async #placeableSession(event: Event, submissionId: SubmissionId): Promise<AgendaSessionRecord> {
+  async #existingSession(event: Event, submissionId: SubmissionId): Promise<AgendaSessionRecord> {
     const notFound = new ApplicationError('not_found', `Submission '${submissionId}' not found`)
     const submission = await this.#submissions.findById(submissionId)
     if (submission === null || submission.eventId !== event.id) throw notFound
@@ -241,14 +260,55 @@ export class AgendaService {
     return session
   }
 
+  /**
+   * The agenda row a PLACEMENT may touch: everything above, and not standing
+   * rejected.
+   *
+   * The rejection check is separate from the acceptance check because the two
+   * are separate facts: the acceptance row survives a later rejection on
+   * purpose (speaker_tasks and this very session hang their foreign keys off
+   * it), so 'has an acceptance record' does not mean 'is still in the
+   * programme'. Without this an organizer could place a rejected talk into a
+   * room and publish it to the PUBLIC schedule.
+   *
+   * It guards the way IN only. Retraction shares the row lookup but not this
+   * check: when unplace also refused a rejected session, rejecting a published
+   * talk made it permanently unretractable — the row stayed 'published' and
+   * would have returned to the public schedule the moment the rejection was
+   * reversed. A guard that blocks the remedy for the very state it describes is
+   * pointed the wrong way.
+   */
+  async #placeableSession(event: Event, submissionId: SubmissionId): Promise<AgendaSessionRecord> {
+    const session = await this.#existingSession(event, submissionId)
+    const decision = await this.#submissions.findDecision(event.id, submissionId)
+    if (decision !== null && decision.outcome === 'rejected') {
+      throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
+    }
+    return session
+  }
+
   async #board(event: Event): Promise<AgendaBoardDto> {
-    const [stored, acceptances, submissions, items] = await Promise.all([
+    const [stored, acceptances, submissions, items, decisions] = await Promise.all([
       this.#agenda.listByEvent(event.id),
       this.#tasks.listAcceptancesByEvent(event.id),
       this.#submissions.listByEvent(event.id),
       this.#taxonomies.listByEvent(event.id),
+      this.#submissions.listDecisionsByEvent(event.id),
     ])
-    const accepted = new Set(acceptances.map((acceptance) => acceptance.submissionId))
+    // An acceptance record is not a verdict: it outlives a rejection because
+    // the checklist and this board's own rows point at it. A talk the organizer
+    // has since rejected must leave the board — everything downstream, up to
+    // and including the public programme, is built from this list.
+    const rejected = new Set(
+      decisions
+        .filter((decision) => decision.outcome === 'rejected')
+        .map((decision) => decision.submissionId),
+    )
+    const accepted = new Set(
+      acceptances
+        .map((acceptance) => acceptance.submissionId)
+        .filter((submissionId) => !rejected.has(submissionId)),
+    )
     const titles = new Map(submissions.map((submission) => [submission.id, submission.title]))
     const labels = new Map(items.map((item) => [item.id, item.label]))
     const sessions = stored.filter((session) => accepted.has(session.submissionId))

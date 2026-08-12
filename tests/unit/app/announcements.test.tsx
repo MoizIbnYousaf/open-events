@@ -376,9 +376,13 @@ describe('async pending state', () => {
       </QueryClientProvider>,
     )
 
+    // The decision is made in its confirmation now, so the in-flight control is
+    // the confirm button — which is where aria-busy has to be, because it is
+    // the control the organizer pressed and the one keeping focus.
     await user.click(await screen.findByRole('button', { name: 'Accept proposal' }))
-    const accepting = await screen.findByRole('button', { name: /accepting/i })
-    expect(accepting).toHaveAttribute('aria-busy', 'true')
+    const accepting = await screen.findByRole('button', { name: 'Confirm acceptance' })
+    await user.click(accepting)
+    await waitFor(() => expect(accepting).toHaveAttribute('aria-busy', 'true'))
   })
 
   it('speaks a mutation failure exactly once, not once per live region', async () => {

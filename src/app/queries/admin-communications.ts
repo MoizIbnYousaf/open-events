@@ -7,10 +7,36 @@ import {
   getAcceptancePreview,
   getReminderPreview,
   listSubmissionMessages,
+  decideSubmission,
   sendAcceptance,
   sendReminder,
 } from '../api/admin-communications'
 import type { EventSlug, SubmissionId } from '../../domain'
+
+/** A verdict that has actually been reached, as opposed to 'pending'. */
+export type SubmissionDecision = 'accepted' | 'rejected'
+
+/** What a surface is told: the recorded verdict, or that nobody has ruled yet. */
+export type SubmissionOutcome = 'pending' | SubmissionDecision
+
+/**
+ * The outcome an organizer surface should render, from an acceptance preview
+ * that may not have loaded yet.
+ *
+ * The `accepted` boolean beside it is NOT consulted. It reports only whether
+ * the acceptance RECORD exists, and that record deliberately survives a
+ * rejection — the onboarding checklist hangs a foreign key off it — so on a
+ * rejected proposal `accepted` is still true and is precisely the field that
+ * must not be believed. The server states the verdict; this reads it.
+ *
+ * An absent preview is 'pending' rather than a verdict, so a page that has not
+ * finished loading never announces a decision nobody made.
+ */
+export function readDecision(
+  preview: { readonly decision: SubmissionOutcome } | undefined,
+): SubmissionOutcome {
+  return preview?.decision ?? 'pending'
+}
 
 export const adminCommunicationQueryKeys = {
   acceptancePreview: (submissionId: SubmissionId) =>
@@ -52,6 +78,25 @@ export function useAcceptSubmission(slug: EventSlug, submissionId: SubmissionId)
   const queryClient = useQueryClient()
   return useServerMutation({
     mutationFn: () => acceptSubmission(slug, submissionId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: adminCommunicationQueryKeys.acceptancePreview(submissionId),
+      })
+    },
+  })
+}
+
+/**
+ * The other decision, invalidating exactly what accepting does.
+ *
+ * A rejection can follow an acceptance — an organizer is allowed to change
+ * their mind — and that reversal moves the send gate too, so the preview has to
+ * be re-read rather than patched locally.
+ */
+export function useRejectSubmission(slug: EventSlug, submissionId: SubmissionId) {
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: () => decideSubmission(slug, submissionId, 'rejected'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: adminCommunicationQueryKeys.acceptancePreview(submissionId),

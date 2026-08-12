@@ -408,14 +408,17 @@ describe('organizer assignments', () => {
     ])
   })
 
-  it('404s an unknown submission and an unknown evaluator, 400s a malformed email', async () => {
+  it('404s an unknown submission, provisions a never-seen reviewer, 400s a malformed email', async () => {
     const unknownSubmission = await assignReviewer(REVIEWER_ONE_EMAIL, 'submission-missing')
     expect(unknownSubmission.status).toBe(404)
 
-    const unknownEvaluator = await assignReviewer('nobody@example.test')
-    expect(unknownEvaluator.status).toBe(404)
-    expect(await unknownEvaluator.json()).toEqual({
-      error: { code: 'not_found', message: 'Not found' },
+    // An email nobody has signed in with is a reviewer the organizer has not
+    // met yet, not a mistake: the assignment provisions the identity rather
+    // than making the organizer wait for that person to turn up first.
+    const coldReviewer = await assignReviewer('nobody@example.test')
+    expect(coldReviewer.status).toBe(200)
+    expect((await coldReviewer.json()) as AssignmentBody).toMatchObject({
+      evaluatorEmail: 'nobody@example.test',
     })
 
     const malformed = await assignReviewer('not-an-email')

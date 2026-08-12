@@ -8,7 +8,7 @@ import {
   SPEAKER_PORTAL_PATH,
   renderAcceptanceTemplate,
 } from '../../../src/application'
-import type { Event } from '../../../src/domain'
+import type { Event, SubmissionDecisionOutcome } from '../../../src/domain'
 import { buildInviteUid } from '../../../src/domain'
 import {
   EVENT_ID,
@@ -39,13 +39,44 @@ const ACCEPTANCE = {
   acceptedAt: '2026-05-19T09:00:00.000Z',
 }
 
-/** Accepted by default: acceptance is the precondition of every send. */
+/**
+ * Accepted by default: acceptance is the precondition of every send.
+ *
+ * `decision` is a SEPARATE axis from `accepted` on purpose. Accepting writes
+ * both the acceptance record and an accepted decision, so the default seeds
+ * both — but the two can legitimately disagree, and that disagreement is the
+ * whole point of the decision table: rejecting leaves the acceptance row in
+ * place (`speaker_tasks` and `agenda_sessions` hang foreign keys off it) and
+ * records a rejection above it. A harness that could not express "accepted
+ * once, rejected since" could not test the case the product exists to handle.
+ */
 function buildHarness({
   accepted = true,
+  decision = accepted ? 'accepted' : null,
   event = eventFixture,
-}: { accepted?: boolean; event?: Event } = {}) {
+}: {
+  accepted?: boolean
+  decision?: SubmissionDecisionOutcome | null
+  event?: Event
+} = {}) {
   const versions = new InMemoryFormVersionRepository([createVersion()])
-  const submissions = new InMemorySubmissionRepository(versions, [createSubmission()])
+  const submissions = new InMemorySubmissionRepository(
+    versions,
+    [createSubmission()],
+    decision === null
+      ? []
+      : [
+          {
+            id: `decision-${SUBMISSION_ID}`,
+            eventId: EVENT_ID,
+            submissionId: SUBMISSION_ID,
+            sequence: 1,
+            outcome: decision,
+            decidedBy: 'organizer',
+            decidedAt: ACCEPTANCE.acceptedAt,
+          },
+        ],
+  )
   const events = new InMemoryEventRepository([event])
   const contacts = new InMemoryContactRepository([ownerContact])
   const messages = new InMemoryCapturedMessageRepository()
@@ -201,6 +232,32 @@ describe('CommunicationsService.queueAcceptance', () => {
     expect(messages.list()).toEqual([])
   })
 
+  /**
+   * The acceptance record survives a rejection by design, so a send gated on it
+   * alone would post "Great news: your proposal has been accepted" to somebody
+   * the programme has just turned down. That is the worst possible message to
+   * get wrong, and it is unrecallable once sent — the standing decision is the
+   * only thing that can prevent it.
+   */
+  it('refuses to announce an acceptance the programme has since rejected', async () => {
+    const { service, messages } = buildHarness({ accepted: true, decision: 'rejected' })
+
+    await expect(
+      service.queueAcceptance(organizerActor, EVENT_ID, SUBMISSION_ID),
+    ).rejects.toMatchObject({ code: 'conflict' })
+    expect(messages.list()).toEqual([])
+  })
+
+  /** The reminder carries the same claim ("your accepted proposal") and needs the same gate. */
+  it('refuses to remind a speaker the programme has since rejected', async () => {
+    const { service, messages } = buildHarness({ accepted: true, decision: 'rejected' })
+
+    await expect(
+      service.queueReminder(organizerActor, EVENT_ID, SUBMISSION_ID),
+    ).rejects.toMatchObject({ code: 'conflict' })
+    expect(messages.list()).toEqual([])
+  })
+
   it('is idempotent: a second send returns the first row and never duplicates', async () => {
     const { service, messages } = buildHarness()
 
@@ -295,5 +352,49 @@ describe('CommunicationsService.buildInvite', () => {
     const { service } = buildHarness()
 
     expect(await service.buildInvite(ownerActor, 'missing')).toBeNull()
+  })
+
+  /**
+   * The rejection case is the one that matters, and it is deliberately set up
+   * with the acceptance record STILL PRESENT — which is exactly the state a
+   * rejection leaves behind, because retracting the acceptance row would delete
+   * onboarding work the speaker had already done. An invite gate reading the
+   * acceptance record renders a calendar hold here; only one reading the
+   * standing decision refuses. Ownership and event scope are satisfied, so the
+   * decision is the sole reason this is null.
+   */
+  it('refuses an invite to a speaker the programme has rejected', async () => {
+    const { service } = buildHarness({ accepted: true, decision: 'rejected' })
+
+    expect(await service.buildInvite(ownerActor, SUBMISSION_ID)).toBeNull()
+  })
+
+  /**
+   * Undecided is refused too. A proposal nobody has ruled on — no decision
+   * record AND no acceptance record — has not earned a place in the programme,
+   * and an .ics is a promise of one, so silence is not consent.
+   */
+  it('refuses an invite while the proposal is still undecided', async () => {
+    const { service } = buildHarness({ accepted: false, decision: null })
+
+    expect(await service.buildInvite(ownerActor, SUBMISSION_ID)).toBeNull()
+  })
+
+  /**
+   * The half-written accept: an acceptance record with no decision beside it.
+   *
+   * `accept()` and `decide()` are two writes — the accept route makes both — so
+   * a failure between them leaves exactly this state, and migration 0016
+   * backfills the same shape for every acceptance predating the decision table.
+   * That speaker genuinely WAS accepted: they have a materialised checklist and
+   * an agenda session. So the invite is granted, and it is granted for the same
+   * reason their portal shows "Accepted" — one rule, read in both places.
+   * Reading it as undecided here is what produced an Accepted badge beside a
+   * download that answered 404.
+   */
+  it('grants the invite on a legacy acceptance that predates the decision record', async () => {
+    const { service } = buildHarness({ accepted: true, decision: null })
+
+    expect(await service.buildInvite(ownerActor, SUBMISSION_ID)).toContain('BEGIN:VCALENDAR')
   })
 })

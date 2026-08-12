@@ -1,4 +1,4 @@
-import type { ContactId } from '../../domain/contact'
+import type { Contact, ContactId } from '../../domain/contact'
 import type {
   EvaluationAssignment,
   EvaluationCriterion,
@@ -29,6 +29,7 @@ import type {
   EvaluationCriterionDto,
   EvaluationCriterionSummaryDto,
   EvaluationPreviousRoundDto,
+  EvaluationReviewDto,
   EvaluationRoundDto,
   EvaluationRoundSummaryDto,
   EvaluationRowDto,
@@ -59,6 +60,22 @@ export interface DefineCriteriaInput {
 export interface OpenRoundInput {
   readonly number: number
   readonly name: string
+}
+
+export interface AddCommitteeMemberInput {
+  readonly email: string
+  /** Only used when the contact does not exist yet; never overwrites a name. */
+  readonly name?: string
+}
+
+/** One seat on an event's committee, as the organizer surface reads it back. */
+export interface CommitteeMemberDto {
+  readonly contactId: ContactId
+  readonly email: string
+  readonly name: string
+  readonly addedAt: string
+  /** False when the seat was already taken — the idempotent repeat. */
+  readonly created: boolean
 }
 
 export interface AssignEvaluatorInput {
@@ -225,6 +242,59 @@ export class EvaluationService {
   }
 
   /**
+   * Seats a reviewer on ONE event's committee, by email, whether or not that
+   * person has ever used the product.
+   *
+   * An organizer picks their committee before the committee turns up; requiring
+   * an existing contact meant they could only invite people who had already
+   * signed in, which is the wrong way round. The contact is created on the same
+   * email key the sign-in path uses, so the person the organizer invited and
+   * the person who later follows a magic link are one identity.
+   *
+   * Least privilege: the seat is a row in ONE event, and it grants nothing but
+   * reading that event's review surface. It is not a role on the contact.
+   */
+  async addCommitteeMember(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    input: AddCommitteeMemberInput,
+  ): Promise<CommitteeMemberDto> {
+    const email = normalizeEmail(typeof input.email === 'string' ? input.email : '')
+    if (!isValidEmailAddress(email)) {
+      throw new ApplicationError('validation_failed', 'A valid reviewer email is required')
+    }
+    const contact = await this.#ensureContact(email, input.name)
+    const existing = await this.#evaluations.findCommitteeMember(eventId, contact.id)
+    const member = await this.#evaluations.saveCommitteeMember({
+      eventId,
+      contactId: contact.id,
+      addedAt: existing?.addedAt ?? this.#clock.now(),
+    })
+    return {
+      contactId: contact.id,
+      email: contact.email,
+      name: contact.name,
+      addedAt: member.addedAt,
+      created: existing === null,
+    }
+  }
+
+  /**
+   * The contact behind an email, created if nobody has ever used it. The
+   * fallback name is the local part rather than an empty string, so a roster
+   * an organizer has not annotated still reads as people.
+   */
+  async #ensureContact(email: string, name: string | undefined): Promise<Contact> {
+    const proposed = typeof name === 'string' ? name.trim() : ''
+    return this.#contacts.ensureByEmail({
+      id: crypto.randomUUID(),
+      email,
+      name: proposed.length > 0 ? proposed : (email.split('@')[0] ?? email),
+      createdAt: this.#clock.now(),
+    })
+  }
+
+  /**
    * Opens a numbered review round. Re-opening a round that is already open
    * returns it unchanged (idempotent retry); a round that has been closed is
    * a conflict, because open is not reachable from closed.
@@ -294,10 +364,12 @@ export class EvaluationService {
   }
 
   /**
-   * Assigns a committee evaluator to a submission for one round. The
-   * evaluator is resolved from an existing contact email — assignment never
-   * creates an identity — and repeating the same assignment returns the
-   * existing row rather than a second one.
+   * Assigns a committee evaluator to a submission for one round. The evaluator
+   * is resolved from an email, and an email nobody has used yet becomes a
+   * contact here rather than a refusal: an organizer handing out reading is
+   * the same act of provisioning as seating someone on the committee, so it
+   * cannot depend on whether that person has signed in first. Repeating the
+   * same assignment returns the existing row rather than a second one.
    */
   async assign(
     _actor: OrganizerActor,
@@ -315,10 +387,7 @@ export class EvaluationService {
     if (!isValidEmailAddress(email)) {
       throw new ApplicationError('validation_failed', 'A valid evaluator email is required')
     }
-    const contact = await this.#contacts.findByEmail(email)
-    if (contact === null) {
-      throw new ApplicationError('not_found', 'That evaluator is not a known contact')
-    }
+    const contact = await this.#ensureContact(email, undefined)
     const round = await this.#resolveOpenRound(submission.eventId, input.roundId)
 
     // Giving someone a submission to read is what puts them on the committee,
@@ -360,16 +429,23 @@ export class EvaluationService {
     if (submission === null || submission.eventId !== eventId) {
       throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
     }
-    const assignments = await this.#evaluations.listAssignmentsBySubmission(
-      submission.eventId,
-      submission.id,
-    )
+    const [assignments, criteria, scores] = await Promise.all([
+      this.#evaluations.listAssignmentsBySubmission(submission.eventId, submission.id),
+      this.#evaluations.listCriteria(submission.eventId),
+      this.#evaluations.listScoresBySubmission(submission.eventId, submission.id),
+    ])
     const contacts = await Promise.all(
       assignments.map((assignment) => this.#contacts.findById(assignment.evaluatorContactId)),
     )
+    const criterion = selectDefaultCriterion(criteria)
     return assignments.map((assignment, index) => {
       const contact = contacts[index]
-      return toEvaluationAssignmentDto(assignment, contact?.email ?? '', contact?.name ?? '')
+      return toEvaluationAssignmentDto(
+        assignment,
+        contact?.email ?? '',
+        contact?.name ?? '',
+        ownScore(scores, assignment, criterion),
+      )
     })
   }
 
@@ -401,8 +477,24 @@ export class EvaluationService {
       this.#evaluations.listScoresBySubmission(submission.eventId, submission.id),
     ])
 
+    // The evaluator identities the reviews need. Loaded once for the whole
+    // summary rather than per round, because one member typically sits in
+    // several rounds on the same submission.
+    const evaluatorIds = [...new Set(assignments.map((a) => a.evaluatorContactId))]
+    const evaluators = await Promise.all(evaluatorIds.map((id) => this.#contacts.findById(id)))
+    const byContactId = new Map(
+      evaluatorIds.map((id, index) => [id, evaluators[index] ?? null] as const),
+    )
+    const criterion = selectDefaultCriterion(criteria)
     const roundSummaries = rounds.map((round) =>
-      summarizeRound(round, selectRoundAssignments(assignments, round.id), stored, criteria),
+      summarizeRound(
+        round,
+        selectRoundAssignments(assignments, round.id),
+        stored,
+        criteria,
+        criterion,
+        byContactId,
+      ),
     )
     const current = selectCurrentRound(rounds)
     const headline = roundSummaries.find((entry) => entry.roundId === current?.id) ?? null
@@ -419,6 +511,7 @@ export class EvaluationService {
       weightedTotal: headline?.weightedTotal ?? 0,
       weightedAverageCentis: headline?.weightedAverageCentis ?? 0,
       criteria: headline?.criteria ?? emptyCriteriaBreakdown(criteria),
+      reviews: headline?.reviews ?? [],
       rounds: roundSummaries,
     }
   }
@@ -648,11 +741,27 @@ function emptyCriteriaBreakdown(
  * hang off them, and the weights that round is answerable to — the rubric it
  * recorded when it closed, or the live one while it is still open.
  */
+/** One assignment's score on the default criterion, or null when unscored. */
+function ownScore(
+  scores: readonly EvaluationScore[],
+  assignment: EvaluationAssignment,
+  criterion: EvaluationCriterion | null,
+): EvaluationScore | null {
+  if (criterion === null) return null
+  return (
+    scores.find(
+      (score) => score.assignmentId === assignment.id && score.criterionId === criterion.id,
+    ) ?? null
+  )
+}
+
 function summarizeRound(
   round: EvaluationRound,
   assignments: readonly EvaluationAssignment[],
   stored: readonly EvaluationScore[],
   criteria: readonly EvaluationCriterion[],
+  defaultCriterion: EvaluationCriterion | null,
+  evaluators: ReadonlyMap<ContactId, Contact | null>,
 ): EvaluationRoundSummaryDto {
   const own = new Set(assignments.map((assignment) => assignment.id))
   const scores = stored.filter((score) => own.has(score.assignmentId))
@@ -666,11 +775,28 @@ function summarizeRound(
   }
   const totals = computeWeightedTotals(weighted)
 
+  // Every assignment yields a review, scored or not: an organizer needs to see
+  // which committee member has not answered as plainly as what the others said.
+  const reviews: EvaluationReviewDto[] = assignments.map((assignment) => {
+    const contact = evaluators.get(assignment.evaluatorContactId) ?? null
+    const score = ownScore(scores, assignment, defaultCriterion)
+    return {
+      assignmentId: assignment.id,
+      evaluatorContactId: assignment.evaluatorContactId,
+      evaluatorEmail: contact?.email ?? '',
+      evaluatorName: contact?.name ?? null,
+      rating: score?.rating ?? null,
+      comment: score?.comment ?? null,
+      updatedAt: score?.updatedAt ?? null,
+    }
+  })
+
   return {
     roundId: round.id,
     number: round.number,
     name: round.name,
     status: round.status,
+    reviews,
     assignmentCount: assignments.length,
     scoredCount: new Set(scores.map((score) => score.assignmentId)).size,
     scoreCount: totals.scoreCount,

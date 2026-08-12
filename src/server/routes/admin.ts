@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 
 import type {
+  AddCommitteeMemberInput,
   AssignEvaluatorInput,
   CriterionInput,
   DefineCriteriaInput,
@@ -14,6 +15,7 @@ import type {
 import { EVENT_STATUSES, type EventDates, type EventStatus } from '../../domain/event'
 import type { FormElement, FormPage } from '../../domain/form-version'
 import type { ElementRule, RoutingRule } from '../../domain/rules'
+import { isSubmissionDecisionOutcome } from '../../domain/submission'
 import {
   requireActor,
   requireOrganizer,
@@ -465,7 +467,13 @@ export async function handleGetSubmissionDetail(context: ServerContext): Promise
   return detail === null ? notFoundResponse(context) : context.json(detail)
 }
 
-/** POST /api/admin/submissions/:id/accept: idempotent acceptance + checklist. */
+/**
+ * POST /api/admin/submissions/:id/accept: idempotent acceptance + checklist.
+ *
+ * The decision is recorded alongside the acceptance so the two routes cannot
+ * disagree: a proposal accepted here reads as accepted from the decision
+ * surface and the speaker's portal, not merely as one with a checklist.
+ */
 export async function handleAcceptSubmission(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
   if (deps === null) return databaseUnavailableResponse(context)
@@ -478,6 +486,7 @@ export async function handleAcceptSubmission(context: ServerContext): Promise<Re
   const eventId = await resolveEventId(deps, slug)
   if (eventId === null) return notFoundResponse(context)
   const accepted = await deps.onboarding.accept(actor, eventId, submissionId)
+  await deps.onboarding.decide(actor, eventId, submissionId, 'accepted')
   return context.json(accepted)
 }
 
@@ -594,6 +603,89 @@ export async function handleSubmissionMessages(context: ServerContext): Promise<
   const eventId = await resolveEventId(deps, slug)
   if (eventId === null) return notFoundResponse(context)
   return context.json(await deps.communications.listHistory(actor, eventId, submissionId))
+}
+
+/**
+ * POST /api/admin/events/:slug/evaluations/committee: seat a reviewer on THIS
+ * event's committee by email, creating the contact when nobody has ever used
+ * it. Idempotent, and scoped to the one event named in the path.
+ */
+export async function handleAddCommitteeMember(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  const email = body.email
+  const name = body.name
+  if (typeof email !== 'string') return validationFailedResponse(context)
+  if (name !== undefined && typeof name !== 'string') return validationFailedResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const input: AddCommitteeMemberInput = {
+    email,
+    ...(typeof name === 'string' ? { name } : {}),
+  }
+  return context.json(await deps.evaluations.addCommitteeMember(actor, eventId, input))
+}
+
+/** GET /api/admin/events/:slug/submissions/:id/decision: the standing verdict. */
+export async function handleGetSubmissionDecision(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('id')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.onboarding.getDecision(actor, eventId, submissionId))
+}
+
+/**
+ * POST /api/admin/events/:slug/submissions/:id/decision: record Accept or
+ * Reject. The verdict is the only thing in the body — the acting identity comes
+ * from the session and the event from the path, and the service checks the
+ * submission against that event in the same predicate that writes.
+ */
+export async function handleDecideSubmission(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('id')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  // An unrecognised verdict is refused outright rather than coerced: 'maybe'
+  // must never quietly become a decision the speaker's portal then reports.
+  if (!isSubmissionDecisionOutcome(body.decision)) return validationFailedResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.onboarding.decide(actor, eventId, submissionId, body.decision))
+}
+
+/**
+ * POST /api/admin/events/:slug/submissions/:id/reject: the mirror of `accept`.
+ * Both verdicts are reachable at the URL shape that names them, and both land
+ * on the same append-only decision trail.
+ */
+export async function handleRejectSubmission(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('id')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.onboarding.decide(actor, eventId, submissionId, 'rejected'))
 }
 
 /** GET /api/admin/events/:slug/criteria: the event's weighted criteria. */
@@ -860,6 +952,26 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireActor('organizer'),
     handleEvaluationSummary,
   )
+  app.post(
+    '/api/admin/events/:slug/evaluations/committee',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleAddCommitteeMember,
+  )
+  app.get(
+    '/api/admin/events/:slug/submissions/:id/decision',
+    requireSession(),
+    requireActor('organizer'),
+    handleGetSubmissionDecision,
+  )
+  app.post(
+    '/api/admin/events/:slug/submissions/:id/decision',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleDecideSubmission,
+  )
   app.get('/api/admin/readiness', requireSession(), requireActor('organizer'), handleGetReadiness)
   app.post(
     '/api/admin/events/:slug/submissions/:id/accept',
@@ -867,6 +979,13 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleAcceptSubmission,
+  )
+  app.post(
+    '/api/admin/events/:slug/submissions/:id/reject',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleRejectSubmission,
   )
   app.post(
     '/api/admin/events/:slug/submissions/:id/form-tasks',

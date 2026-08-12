@@ -3,13 +3,16 @@ import { toast } from 'sonner'
 
 import { getApiErrorMessage } from '../../api/admin-events'
 import {
+  readDecision,
   useAcceptSubmission,
   useAcceptancePreview,
+  useRejectSubmission,
   useReminderPreview,
   useSendAcceptance,
   useSendReminder,
   useSubmissionMessages,
 } from '../../queries/admin-communications'
+import type { SubmissionDecision, SubmissionOutcome } from '../../queries/admin-communications'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
@@ -29,21 +32,74 @@ function recipientCount(count: number): string {
   return count === 1 ? '1 recipient' : `${count} recipients`
 }
 
+/** Where the proposal stands, as one word the organizer can act on. */
+function decisionLabel(decision: SubmissionOutcome): string {
+  if (decision === 'accepted') return 'Accepted'
+  if (decision === 'rejected') return 'Rejected'
+  return 'Not yet decided'
+}
+
 /**
- * Organizer acceptance panel: the acceptance decision itself, the rendered
+ * The sentence the organizer is actually being asked about.
+ *
+ * Three things it has to get right, because a confirmation nobody trusts is a
+ * confirmation nobody reads:
+ *
+ *  - WHOSE proposal. It names the speaker, not "this proposal" — the panel sits
+ *    under a heading an organizer may have scrolled past. It would name the
+ *    talk's title too, but the acceptance preview does not carry one; the
+ *    recipient address is the identifying fact this surface actually holds.
+ *  - WHAT THE SPEAKER SEES, in the words their portal will use, because that is
+ *    the consequence being authorised.
+ *  - REVERSIBILITY, stated accurately in both directions. A decision CAN be
+ *    changed here — right up until the speaker acts on it, at which point the
+ *    server refuses the reversal. So this copy must not borrow the language of
+ *    irreversibility from the send dialogs next to it. The one genuinely
+ *    unrecallable thing is mail already sent, and that is the only place the
+ *    word "cannot" appears.
+ */
+function decisionQuestion(
+  asked: SubmissionDecision,
+  current: SubmissionOutcome,
+  speaker: string,
+): string {
+  const who = speaker === '' ? 'The speaker' : speaker
+  if (asked === 'rejected') {
+    return current === 'accepted'
+      ? `This proposal has already been accepted. Rejecting it now replaces that decision, and ${who} sees "Rejected" on their portal instead of "Accepted". An acceptance email that has already been sent cannot be recalled. You can change this decision again until the speaker acts on it.`
+      : `${who} sees "Rejected" on their portal in place of "Pending review", and the proposal stops being a candidate for the schedule. No email is sent. You can change this decision until the speaker acts on it.`
+  }
+  return current === 'rejected'
+    ? `This proposal has already been rejected. Accepting it now replaces that decision, and ${who} sees "Accepted" on their portal instead of "Rejected". You can change this decision again until the speaker acts on it.`
+    : `${who} sees "Accepted" on their portal, and their onboarding checklist is created. No email is sent — the acceptance message is a separate, confirmed step. You can change this decision until the speaker acts on it.`
+}
+
+// `readDecision` and `SubmissionDecision` live beside the query that produces
+// the payload, so the organizer detail badge and this panel reconcile the two
+// decision fields through one implementation and cannot disagree.
+
+/**
+ * Organizer decision panel: the accept/reject decision itself, the rendered
  * acceptance message, a single real send, and the immutable send history.
  *
  * The two halves are one flow — the API refuses to send an acceptance message
  * for a submission with no acceptance record — so the send stays disabled
  * until the acceptance exists. Every disabled state is derived from persisted
- * server state (the acceptance record and the send history), never from local
+ * server state (the decision record and the send history), never from local
  * optimism.
+ *
+ * Neither decision happens on a single click. Both are the thing an organizer
+ * is about to tell a speaker about months of their work, and a rejection
+ * one pixel away from an acceptance is a mis-click that cannot be taken back
+ * politely — so each is asked first, and reversing a recorded decision is asked
+ * the same way.
  */
 export default function CommunicationsPanel({ slug, submissionId }: CommunicationsPanelProps) {
   const preview = useAcceptancePreview(slug, submissionId)
   const reminderPreview = useReminderPreview(slug, submissionId)
   const messages = useSubmissionMessages(slug, submissionId)
   const accept = useAcceptSubmission(slug, submissionId)
+  const reject = useRejectSubmission(slug, submissionId)
   const send = useSendAcceptance(slug, submissionId)
   const sendReminder = useSendReminder(slug, submissionId)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
@@ -121,15 +177,25 @@ export default function CommunicationsPanel({ slug, submissionId }: Communicatio
         <CommunicationsBody
           messages={messages.data ?? []}
           preview={preview.data}
-          onAccept={() => {
-            // No announcement here. The acceptance chip below flips from
-            // "Not accepted yet" to "Acceptance recorded" and is itself a live
-            // region, so it speaks the outcome; the failure renders its own
-            // role=alert. One region per outcome (DEC-014, F-R3-13).
-            accept.mutate(undefined, { onSuccess: landOnHeading })
+          onDecide={(next, onDecided) => {
+            // No announcement here. The decision chip below flips from "Not yet
+            // decided" to "Accepted" or "Rejected" and is itself a live region,
+            // so it speaks the outcome; the failure renders its own role=alert.
+            // One region per outcome (DEC-014, F-R3-13).
+            //
+            // Only the server's answer closes the confirmation, so a failed
+            // decision is reported over the dialog that caused it rather than
+            // behind it.
+            const mutation = next === 'accepted' ? accept : reject
+            mutation.mutate(undefined, {
+              onSuccess: () => {
+                onDecided()
+                landOnHeading()
+              },
+            })
           }}
-          acceptError={accept.error}
-          isAccepting={accept.isPending}
+          decideError={accept.error ?? reject.error}
+          isDeciding={accept.isPending || reject.isPending}
           onSend={(onSent) => {
             send.mutate(undefined, {
               // A toast: sending is the last thing an organizer does on this
@@ -174,6 +240,8 @@ interface CommunicationsBodyProps {
         readonly subject: string
         readonly body: string
         readonly accepted: boolean
+        /** Absent on a payload that predates the rejection outcome. */
+        readonly decision: SubmissionOutcome
         readonly audience?: readonly { readonly email: string; readonly alreadySent: boolean }[]
       }
     | undefined
@@ -184,9 +252,10 @@ interface CommunicationsBodyProps {
     readonly kind?: string
     readonly toEmail?: string
   }[]
-  readonly onAccept: () => void
-  readonly acceptError: unknown
-  readonly isAccepting: boolean
+  /** `onDecided` closes the confirmation, and only the server's answer calls it. */
+  readonly onDecide: (decision: SubmissionDecision, onDecided: () => void) => void
+  readonly decideError: unknown
+  readonly isDeciding: boolean
   /** `onSent` closes the confirmation, and only the server's answer calls it. */
   readonly onSend: (onSent: () => void) => void
   readonly sendError: unknown
@@ -200,9 +269,9 @@ interface CommunicationsBodyProps {
 function CommunicationsBody({
   preview,
   messages,
-  onAccept,
-  acceptError,
-  isAccepting,
+  onDecide,
+  decideError,
+  isDeciding,
   onSend,
   sendError,
   isSending,
@@ -214,7 +283,12 @@ function CommunicationsBody({
   // Pre-0012 rows carry no kind on the wire only in stale caches; the server
   // always sends one now, so a missing kind counts as an acceptance row.
   const alreadySent = messages.some((message) => (message.kind ?? 'acceptance') === 'acceptance')
-  const accepted = preview?.accepted === true
+  const decision = readDecision(preview)
+  // The send gate follows the DECISION, not the older boolean beside it: a
+  // proposal that has been turned down must not offer an acceptance email.
+  const accepted = decision === 'accepted'
+  /** Which decision is being asked about, or `null` when nothing is. */
+  const [confirmDecision, setConfirmDecision] = useState<SubmissionDecision | null>(null)
   const [confirmSend, setConfirmSend] = useState(false)
   const [confirmReminder, setConfirmReminder] = useState(false)
   const audience = preview?.audience ?? []
@@ -227,36 +301,73 @@ function CommunicationsBody({
   return (
     <>
       <div className="flex flex-wrap items-center gap-3">
-        {accepted ? (
-          <StatusLive aria-live="polite">Acceptance recorded</StatusLive>
-        ) : (
-          <>
-            <StatusLive aria-live="polite">Not accepted yet</StatusLive>
-            <Button
-              type="button"
-              pending={isAccepting}
-              disabled={preview === undefined}
-              onClick={onAccept}
-            >
-              {isAccepting ? 'Accepting…' : 'Accept proposal'}
-            </Button>
-            {/* The in-flight state beside the control, not only on it: a
-                disabled button's aria-busy is not reliably announced. A stable
-                region whose text changes, never one created together with its
-                text — a live region has to be in the accessibility tree before
-                its content arrives. */}
-            <StatusLive aria-live="polite">
-              {isAccepting ? 'Accepting this proposal…' : null}
-            </StatusLive>
-          </>
-        )}
+        {/* ONE region for this outcome, in-flight and settled alike (DEC-014).
+            It was two — a "Not accepted yet" chip and a separate "Accepting
+            this proposal…" line — which is two non-empty polite regions on one
+            screen the moment a decision is in the air. A stable region whose
+            text changes, never one created together with its text: a live
+            region has to be in the accessibility tree before its content
+            arrives, which is why the wrapper is unconditional. */}
+        <StatusLive aria-live="polite" aria-label="Decision">
+          {isDeciding ? 'Recording the decision…' : decisionLabel(decision)}
+        </StatusLive>
+        {/* The decision is stated above; these are the ways to change it. The
+            button for the decision already recorded is gone rather than
+            disabled — re-recording what is already true is not an action, and
+            a control that does nothing is worse than no control. */}
+        {decision !== 'accepted' ? (
+          <Button
+            type="button"
+            disabled={preview === undefined || isDeciding}
+            onClick={() => setConfirmDecision('accepted')}
+          >
+            Accept proposal
+          </Button>
+        ) : null}
+        {decision !== 'rejected' ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={preview === undefined || isDeciding}
+            onClick={() => setConfirmDecision('rejected')}
+          >
+            Reject proposal
+          </Button>
+        ) : null}
       </div>
 
-      {acceptError !== null && acceptError !== undefined ? (
+      {decideError !== null && decideError !== undefined ? (
         <AlertLive>
-          {getApiErrorMessage(acceptError, 'The proposal could not be accepted.')}
+          {getApiErrorMessage(decideError, 'The decision could not be recorded.')}
         </AlertLive>
       ) : null}
+
+      {/* The ask, worded for the decision being made and for whether it
+          REVERSES one already recorded — an organizer changing their mind needs
+          to see that they are changing it, not making it. A failure keeps the
+          dialog open and is repeated inside it, because the panel's alert sits
+          behind the very dialog that caused it. */}
+      <ConfirmDialog
+        open={confirmDecision !== null}
+        onOpenChange={(open) => setConfirmDecision(open ? confirmDecision : null)}
+        tone={confirmDecision === 'rejected' ? 'destructive' : 'default'}
+        title={confirmDecision === 'rejected' ? 'Reject this proposal' : 'Accept this proposal'}
+        // `confirmDecision` is null exactly while this dialog is closed, so the
+        // fallback names a verdict nobody reads. It keeps the question's own
+        // signature honest rather than widening it to accept "no verdict".
+        description={`${decisionQuestion(confirmDecision ?? 'accepted', decision, preview?.toEmail ?? '')}${
+          decideError === null || decideError === undefined
+            ? ''
+            : ' The last attempt failed: the decision could not be recorded.'
+        }`}
+        confirmLabel={confirmDecision === 'rejected' ? 'Confirm rejection' : 'Confirm acceptance'}
+        pending={isDeciding}
+        onConfirm={() => {
+          if (confirmDecision !== null) {
+            onDecide(confirmDecision, () => setConfirmDecision(null))
+          }
+        }}
+      />
 
       {preview === undefined ? (
         <p className="text-sm text-muted-foreground">

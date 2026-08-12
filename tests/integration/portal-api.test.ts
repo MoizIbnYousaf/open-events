@@ -208,6 +208,8 @@ describe('speaker portal API', () => {
         'accepted',
         'coSpeakerCount',
         'createdAt',
+        'decidedAt',
+        'decision',
         'formId',
         'formSlug',
         'id',

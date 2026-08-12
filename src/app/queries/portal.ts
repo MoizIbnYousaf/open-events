@@ -6,18 +6,38 @@ import type { AnswerMap, SubmissionStatus } from '../../domain'
 import { ApiClientError, requestJson } from '../api/admin-events'
 
 /**
+ * What the organizers decided about a proposal, as the API states it.
+ *
+ * 'pending' is a real answer — "nobody has decided yet" — and is emphatically
+ * not a rejection. It is the wire's sentinel; surfaces read the resolved
+ * `SubmissionDecision | null` instead, so no component has to remember which
+ * of two spellings of "undecided" it is looking at.
+ */
+export type SubmissionOutcome = 'pending' | 'accepted' | 'rejected'
+
+/** A verdict that has actually been reached. */
+export type SubmissionDecision = 'accepted' | 'rejected'
+
+/**
  * One speaker-portal row: the list item the API returns for the signed-in
  * speaker's own submission. Heavy detail (answers) never reaches this surface.
  *
  * `status` uses the domain vocabulary, which has exactly one member: the
- * persisted status never changes. Acceptance is a separate record, so it
- * travels as `accepted` and is the only decision this surface can render.
+ * persisted status never changes, so the decision travels beside it.
+ *
+ * There are two fields for one fact because there used to be only one outcome.
+ * `accepted` is the original boolean, which can say "accepted" and "not
+ * accepted" and therefore cannot tell a rejected speaker from an unread one.
+ * `decision` is the three-valued answer that can, and it is REQUIRED: the
+ * server states an outcome on every row, spelling undecided 'pending', so
+ * there is no payload shape left in which it can be missing.
  */
 export interface PortalSubmission {
   readonly id: string
   readonly title: string
   readonly status: SubmissionStatus
   readonly accepted: boolean
+  readonly decision: SubmissionOutcome
   /**
    * Whether the invite route can render an .ics right now. Acceptance alone is
    * not enough: an event with no configured dates answers 409, and a
@@ -28,6 +48,22 @@ export interface PortalSubmission {
   readonly version: number
   readonly coSpeakerCount: number
   readonly submittedAt: string
+}
+
+/**
+ * The outcome a portal row should render.
+ *
+ * This used to reconcile two spellings of undecided and a boolean that could
+ * disagree with the verdict beside it. The server now states one outcome in one
+ * vocabulary on every row, so the reconciliation is gone rather than hidden:
+ * `decision` IS the answer, and `accepted` survives only as the derived flag
+ * the invite affordance keys off.
+ *
+ * Kept as a named function so the portal has one place to read the outcome
+ * from, and so a future wire change has one place to land.
+ */
+export function resolveDecision(submission: PortalSubmission): SubmissionOutcome {
+  return submission.decision
 }
 
 interface PortalSubmissionsEnvelope {

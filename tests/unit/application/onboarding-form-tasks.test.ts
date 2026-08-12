@@ -207,6 +207,31 @@ describe('assignFormTask', () => {
     ).rejects.toMatchObject({ code: 'not_found' })
   })
 
+  /**
+   * The acceptance record outlives the rejection that follows it, so a gate
+   * reading it alone still hands new onboarding work to a speaker the
+   * programme has turned down. The task would then be filtered out of their
+   * checklist by the decision-aware read, which is the worst of both: work
+   * created for somebody who can never see or complete it.
+   */
+  it('refuses to assign new onboarding work to a rejected speaker', async () => {
+    await submissions.recordDecision({
+      id: 'decision-1',
+      eventId: EVENT_ID,
+      submissionId: submission.id,
+      outcome: 'rejected',
+      decidedBy: 'organizer',
+      decidedAt: FIXED_NOW,
+    })
+
+    await expect(
+      service.assignFormTask(organizerActor, EVENT_ID, submission.id, {
+        formId: FORM_ID,
+        contactId: OWNER_CONTACT_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' })
+  })
+
   it('rejects a form without a published version', async () => {
     await expect(
       service.assignFormTask(organizerActor, EVENT_ID, submission.id, {
@@ -236,6 +261,39 @@ describe('assignFormTask', () => {
 })
 
 describe('completeTask with a form response', () => {
+  /**
+   * The checklist read already hides a rejected speaker's tasks, but hiding is
+   * not refusing: the ids were handed out BEFORE the rejection and completion
+   * is by id, so the work stayed reachable.
+   *
+   * The consequence is worse than a stale checklist. Completing any task makes
+   * the verdict final (`#requireReversible`), so a rejected speaker could
+   * complete one task and permanently strip the organizer of the ability to
+   * change their mind in either direction — the speaker deciding the
+   * programme's decisions. The task must be refused, not merely unlisted, and
+   * with the same not-found every other miss answers.
+   */
+  it('refuses to complete a task once the proposal has been rejected', async () => {
+    const task = await assignedTask()
+    await submissions.recordDecision({
+      id: 'decision-1',
+      eventId: EVENT_ID,
+      submissionId: submission.id,
+      outcome: 'rejected',
+      decidedBy: 'organizer',
+      decidedAt: FIXED_NOW,
+    })
+
+    await expect(
+      service.completeTask(createSubmitterActor(), task.id, { av_needs: 'A microphone' }),
+    ).rejects.toMatchObject({ code: 'not_found' })
+
+    // And it really is still pending underneath, not merely reported as such:
+    // a refusal that wrote the completion anyway would still freeze the verdict.
+    const stored = await tasks.findById(task.id)
+    expect(stored?.status).toBe('pending')
+  })
+
   it('fails without answers and leaves the task pending', async () => {
     const task = await assignedTask()
     await expect(service.completeTask(createSubmitterActor(), task.id)).rejects.toBeInstanceOf(

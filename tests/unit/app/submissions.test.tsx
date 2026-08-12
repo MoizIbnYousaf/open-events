@@ -160,6 +160,9 @@ const ACCEPTANCE_PREVIEW = {
   subject: 'Your proposal "My talk" is accepted for DemoConf 2026',
   body: 'Hi Speaker A,',
   accepted: false,
+  // Undecided, spelled the one way the server spells it. The organizer badge
+  // and the decision panel both read this field, never the boolean beside it.
+  decision: 'pending',
   alreadySent: false,
   audience: [{ email: 'speaker.a@example.test', alreadySent: false }],
 }
@@ -624,7 +627,12 @@ describe('organizer submissions', () => {
       if (method === 'GET' && url === detailUrl()) return jsonResponse(SUBMISSION_DETAIL)
       if (method === 'GET' && url === versionUrl()) return jsonResponse(FORM_VERSION_DETAIL)
       if (method === 'GET' && url === previewUrl()) {
-        return jsonResponse({ ...ACCEPTANCE_PREVIEW, accepted })
+        // Both fields move together, exactly as the server derives them.
+        return jsonResponse({
+          ...ACCEPTANCE_PREVIEW,
+          accepted,
+          decision: accepted ? 'accepted' : 'pending',
+        })
       }
       if (method === 'GET' && url === messagesUrl()) return jsonResponse([])
       if (method === 'POST' && url === acceptUrl()) {
@@ -646,9 +654,41 @@ describe('organizer submissions', () => {
     expect(screen.getByText('Pending')).toBeInTheDocument()
 
     await user.click(accept)
+    // Accepting passes through its own confirmation now.
+    await user.click(await screen.findByRole('button', { name: 'Confirm acceptance' }))
 
-    await waitFor(() => expect(screen.getByText('Accepted')).toBeInTheDocument())
+    // Exactly two surfaces say it, and the count is pinned rather than merely
+    // non-zero: the page's own status chip, and the decision panel stating the
+    // verdict it now holds. A loose "at least one" here would pass just as
+    // happily if one of them silently stopped saying it.
+    await waitFor(() => expect(screen.getAllByText('Accepted')).toHaveLength(2))
     expect(screen.queryByText('Pending')).not.toBeInTheDocument()
+  })
+
+  /**
+   * A rejected proposal keeps its acceptance record, so the preview's
+   * `accepted` boolean is STILL TRUE here — deliberately, because that is the
+   * shape the server really sends. A badge reading that boolean tells the
+   * organizer the proposal they just declined is "Accepted", which is the one
+   * thing this page must never say. The verdict is the field to believe.
+   */
+  it('shows a rejected proposal as rejected, not as accepted', async () => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === detailUrl()) return jsonResponse(SUBMISSION_DETAIL)
+      if (method === 'GET' && url === versionUrl()) return jsonResponse(FORM_VERSION_DETAIL)
+      if (method === 'GET' && url === previewUrl()) {
+        return jsonResponse({ ...ACCEPTANCE_PREVIEW, accepted: true, decision: 'rejected' })
+      }
+      if (method === 'GET' && url === messagesUrl()) return jsonResponse([])
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountDetail()
+
+    await screen.findByRole('heading', { name: 'My talk' })
+    await waitFor(() => expect(screen.queryByText('Accepted')).not.toBeInTheDocument())
+    expect(screen.getAllByText('Rejected').length).toBeGreaterThan(0)
   })
 
   it('focuses the route h1 on entry with tabIndex -1 and no control autofocus', async () => {

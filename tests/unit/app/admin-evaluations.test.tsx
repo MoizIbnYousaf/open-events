@@ -78,6 +78,9 @@ const SUMMARY = {
       weightedTotal: 9,
       weightedAverageCentis: 450,
       criteria: [],
+      // Required on every round summary the server sends; an empty list is a
+      // round nobody has reviewed yet, an absent one is not a real payload.
+      reviews: [],
     },
     {
       roundId: 'round-2',
@@ -91,6 +94,7 @@ const SUMMARY = {
       weightedTotal: 0,
       weightedAverageCentis: 0,
       criteria: [],
+      reviews: [],
     },
   ],
 } as const

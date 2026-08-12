@@ -569,18 +569,29 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     // ── Step 5b (organizer): acceptance through the real control, activated by
     //    keyboard with visible focus — the central state transition.
     enterStage('acceptance')
-    await activateByKeyboard(adminPage, 'Accept proposal', {
-      method: 'POST',
-      pathIncludes: '/accept',
-    })
-    await expect(adminPage.getByText('Acceptance recorded')).toBeVisible()
-    await expect(adminPage.getByText('Accepted', { exact: true })).toBeVisible()
+    // Accepting is asked before it is done: the trigger opens a confirmation
+    // naming the speaker and what they will see, and the POST only leaves on
+    // the confirm. So the keyboard activation reaches the DIALOG, and the
+    // mutation is awaited around the confirming press — waiting for /accept on
+    // the trigger itself simply times out against a dialog nobody answered.
+    await activateByKeyboard(adminPage, 'Accept proposal')
+    const accepted = adminPage.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && response.url().includes('/accept'),
+    )
+    await adminPage.getByRole('button', { name: 'Confirm acceptance' }).click()
+    expect((await accepted).status(), 'acceptance succeeds').toBe(200)
+    // The panel states the standing VERDICT in one live region rather than
+    // announcing the event that produced it: the decision now has two possible
+    // outcomes, so "Acceptance recorded" could no longer describe the panel.
+    await expect(adminPage.getByText('Accepted', { exact: true }).first()).toBeVisible()
 
     // Accept the conflict partner through the same UI control.
     await adminPage.goto(`/admin/events/${EVENT_SLUG}/submissions`)
     await adminPage.getByRole('link', { name: ROW_LINK(TITLE_B) }).click()
     await adminPage.getByRole('button', { name: 'Accept proposal' }).click()
-    await expect(adminPage.getByText('Acceptance recorded')).toBeVisible()
+    await adminPage.getByRole('button', { name: 'Confirm acceptance' }).click()
+    await expect(adminPage.getByText('Accepted', { exact: true }).first()).toBeVisible()
 
     // ── Step 6 (portal): profile/bio, headshot, supporting document, and the
     //    three evidence-labeled task completions through the portal UI.

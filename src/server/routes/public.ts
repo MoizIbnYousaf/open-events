@@ -21,7 +21,7 @@ import {
   HeadshotTooLargeError,
   HeadshotUnsupportedTypeError,
 } from '../../application/services/headshots'
-import type { AnswerMap } from '../../domain'
+import type { AnswerMap, SubmissionOutcome } from '../../domain'
 import {
   requireActor,
   requireSession,
@@ -267,11 +267,12 @@ export async function handleEditOwnSubmission(context: ServerContext): Promise<R
 
 /**
  * GET /api/public/submissions: the session speaker's own submissions, each
- * carrying its acceptance state. The persisted status can only ever be
- * 'pending', so the acceptance record — read back through the actor-scoped
- * onboarding read — is what the portal renders as the decision. The DTO drops
- * the organizer-only routing outcome, and `inviteAvailable` tells the portal
- * whether the .ics can actually be rendered for this event right now.
+ * carrying the programme's verdict. The persisted status can only ever be
+ * 'pending', so the decision record — read back through the actor-scoped
+ * onboarding read — is the only thing that can tell an accepted proposal from
+ * a rejected one from one still under review. The DTO drops the organizer-only
+ * routing outcome, and `inviteAvailable` tells the portal whether the .ics can
+ * actually be rendered for this event right now.
  */
 export async function handleListOwnSubmissions(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -279,12 +280,20 @@ export async function handleListOwnSubmissions(context: ServerContext): Promise<
   const actor = requireSubmitter(context)
   if (actor === null) return forbiddenResponse(context)
   const submissions = await deps.submit.listOwn(actor)
-  const accepted = new Set(await deps.onboarding.listAcceptedOwnSubmissionIds(actor))
+  const decisions = await deps.onboarding.listOwnDecisions(actor)
   const inviteAvailable = await deps.communications.isInviteAvailable(actor)
   return context.json({
     submissions: submissions.map((submission) => {
-      const isAccepted = accepted.has(submission.id)
-      return toOwnSubmissionListItemDto(submission, isAccepted, isAccepted && inviteAvailable)
+      const decision = decisions.get(submission.id) ?? null
+      // `listOwnDecisions` already folds the legacy acceptance backfill in, so
+      // anything still missing here is genuinely undecided.
+      const outcome: SubmissionOutcome = decision?.outcome ?? 'pending'
+      return toOwnSubmissionListItemDto(
+        submission,
+        outcome,
+        decision?.decidedAt ?? null,
+        outcome === 'accepted' && inviteAvailable,
+      )
     }),
   })
 }

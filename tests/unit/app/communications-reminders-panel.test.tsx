@@ -30,6 +30,10 @@ const ACCEPTANCE_PREVIEW = {
   subject: 'Accepted: My talk',
   body: 'Body',
   accepted: true,
+  // The verdict travels beside the boolean on every real preview; these panels
+  // read the verdict, so a fixture without one is not a payload the server can
+  // send.
+  decision: 'accepted',
   alreadySent: false,
   audience: AUDIENCE,
 }

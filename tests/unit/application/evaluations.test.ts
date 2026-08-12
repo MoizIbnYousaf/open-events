@@ -209,20 +209,38 @@ describe('EvaluationService assignments', () => {
     expect(await service.listAssignments(organizerActor, EVENT_ID, submission.id)).toHaveLength(1)
   })
 
-  it('rejects an unknown submission, an unknown evaluator and a malformed email', async () => {
+  it('rejects an unknown submission and a malformed email, but provisions a new reviewer', async () => {
     await expect(
       service.assign(organizerActor, EVENT_ID, 'submission-missing', {
         evaluatorEmail: REVIEWER_ONE_EMAIL,
       }),
     ).rejects.toMatchObject({ code: 'not_found' })
-    await expect(
-      service.assign(organizerActor, EVENT_ID, submission.id, {
-        evaluatorEmail: 'nobody@example.test',
-      }),
-    ).rejects.toMatchObject({ code: 'not_found' })
+    // Handing someone reading is itself the act of provisioning them: an email
+    // nobody has used yet becomes a contact rather than a refusal.
+    const provisioned = await service.assign(organizerActor, EVENT_ID, submission.id, {
+      evaluatorEmail: 'nobody@example.test',
+    })
+    expect(provisioned.evaluatorEmail).toBe('nobody@example.test')
+    // And the committee auto-add that always followed a successful resolve
+    // still happens for the identity that was just created.
+    expect(await service.isOnCommittee(EVENT_ID, provisioned.evaluatorContactId)).toBe(true)
     await expect(
       service.assign(organizerActor, EVENT_ID, submission.id, { evaluatorEmail: 'not-an-email' }),
     ).rejects.toMatchObject({ code: 'validation_failed' })
+  })
+
+  it('reuses an existing contact and never rewrites its name or bio', async () => {
+    // Email is the identity key, so an organizer assigning an address that
+    // already belongs to a real person must reuse that row. Overwriting the
+    // name from an assignment box would let one event rename someone globally.
+    const assignment = await service.assign(organizerActor, EVENT_ID, submission.id, {
+      evaluatorEmail: REVIEWER_ONE_EMAIL,
+    })
+    expect(assignment.evaluatorContactId).toBe(REVIEWER_ONE_ID)
+    const stored = await contacts.findByEmail(REVIEWER_ONE_EMAIL)
+    expect(stored?.name).toBe('Reviewer One')
+    expect(stored?.bio).toBeUndefined()
+    expect(contacts.list().filter((c) => c.email === REVIEWER_ONE_EMAIL)).toHaveLength(1)
   })
 
   it('refuses to assign into a closed round or when no round is open', async () => {

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 
 import type { AnswerValue } from '../../../domain'
 import { getApiErrorCode } from '../../api/admin-events'
-import { useAcceptancePreview } from '../../queries/admin-communications'
+import { readDecision, useAcceptancePreview } from '../../queries/admin-communications'
 import { useFormVersionDetail } from '../../queries/admin-forms'
 import { useSubmissionDetail } from '../../queries/admin-submissions'
 import { AlertLive } from '../../../components/ui/alert-live'
@@ -57,11 +57,14 @@ export default function SubmissionDetail() {
   const detail = detailQuery.data
   const versionQuery = useFormVersionDetail(slug, detail?.formId, detail?.versionId)
   const version = versionQuery.data
-  // Acceptance is a record, not a status column, so the badge reads the
-  // acceptance state. Same query key as the panel below: one request, one
-  // source of truth.
+  // The verdict is a record, not a status column, so the badge reads the
+  // decision. Same query key as the panel below, and the same `readDecision`
+  // the panel uses: one request, one reconciliation, so the chip at the top of
+  // the page can never contradict the panel stating the verdict underneath it.
+  // Reading `accepted` here instead would label a rejected proposal 'Accepted',
+  // because a rejection deliberately leaves the acceptance record in place.
   const acceptanceQuery = useAcceptancePreview(slug, submissionId)
-  const accepted = acceptanceQuery.data?.accepted === true
+  const decision = readDecision(acceptanceQuery.data)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
 
   useEffect(() => {
@@ -194,8 +197,8 @@ export default function SubmissionDetail() {
                 proposal was answered on, so it is quiet and wears no marker.
                 Colour alone used to carry that difference, and colour is the
                 one channel a reader may not have. */}
-            <Badge variant={accepted ? 'secondary' : 'outline'} dot>
-              {accepted ? 'Accepted' : 'Pending'}
+            <Badge variant={decision === 'pending' ? 'outline' : 'secondary'} dot>
+              {decision === 'pending' ? 'Pending' : decision === 'accepted' ? 'Accepted' : 'Rejected'}
             </Badge>
             <Badge variant="ghost">Version {detail.version}</Badge>
           </PageHeaderActions>

@@ -64,7 +64,29 @@ function buildHarness({
 }: { accepted?: boolean; event?: Event; contributors?: readonly Contact[] } = {}) {
   const versions = new InMemoryFormVersionRepository([createVersion()])
   const submission = createSubmission()
-  const submissions = new InMemorySubmissionRepository(versions, [submission])
+  // Accepting records BOTH an acceptance and an accepted decision (the accept
+  // route writes the pair, and migration 0016 backfills the decision for every
+  // acceptance that predates it), so an "accepted" fixture has to carry both.
+  // Sends now follow the decision, because a rejection deliberately leaves the
+  // acceptance record standing and gating on it would announce an acceptance
+  // to somebody who had just been turned down.
+  const submissions = new InMemorySubmissionRepository(
+    versions,
+    [submission],
+    accepted
+      ? [
+          {
+            id: `decision-${SUBMISSION_ID}`,
+            eventId: EVENT_ID,
+            submissionId: SUBMISSION_ID,
+            sequence: 1,
+            outcome: 'accepted',
+            decidedBy: 'organizer',
+            decidedAt: ACCEPTANCE.acceptedAt,
+          },
+        ]
+      : [],
+  )
   const events = new InMemoryEventRepository([event])
   const contacts = new InMemoryContactRepository([
     ownerContact,

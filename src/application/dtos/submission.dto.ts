@@ -12,6 +12,7 @@ import type {
   ProposalSubmission,
   RoutingOutcome,
   SubmissionId,
+  SubmissionOutcome,
   SubmissionStatus,
   UtcInstant,
   VersionId,
@@ -65,10 +66,10 @@ export interface SubmissionListItemDto {
 }
 
 /**
- * Speaker-portal row: the owner's own list item plus its acceptance state.
+ * Speaker-portal row: the owner's own list item plus the programme's verdict.
  * `status` is pinned to 'pending' for the lifetime of a submission (migration
- * 0002) because the acceptance record IS the accepted state, so `accepted` is
- * the only way a speaker-facing surface can ever show that decision.
+ * 0002), so the persisted status can never carry the outcome; `decision` is the
+ * only field a speaker-facing surface can read a verdict from.
  *
  * `routing` is deliberately absent. It is the ORGANIZER's triage decision —
  * manual_review flags and internal track/tag keys — rendered on the organizer
@@ -83,6 +84,40 @@ export interface OwnSubmissionListItemDto extends Omit<SubmissionListItemDto, 'r
    * offers a download must gate on this and not on `accepted` alone.
    */
   readonly inviteAvailable: boolean
+  /**
+   * The programme's verdict as the speaker is entitled to see it, and
+   * 'pending' while the proposal is still under review — always a word, never
+   * null or absent, so no client has to invent a reading for a missing field.
+   *
+   * `accepted` says the same thing as `decision === 'accepted'` and is kept
+   * alongside it because downstream affordances (the invite, the checklist) key
+   * off acceptance alone; a rejection has no such affordances and only ever
+   * needs saying.
+   */
+  readonly decision: SubmissionOutcome
+  readonly decidedAt: UtcInstant | null
+}
+
+/** One entry of the append-only decision trail. */
+export interface SubmissionDecisionHistoryDto {
+  /** 1-based position in the trail; the highest is the verdict that stands. */
+  readonly sequence: number
+  readonly decision: 'accepted' | 'rejected'
+  readonly decidedBy: string
+  readonly decidedAt: UtcInstant
+}
+
+/** The standing programme decision, plus every verdict that preceded it. */
+export interface SubmissionDecisionDto {
+  readonly submissionId: SubmissionId
+  readonly eventId: EventId
+  readonly decision: SubmissionOutcome
+  readonly decidedBy: string | null
+  readonly decidedAt: UtcInstant | null
+  /** False when the write recorded the verdict that was already standing. */
+  readonly changed: boolean
+  /** Oldest first. Empty until the first verdict is recorded. */
+  readonly history: readonly SubmissionDecisionHistoryDto[]
 }
 
 export interface CoSpeakerInput {
@@ -161,7 +196,8 @@ export function toSubmissionListItemDto(
  */
 export function toOwnSubmissionListItemDto(
   item: SubmissionListItemDto,
-  accepted: boolean,
+  decision: SubmissionOutcome,
+  decidedAt: UtcInstant | null,
   inviteAvailable: boolean,
 ): OwnSubmissionListItemDto {
   return {
@@ -175,8 +211,10 @@ export function toOwnSubmissionListItemDto(
     coSpeakerCount: item.coSpeakerCount,
     createdAt: item.createdAt,
     submittedAt: item.submittedAt,
-    accepted,
+    accepted: decision === 'accepted',
     inviteAvailable,
+    decision,
+    decidedAt,
   }
 }
 

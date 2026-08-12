@@ -12,6 +12,8 @@ import type {
   ProposalSubmission,
   Session,
   SubmissionContributor,
+  SubmissionDecision,
+  SubmissionDecisionOutcome,
   SubmitterToken,
   TaxonomyItem,
   TokenHash,
@@ -293,11 +295,22 @@ export class InMemoryDraftRepository implements DraftRepository {
 export class InMemorySubmissionRepository implements SubmissionRepository {
   readonly #submissions = new Map<string, ProposalSubmission>()
   readonly #contributors: SubmissionContributor[] = []
+  readonly #decisions: SubmissionDecision[] = []
   readonly #versions: FormVersionRepository
 
-  constructor(versions: FormVersionRepository, submissions: readonly ProposalSubmission[] = []) {
+  /**
+   * `decisions` seeds the append-only trail directly, because a decision is now
+   * a precondition of several reads and building one through `recordDecision`
+   * would make every harness async for a fixture. Pass them in trail order.
+   */
+  constructor(
+    versions: FormVersionRepository,
+    submissions: readonly ProposalSubmission[] = [],
+    decisions: readonly SubmissionDecision[] = [],
+  ) {
     this.#versions = versions
     for (const submission of submissions) this.#submissions.set(submission.id, submission)
+    this.#decisions.push(...decisions)
   }
 
   async findById(id: string): Promise<ProposalSubmission | null> {
@@ -353,6 +366,65 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
       answers: input.answers,
     })
     return 'updated'
+  }
+
+  /** Mirrors the adapter: the STANDING verdict is the highest sequence. */
+  async findDecision(eventId: string, submissionId: string): Promise<SubmissionDecision | null> {
+    const trail = await this.listDecisionHistory(eventId, submissionId)
+    return trail.at(-1) ?? null
+  }
+
+  async listDecisionHistory(
+    eventId: string,
+    submissionId: string,
+  ): Promise<readonly SubmissionDecision[]> {
+    return this.#decisions
+      .filter(
+        (decision) => decision.eventId === eventId && decision.submissionId === submissionId,
+      )
+      .sort((left, right) => left.sequence - right.sequence)
+  }
+
+  async listDecisionsByOwner(
+    eventId: string,
+    ownerContactId: string,
+  ): Promise<readonly SubmissionDecision[]> {
+    const standing = await this.listDecisionsByEvent(eventId)
+    return standing.filter(
+      (decision) => this.#submissions.get(decision.submissionId)?.ownerContactId === ownerContactId,
+    )
+  }
+
+  async listDecisionsByEvent(eventId: string): Promise<readonly SubmissionDecision[]> {
+    const latest = new Map<string, SubmissionDecision>()
+    for (const decision of this.#decisions) {
+      if (decision.eventId !== eventId) continue
+      const standing = latest.get(decision.submissionId)
+      if (standing === undefined || decision.sequence > standing.sequence) {
+        latest.set(decision.submissionId, decision)
+      }
+    }
+    return [...latest.values()]
+  }
+
+  /**
+   * Mirrors the adapter: the event scope decides whether anything is written,
+   * and a verdict is APPENDED with the next sequence rather than replacing the
+   * one before it.
+   */
+  async recordDecision(input: {
+    readonly id: string
+    readonly eventId: string
+    readonly submissionId: string
+    readonly outcome: SubmissionDecisionOutcome
+    readonly decidedBy: string
+    readonly decidedAt: string
+  }): Promise<'recorded' | 'not-found'> {
+    const submission = this.#submissions.get(input.submissionId)
+    if (submission === undefined || submission.eventId !== input.eventId) return 'not-found'
+    const trail = await this.listDecisionHistory(input.eventId, input.submissionId)
+    this.#decisions.push({ ...input, sequence: (trail.at(-1)?.sequence ?? 0) + 1 })
+    return 'recorded'
   }
 
   async countByForm(eventId: string, formId: FormId): Promise<number> {
@@ -431,6 +503,25 @@ export class InMemoryContactRepository implements ContactRepository {
     if (existing !== undefined) {
       this.#contacts.set(id, { ...existing, name: fields.name, bio: fields.bio })
     }
+  }
+
+  /** Insert-if-absent on the email key; an existing row is never rewritten. */
+  async ensureByEmail(input: {
+    readonly id: string
+    readonly email: string
+    readonly name: string
+    readonly createdAt: string
+  }): Promise<Contact> {
+    const existing = await this.findByEmail(input.email)
+    if (existing !== null) return existing
+    const contact: Contact = {
+      id: input.id,
+      email: input.email,
+      name: input.name,
+      createdAt: input.createdAt,
+    }
+    this.#contacts.set(contact.id, contact)
+    return contact
   }
 
   async save(contact: Contact): Promise<void> {

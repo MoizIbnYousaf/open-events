@@ -30,6 +30,7 @@ const EXPECTED_TABLES = [
   'agenda_sessions',
   'agenda_session_speakers',
   'submission_acceptances',
+  'submission_decisions',
   'speaker_tasks',
   'uploaded_files',
   'evaluation_criteria',
@@ -68,6 +69,7 @@ describe('migration apply from an empty local D1', () => {
       '0013_add_contact_bio.sql',
       '0014_widen_uploaded_file_kinds.sql',
       '0015_fix_condition_rule_unique_grain.sql',
+      '0016_create_submission_decisions.sql',
     ])
 
     const tables = await env.DB.prepare(

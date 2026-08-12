@@ -12,6 +12,7 @@ import { EVENT_SLUG } from '../helpers/fixtures'
 
 /** The definition now carries the window's verdict, so it needs an instant. */
 const NOW = '2026-06-01T00:00:00.000Z'
+const DECIDED_AT = '2026-06-02T00:00:00.000Z'
 
 describe('toFormDefinitionDto', () => {
   it('exposes only published versions and omits routing rules', () => {
@@ -171,26 +172,41 @@ describe('toOwnSubmissionListItemDto', () => {
     const row = organizerRow()
     expect(row.routing).not.toBeNull()
 
-    const own = toOwnSubmissionListItemDto(row, true, true)
+    const own = toOwnSubmissionListItemDto(row, 'accepted', DECIDED_AT, true)
 
     expect(own).not.toHaveProperty('routing')
     expect(own.id).toBe(row.id)
     expect(own.primarySpeaker).toEqual(row.primarySpeaker)
   })
 
-  it('carries acceptance and calendar-invite availability as separate facts', () => {
+  it('carries the verdict and calendar-invite availability as separate facts', () => {
     const row = organizerRow()
 
-    expect(toOwnSubmissionListItemDto(row, true, true)).toMatchObject({
+    expect(toOwnSubmissionListItemDto(row, 'accepted', DECIDED_AT, true)).toMatchObject({
+      decision: 'accepted',
       accepted: true,
       inviteAvailable: true,
     })
-    expect(toOwnSubmissionListItemDto(row, true, false)).toMatchObject({
+    expect(toOwnSubmissionListItemDto(row, 'accepted', DECIDED_AT, false)).toMatchObject({
+      decision: 'accepted',
       accepted: true,
       inviteAvailable: false,
     })
-    expect(toOwnSubmissionListItemDto(row, false, false)).toMatchObject({
+    // A rejection is a decision the speaker can read, and it is not acceptance:
+    // the accept-only shape could not tell it from a proposal still in review.
+    expect(toOwnSubmissionListItemDto(row, 'rejected', DECIDED_AT, false)).toMatchObject({
+      decision: 'rejected',
       accepted: false,
+      decidedAt: DECIDED_AT,
+    })
+    // Undecided is the WORD 'pending', never null and never absent: one
+    // spelling across the wire, the cache and every client, so no surface has
+    // to invent a reading for a missing field. `decidedAt` stays null because
+    // there genuinely is no instant to name until somebody decides.
+    expect(toOwnSubmissionListItemDto(row, 'pending', null, false)).toMatchObject({
+      decision: 'pending',
+      accepted: false,
+      decidedAt: null,
       inviteAvailable: false,
     })
   })

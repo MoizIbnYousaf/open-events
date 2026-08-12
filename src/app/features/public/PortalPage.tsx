@@ -22,10 +22,12 @@ import type { SubmissionDetailDto } from '../../../application'
 import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
 import { ForbiddenState } from '../admin/AdminStates'
 import {
+  resolveDecision,
   useEditOwnSubmission,
   useOwnSubmission,
   useOwnSubmissions,
   type PortalSubmission,
+  type SubmissionOutcome,
 } from '../../queries/portal'
 import DocumentUploader from './DocumentUploader'
 import HeadshotUploader from './HeadshotUploader'
@@ -145,9 +147,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
                     carries the marker that says so — the one channel that
                     still separates a state from a plain value once colour has
                     been spent on a single accent. */}
-                <Badge dot variant={submission.accepted ? 'secondary' : 'outline'}>
-                  {statusLabel(submission)}
-                </Badge>
+                <DecisionBadge decision={resolveDecision(submission)} />
               </li>
             ))}
           </ul>
@@ -312,7 +312,10 @@ function ProposalEditor({ detail }: { readonly detail: SubmissionDetailDto }) {
  * words instead of being offered as a broken link.
  */
 function InviteLink({ submission }: { readonly submission: PortalSubmission }) {
-  if (!submission.accepted) return null
+  // The decision, not the acceptance boolean: a rejection can land on a row
+  // whose `accepted` flag has not caught up, and handing that speaker a
+  // calendar hold for a slot they did not get is the worst version of this bug.
+  if (resolveDecision(submission) !== 'accepted') return null
   if (!submission.inviteAvailable) {
     return (
       <span className="text-xs text-muted-foreground">
@@ -333,9 +336,38 @@ function InviteLink({ submission }: { readonly submission: PortalSubmission }) {
 }
 
 /**
- * The persisted status is pinned to 'pending' for a submission's whole life;
- * the acceptance record is the decision, so it is what the speaker reads here.
+ * The outcome, in the speaker's own words.
+ *
+ * The persisted status is pinned to 'pending' for a submission's whole life, so
+ * the decision record is the only thing that can answer this — and it has three
+ * answers, not two. A turned-down proposal used to read "Pending review" for
+ * ever, which meant the product could tell a speaker they had been accepted but
+ * never that they had not, and left them waiting on an answer that had already
+ * been given.
+ *
+ * Rejection gets the destructive tint because it is the outcome that closes a
+ * door, and a speaker deserves to see which of the three states they are in
+ * before they read the word. The chip is never a control in any of them —
+ * nothing here is the speaker's to change.
  */
-function statusLabel(submission: PortalSubmission): string {
-  return submission.accepted ? 'Accepted' : 'Pending review'
+function DecisionBadge({ decision }: { readonly decision: SubmissionOutcome }) {
+  if (decision === 'rejected') {
+    return (
+      <Badge dot variant="destructive">
+        Rejected
+      </Badge>
+    )
+  }
+  if (decision === 'accepted') {
+    return (
+      <Badge dot variant="secondary">
+        Accepted
+      </Badge>
+    )
+  }
+  return (
+    <Badge dot variant="outline">
+      Pending review
+    </Badge>
+  )
 }

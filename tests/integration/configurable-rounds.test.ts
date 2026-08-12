@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { env, reset } from 'cloudflare:test'
 
+import type { EvaluationRowDto } from '../../src/application/dtos/evaluation.dto'
 import { DEMO_CONF_2026_VERSION_ID } from '../../src/db'
 import { SEEDED_TALK_ANSWERS, applyMigrations, seedDemoConf } from './m2b-helpers'
 import {
@@ -503,15 +504,11 @@ describe('a reviewer scores against the round scorecard', () => {
     { label: 'Notes for the speaker', kind: 'text', weight: null, position: 3 },
   ]
 
-  interface QueueRow {
-    readonly submissionId: string
-    readonly criteria?: readonly {
-      readonly id: string
-      readonly label: string
-      readonly kind: string
-      readonly value: number | string | null
-    }[]
-  }
+  // The queue's OWN type, not a hand-rolled subset of it. A local shape that
+  // merely resembles the wire silently keeps compiling when the server stops
+  // sending a field, so the drift surfaces as a passing test rather than a
+  // build error — which is precisely how the blind redaction shipped unproven.
+  type QueueRow = EvaluationRowDto
 
   async function setUp(): Promise<{
     organizer: string

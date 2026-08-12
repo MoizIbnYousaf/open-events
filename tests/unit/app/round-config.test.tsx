@@ -211,7 +211,14 @@ describe('an organizer configures a round on the page', () => {
     mountCommittee()
     const region = await roundRegion()
 
-    await user.click(within(region).getByLabelText(/hide reviewer identities/i))
+    // The control has to name what it does. It once read "Hide reviewer
+    // identities" while the server hid only the SPEAKER's name, so an organizer
+    // running a double-blind committee was told they had reviewer anonymity and
+    // did not have it. The negative assertion is the point of the pair: the old
+    // promise must not come back.
+    expect(within(region).queryByLabelText(/hide reviewer identities/i)).toBeNull()
+
+    await user.click(within(region).getByLabelText(/hide the speaker's name from reviewers/i))
     await user.click(within(region).getByRole('button', { name: /save round/i }))
 
     await waitFor(() =>

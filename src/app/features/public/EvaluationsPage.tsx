@@ -343,6 +343,7 @@ function TypedEvaluationCard({
     Object.fromEntries(criteria.map((criterion) => [criterion.id, criterion.value])),
   )
   const [submittedMessage, setSubmittedMessage] = useState<string | null>(null)
+  const [nothingAnswered, setNothingAnswered] = useState(false)
   // The SERVER's verdict, not two dates re-read here. A round can be open and
   // still not taking answers because its reviewing window has passed, and a
   // form that looks writable while the write is refused is the worse failure.
@@ -359,6 +360,15 @@ function TypedEvaluationCard({
       if (value === null || value === undefined || value === '') return []
       return [{ criterionId: criterion.id, value }]
     })
+    // A review with nothing in it is not a review. Posting it stored nothing
+    // and still answered 200, so the reviewer was told "Review saved" and left
+    // believing a blank form had been recorded.
+    if (answers.length === 0) {
+      setSubmittedMessage(null)
+      setNothingAnswered(true)
+      return
+    }
+    setNothingAnswered(false)
     submit.mutate(
       { submissionId: row.submissionId, roundId: row.roundId, answers },
       {
@@ -458,6 +468,7 @@ function TypedEvaluationCard({
         {submit.error != null ? (
           <AlertLive>That review could not be saved. Check the answers and try again.</AlertLive>
         ) : null}
+        {nothingAnswered ? <AlertLive>Answer at least one question first.</AlertLive> : null}
         {roundClosedReason(state) === null ? null : (
           <CardDescription>{roundClosedReason(state)}</CardDescription>
         )}

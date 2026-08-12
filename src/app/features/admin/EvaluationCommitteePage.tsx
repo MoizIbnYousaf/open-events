@@ -798,6 +798,9 @@ function RoundEditor({
   const [weight, setWeight] = useState('1')
   const [choices, setChoices] = useState('')
   const [selected, setSelected] = useState<readonly string[] | null>(null)
+  const [saved, setSaved] = useState<string | null>(null)
+  const [scorecardSaved, setScorecardSaved] = useState<string | null>(null)
+  const [poolSaved, setPoolSaved] = useState<string | null>(null)
 
   // The saved scorecard is the starting point for editing it; the local draft
   // only takes over once the organizer has actually changed something.
@@ -858,21 +861,29 @@ function RoundEditor({
           {configure.error != null ? (
             <AlertLive>That round could not be saved. Check the dates and try again.</AlertLive>
           ) : null}
-          <div>
+          <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
               pending={configure.isPending}
-              onClick={() =>
-                configure.mutate({
-                  name,
-                  opensAt: toInstant(opensAt),
-                  closesAt: toInstant(closesAt),
-                  anonymize,
-                })
-              }
+              onClick={() => {
+                setSaved(null)
+                configure.mutate(
+                  {
+                    name,
+                    opensAt: toInstant(opensAt),
+                    closesAt: toInstant(closesAt),
+                    anonymize,
+                  },
+                  { onSuccess: () => setSaved('Round saved.') },
+                )
+              }}
             >
               {configure.isPending ? 'Saving…' : 'Save round'}
             </Button>
+            {/* A save that reports nothing leaves an organizer to guess from an
+                unchanged form whether it landed, and the usual guess is to
+                press it again. */}
+            <StatusLive aria-label="Round save state">{saved}</StatusLive>
           </div>
         </CardContent>
       </Card>
@@ -900,13 +911,31 @@ function RoundEditor({
                   className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
                 >
                   <span>{question.label}</span>
-                  <Badge variant="outline">
-                    {question.kind === 'rating'
-                      ? `Rating · weight ${question.weight ?? 1}`
-                      : question.kind === 'select'
-                        ? 'Choice'
-                        : 'Free text'}
-                  </Badge>
+                  <span className="flex items-center gap-2">
+                    <Badge variant="outline">
+                      {question.kind === 'rating'
+                        ? `Rating · weight ${question.weight ?? 1}`
+                        : question.kind === 'select'
+                          ? 'Choice'
+                          : 'Free text'}
+                    </Badge>
+                    {/* A scorecard that can only grow is a scorecard nobody can
+                        correct: a question added by mistake stayed on the form
+                        every reviewer had to answer. Named for the question it
+                        drops, because "Remove" repeated down a list is the same
+                        control four times to anyone navigating by name. */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setDraft(questions.filter((_, other) => other !== index))
+                      }
+                    >
+                      <span aria-hidden="true">Remove</span>
+                      <span className="sr-only">{`Remove ${question.label}`}</span>
+                    </Button>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -941,7 +970,12 @@ function RoundEditor({
               {/* "Rating weight", not "Weight": the event-level rubric above
                   has a Weight field too, and two identically named controls on
                   one page are ambiguous to anyone navigating by label. */}
-              <FieldLabel htmlFor={`round-${round.id}-weight`}>Rating weight</FieldLabel>
+              {/* Named for its round as well as its kind. With two rounds on
+                  screen, "Rating weight" twice is two controls a screen reader
+                  reads identically and nothing distinguishes them. */}
+              <FieldLabel htmlFor={`round-${round.id}-weight`}>
+                {`Rating weight (Round ${round.number})`}
+              </FieldLabel>
               <Input
                 id={`round-${round.id}-weight`}
                 type="number"
@@ -1003,10 +1037,16 @@ function RoundEditor({
             <Button
               type="button"
               pending={saveScorecard.isPending}
-              onClick={() => saveScorecard.mutate(questions)}
+              onClick={() => {
+                setScorecardSaved(null)
+                saveScorecard.mutate(questions, {
+                  onSuccess: () => setScorecardSaved('Scorecard saved.'),
+                })
+              }}
             >
               {saveScorecard.isPending ? 'Saving…' : 'Save scorecard'}
             </Button>
+            <StatusLive aria-label="Scorecard save state">{scorecardSaved}</StatusLive>
           </div>
         </CardContent>
       </Card>
@@ -1051,10 +1091,16 @@ function RoundEditor({
             <Button
               type="button"
               pending={savePool.isPending}
-              onClick={() => savePool.mutate(pooled)}
+              onClick={() => {
+                setPoolSaved(null)
+                savePool.mutate(pooled, {
+                  onSuccess: () => setPoolSaved('Reviewers saved for this round.'),
+                })
+              }}
             >
               {savePool.isPending ? 'Saving…' : 'Save reviewers'}
             </Button>
+            <StatusLive aria-label="Round reviewers save state">{poolSaved}</StatusLive>
           </div>
         </CardContent>
       </Card>

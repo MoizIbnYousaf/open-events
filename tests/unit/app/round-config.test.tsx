@@ -447,3 +447,50 @@ describe('an organizer chases the reviewers who are behind', () => {
     expect(await screen.findByText(/reminded 2 reviewer\(s\)/i)).toBeInTheDocument()
   })
 })
+
+describe('the round editor answers back', () => {
+  it('lets a question be taken off the scorecard again', async () => {
+    const user = userEvent.setup()
+    scorecard = [
+      { id: 'c-1', label: 'Originality', kind: 'rating', weight: 2, position: 0, scale: { min: 1, max: 5 }, options: null },
+      { id: 'c-2', label: 'Relevance', kind: 'rating', weight: 1, position: 1, scale: { min: 1, max: 5 }, options: null },
+    ]
+    mountCommittee()
+
+    // A scorecard that can only grow cannot be corrected: a question added by
+    // mistake stayed on the form every reviewer had to answer.
+    await user.click(await screen.findByRole('button', { name: /remove originality/i }))
+    await user.click(screen.getByRole('button', { name: /save scorecard/i }))
+
+    await waitFor(() => {
+      const sent = bodyOf(SCORECARD_PATH, 'PUT') as { criteria: { label: string }[] } | null
+      expect(sent?.criteria.map((criterion) => criterion.label)).toEqual(['Relevance'])
+    })
+  })
+
+  it('confirms each of the three saves on screen', async () => {
+    const user = userEvent.setup()
+    mountCommittee()
+    const region = await roundRegion()
+
+    await user.click(within(region).getByRole('button', { name: /save round/i }))
+
+    // A save that reports nothing leaves an organizer guessing from an
+    // unchanged form, and the usual guess is to press it again.
+    expect(await screen.findByText(/round saved/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /save scorecard/i }))
+    expect(await screen.findByText(/scorecard saved/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /save reviewers/i }))
+    expect(await screen.findByText(/reviewers saved for this round/i)).toBeInTheDocument()
+  })
+
+  it('names the round on its weight field, so two rounds are not one control', async () => {
+    mountCommittee()
+
+    // With two rounds on screen "Rating weight" twice is two controls a screen
+    // reader reads identically, with nothing to tell them apart.
+    expect(await screen.findByLabelText(/rating weight \(round 1\)/i)).toBeInTheDocument()
+  })
+})

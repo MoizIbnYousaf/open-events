@@ -719,6 +719,48 @@ describe('evaluations UI', () => {
   })
 
   /**
+   * An empty form posted, stored nothing, answered 200, and the reviewer was
+   * told "Review saved" — so a blank review looked exactly like a recorded one.
+   */
+  it('refuses to report a review saved when nothing was answered', async () => {
+    const user = userEvent.setup()
+    let posted = 0
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === EVALUATIONS_URL) {
+        return jsonResponse([
+          {
+            ...UNSCORED_ROW,
+            criteria: [
+              {
+                id: 'criterion-1',
+                label: 'Originality',
+                kind: 'rating',
+                weight: 1,
+                scale: { min: 1, max: 5 },
+                options: null,
+                value: null,
+              },
+            ],
+          },
+        ])
+      }
+      if (method === 'POST' && url === EVALUATIONS_URL) {
+        posted += 1
+        return jsonResponse(UNSCORED_ROW)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /save review/i }))
+
+    expect(await screen.findByText(/answer at least one question first/i)).toBeInTheDocument()
+    expect(screen.queryByText(/review saved/i)).toBeNull()
+    expect(posted).toBe(0)
+  })
+
+  /**
    * The rubric asks for this in the reviewer's own scoring view, and the point
    * of it is that the proposal stops being asked about — so the assertion is
    * that the request is made from there, not that a button exists.

@@ -17,7 +17,7 @@ const {
 
 const EVENT_SLUG = 'demo-conf-2026'
 const FORM_ID = 'f0000000-0000-4000-8000-000000000001'
-const BINDING = 'speakerops-production'
+const BINDING = 'open-events-production'
 
 function emptyDbStateRoot() {
   const root = mkdtempSync(join(tmpdir(), 's3a-'))

@@ -51,7 +51,7 @@ export function capturedMessages(email: string): readonly { readonly body: strin
       'wrangler',
       'd1',
       'execute',
-      'speakerops-production',
+      'open-events-production',
       '--remote',
       '--json',
       '--command',

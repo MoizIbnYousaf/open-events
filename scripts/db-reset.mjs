@@ -19,6 +19,6 @@ if (existsSync(stateDir)) {
   console.log('db:reset — no local state to wipe')
 }
 
-run(['wrangler', 'd1', 'migrations', 'apply', 'speakerops-production', '--local'])
-run(['wrangler', 'd1', 'execute', 'speakerops-production', '--local', '--file', 'src/db/seed.sql'])
+run(['wrangler', 'd1', 'migrations', 'apply', 'open-events-production', '--local'])
+run(['wrangler', 'd1', 'execute', 'open-events-production', '--local', '--file', 'src/db/seed.sql'])
 console.log('db:reset — migrations applied and DemoConf 2026 seed executed (local only)')

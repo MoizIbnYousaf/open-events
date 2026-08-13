@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 /** The single committed local D1 binding (same semantics as scripts/db-reset.mjs). */
-export const BINDING = 'speakerops-production'
+export const BINDING = 'open-events-production'
 
 const DB_RELATIVE_DIR = join('v3', 'd1', 'miniflare-D1DatabaseObject')
 const EVENT_SLUG = 'demo-conf-2026'

@@ -17,15 +17,15 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "speakerops-production",
-      "database_id": "f533e516-efa9-48df-9c83-8342b397c6ca",
+      "database_name": "open-events-production",
+      "database_id": "4983b9bb-cc1c-4ef0-83a6-154b19496909",
       "migrations_dir": "./migrations",
     },
   ],
   "r2_buckets": [
     {
       "binding": "FILES",
-      "bucket_name": "speakerops-production-files",
+      "bucket_name": "open-events-production-files",
     },
   ],
 }

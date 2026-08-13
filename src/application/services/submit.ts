@@ -272,7 +272,23 @@ export class SubmitService {
     // newest one: a republished form must not retroactively invalidate a proposal
     // its author answered honestly.
     const content = await this.#content.loadByVersion(actor.eventId, version.id)
-    const issues = validateAnswersAgainstVersion(content, input.answers)
+    // A question whose choices follow the event's vocabulary can lose an option
+    // AFTER a proposal answered it: an organizer withdraws a format, and an
+    // author who chose it honestly is suddenly unable to touch their own
+    // proposal — punished for someone else's decision, on a field they did not
+    // even change. So an answer the author is KEEPING is carried past the
+    // choice check; only a value they are actually changing has to be on offer
+    // today. Everything else — required, length, type — still applies to all of
+    // them, because those are properties of the answer rather than of a list
+    // that moved underneath it.
+    const unchanged = new Set(
+      Object.entries(submission.answers)
+        .filter(([key, value]) => input.answers[key] === value)
+        .map(([key]) => key),
+    )
+    const issues = validateAnswersAgainstVersion(content, input.answers).filter(
+      (issue) => !(issue.code === 'invalid_option' && unchanged.has(issue.fieldKey)),
+    )
     if (issues.length > 0) {
       throw new ValidationFailedError('Answers failed server-side validation', issues)
     }

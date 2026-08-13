@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { env, reset } from 'cloudflare:test'
 
-import { applyMigrations, seedDemoConf, SEEDED_TALK_ANSWERS } from './m2b-helpers'
+import {
+  applyMigrations,
+  seedDemoConf,
+  SEEDED_TALK_ANSWERS,
+  SEEDED_WORKSHOP_ANSWERS,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -121,5 +126,71 @@ describe('an organizer extends the event vocabulary', () => {
     // the form renders would pass the test above and fail here, leaving a
     // submitter shown a choice the server then refuses.
     expect(submitted.status).toBe(200)
+  })
+
+  /**
+   * The sharp edge of a moving vocabulary.
+   *
+   * An edit re-validates against the version the proposal was submitted under,
+   * and that version's choices now follow the taxonomy. So withdrawing a format
+   * could make a proposal that answered it honestly impossible for its author
+   * to touch again — punishing them for an organizer's decision.
+   */
+  it('keeps a submitted proposal editable after its format is withdrawn', async () => {
+    const organizer = await organizerCookie()
+    const speaker = await submitterCookie(env.DB)
+    const draftId = await savePublicDraft(speaker, {
+      title: 'A workshop',
+      answers: SEEDED_WORKSHOP_ANSWERS,
+    })
+    const submitted = await app.request(
+      '/api/public/submit',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(speaker),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          originDraftId: draftId,
+          formVersionId: 'f0000000-0000-4000-8000-000000000002',
+          title: 'A workshop',
+          answers: SEEDED_WORKSHOP_ANSWERS,
+          coSpeakers: [],
+        }),
+      },
+      bindings(),
+    )
+    expect(submitted.status).toBe(200)
+    const submissionId = ((await submitted.json()) as { id: string }).id
+
+    // The organizer drops Workshop from the programme's vocabulary.
+    await putTaxonomies(
+      organizer,
+      SEEDED_ITEMS.filter((item) => item.key !== 'workshop'),
+    )
+
+    const edited = await app.request(
+      `/api/public/submission/${submissionId}`,
+      {
+        method: 'PUT',
+        headers: {
+          cookie: cookieHeader(speaker),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'A workshop',
+          answers: {
+            ...SEEDED_WORKSHOP_ANSWERS,
+            abstract: 'Updated: now includes 2026 benchmark data.',
+          },
+        }),
+      },
+      bindings(),
+    )
+
+    expect(edited.status).toBe(200)
   })
 })

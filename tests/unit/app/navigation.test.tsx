@@ -130,6 +130,8 @@ describe('nav model', () => {
       // before this destination did, so the work speakers were doing arrived on
       // a screen no organizer had.
       'Speakers',
+      // What the event has actually said, and to whom.
+      'Messages',
       'Readiness',
       // Not "Evaluations": the page this opens is titled Review committee, and
       // the product has a separate speaker-facing /evaluations surface. One

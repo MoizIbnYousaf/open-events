@@ -21,6 +21,7 @@ import { Route as AdminEventsSlugRouteImport } from './routes/admin_.events.$slu
 import { Route as PublicCfpEventSlugFormSlugRouteImport } from './routes/_public/cfp.$eventSlug.$formSlug'
 import { Route as AdminEventsSlugAgendaRouteImport } from './routes/admin_.events.$slug_.agenda'
 import { Route as AdminEventsSlugEvaluationsRouteImport } from './routes/admin_.events.$slug_.evaluations'
+import { Route as AdminEventsSlugMessagesRouteImport } from './routes/admin_.events.$slug_.messages'
 import { Route as AdminEventsSlugReadinessRouteImport } from './routes/admin_.events.$slug_.readiness'
 import { Route as AdminEventsSlugSpeakersRouteImport } from './routes/admin_.events.$slug_.speakers'
 import { Route as AdminEventsSlugSubmissionsRouteImport } from './routes/admin_.events.$slug_.submissions'
@@ -90,6 +91,11 @@ const AdminEventsSlugEvaluationsRoute =
     path: '/admin/events/$slug/evaluations',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminEventsSlugMessagesRoute = AdminEventsSlugMessagesRouteImport.update({
+  id: '/admin_/events/$slug_/messages',
+  path: '/admin/events/$slug/messages',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminEventsSlugReadinessRoute =
   AdminEventsSlugReadinessRouteImport.update({
     id: '/admin_/events/$slug_/readiness',
@@ -144,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/cfp/$eventSlug/$formSlug': typeof PublicCfpEventSlugFormSlugRoute
   '/admin/events/$slug/agenda': typeof AdminEventsSlugAgendaRoute
   '/admin/events/$slug/evaluations': typeof AdminEventsSlugEvaluationsRoute
+  '/admin/events/$slug/messages': typeof AdminEventsSlugMessagesRoute
   '/admin/events/$slug/readiness': typeof AdminEventsSlugReadinessRoute
   '/admin/events/$slug/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin/events/$slug/submissions': typeof AdminEventsSlugSubmissionsRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/cfp/$eventSlug/$formSlug': typeof PublicCfpEventSlugFormSlugRoute
   '/admin/events/$slug/agenda': typeof AdminEventsSlugAgendaRoute
   '/admin/events/$slug/evaluations': typeof AdminEventsSlugEvaluationsRoute
+  '/admin/events/$slug/messages': typeof AdminEventsSlugMessagesRoute
   '/admin/events/$slug/readiness': typeof AdminEventsSlugReadinessRoute
   '/admin/events/$slug/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin/events/$slug/submissions': typeof AdminEventsSlugSubmissionsRoute
@@ -186,6 +194,7 @@ export interface FileRoutesById {
   '/_public/cfp/$eventSlug/$formSlug': typeof PublicCfpEventSlugFormSlugRoute
   '/admin_/events/$slug_/agenda': typeof AdminEventsSlugAgendaRoute
   '/admin_/events/$slug_/evaluations': typeof AdminEventsSlugEvaluationsRoute
+  '/admin_/events/$slug_/messages': typeof AdminEventsSlugMessagesRoute
   '/admin_/events/$slug_/readiness': typeof AdminEventsSlugReadinessRoute
   '/admin_/events/$slug_/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin_/events/$slug_/submissions': typeof AdminEventsSlugSubmissionsRoute
@@ -208,6 +217,7 @@ export interface FileRouteTypes {
     | '/cfp/$eventSlug/$formSlug'
     | '/admin/events/$slug/agenda'
     | '/admin/events/$slug/evaluations'
+    | '/admin/events/$slug/messages'
     | '/admin/events/$slug/readiness'
     | '/admin/events/$slug/speakers'
     | '/admin/events/$slug/submissions'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/cfp/$eventSlug/$formSlug'
     | '/admin/events/$slug/agenda'
     | '/admin/events/$slug/evaluations'
+    | '/admin/events/$slug/messages'
     | '/admin/events/$slug/readiness'
     | '/admin/events/$slug/speakers'
     | '/admin/events/$slug/submissions'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/_public/cfp/$eventSlug/$formSlug'
     | '/admin_/events/$slug_/agenda'
     | '/admin_/events/$slug_/evaluations'
+    | '/admin_/events/$slug_/messages'
     | '/admin_/events/$slug_/readiness'
     | '/admin_/events/$slug_/speakers'
     | '/admin_/events/$slug_/submissions'
@@ -265,6 +277,7 @@ export interface RootRouteChildren {
   AdminEventsSlugRoute: typeof AdminEventsSlugRoute
   AdminEventsSlugAgendaRoute: typeof AdminEventsSlugAgendaRoute
   AdminEventsSlugEvaluationsRoute: typeof AdminEventsSlugEvaluationsRoute
+  AdminEventsSlugMessagesRoute: typeof AdminEventsSlugMessagesRoute
   AdminEventsSlugReadinessRoute: typeof AdminEventsSlugReadinessRoute
   AdminEventsSlugSpeakersRoute: typeof AdminEventsSlugSpeakersRoute
   AdminEventsSlugSubmissionsRoute: typeof AdminEventsSlugSubmissionsRoute
@@ -360,6 +373,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventsSlugEvaluationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin_/events/$slug_/messages': {
+      id: '/admin_/events/$slug_/messages'
+      path: '/admin/events/$slug/messages'
+      fullPath: '/admin/events/$slug/messages'
+      preLoaderRoute: typeof AdminEventsSlugMessagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin_/events/$slug_/readiness': {
       id: '/admin_/events/$slug_/readiness'
       path: '/admin/events/$slug/readiness'
@@ -440,6 +460,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminEventsSlugRoute: AdminEventsSlugRoute,
   AdminEventsSlugAgendaRoute: AdminEventsSlugAgendaRoute,
   AdminEventsSlugEvaluationsRoute: AdminEventsSlugEvaluationsRoute,
+  AdminEventsSlugMessagesRoute: AdminEventsSlugMessagesRoute,
   AdminEventsSlugReadinessRoute: AdminEventsSlugReadinessRoute,
   AdminEventsSlugSpeakersRoute: AdminEventsSlugSpeakersRoute,
   AdminEventsSlugSubmissionsRoute: AdminEventsSlugSubmissionsRoute,

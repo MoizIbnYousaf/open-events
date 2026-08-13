@@ -373,6 +373,16 @@ export function createCapturedMessageRepository(db: D1Database): CapturedMessage
       const row = rows[0]
       return row === undefined ? null : toCapturedMessage(row)
     },
+    async listByEvent(eventId: string, limit: number) {
+      const rows = await database
+        .select()
+        .from(capturedMessages)
+        .where(eq(capturedMessages.eventId, eventId))
+        .orderBy(desc(capturedMessages.createdAt))
+        .limit(limit)
+      return rows.map(toCapturedMessage)
+    },
+
     async listBySubmissionId(submissionId: string) {
       const rows = await database
         .select()

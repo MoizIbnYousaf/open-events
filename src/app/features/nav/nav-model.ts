@@ -57,6 +57,15 @@ export function organizerDestinations(slug: string): readonly NavDestination[] {
       group: 'Programme',
     },
     {
+      // What the event has actually said, and to whom. Every message was
+      // recorded from the day the product could write one and shown to nobody.
+      id: 'messages',
+      label: 'Messages',
+      to: '/admin/events/$slug/messages',
+      params,
+      group: 'Programme',
+    },
+    {
       id: 'readiness',
       label: 'Readiness',
       to: '/admin/events/$slug/readiness',

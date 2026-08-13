@@ -564,6 +564,13 @@ export class InMemoryConfirmationRepository implements ConfirmationRepository {
 }
 
 export class InMemoryCapturedMessageRepository implements CapturedMessageRepository {
+  async listByEvent(eventId: string, limit: number): Promise<readonly CapturedMessage[]> {
+    return [...this.#messages]
+      .filter((message) => message.eventId === eventId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, limit)
+  }
+
   readonly #messages: CapturedMessage[] = []
 
   /** Mirrors 0012: one row per (submission, kind, recipient). */

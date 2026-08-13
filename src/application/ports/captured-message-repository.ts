@@ -1,4 +1,4 @@
-import type { CapturedMessage, CapturedMessageKind, SubmissionId } from '../../domain'
+import type { CapturedMessage, CapturedMessageKind, EventId, SubmissionId } from '../../domain'
 
 /**
  * Append-only captured-message log. Implementations MUST never update or
@@ -17,6 +17,14 @@ export interface CapturedMessageRepository {
     kind: CapturedMessageKind,
     toEmail: string,
   ): Promise<CapturedMessage | null>
+  /**
+   * The whole event's outbound log, newest first, capped.
+   *
+   * Capped rather than complete: an organizer opening a log wants the recent
+   * traffic, and an event that has run for a year would otherwise send its
+   * entire correspondence over the wire to render one screen.
+   */
+  listByEvent(eventId: EventId, limit: number): Promise<readonly CapturedMessage[]>
   /** Immutable send history for one submission, all kinds, oldest first. */
   listBySubmissionId(submissionId: SubmissionId): Promise<readonly CapturedMessage[]>
 }

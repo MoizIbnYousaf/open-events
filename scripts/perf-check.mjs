@@ -34,6 +34,7 @@ const BUDGETS = {
   // reads rather than left unattributed, because the gate is fail-closed and an
   // unbudgeted route is one nobody is watching.
   '/admin/events/$slug/speakers': 30 * 1024,
+  '/admin/events/$slug/messages': 30 * 1024,
   '/headshot': 20 * 1024,
 }
 
@@ -127,6 +128,10 @@ const ROUTE_CHUNK_PATTERNS = [
   {
     route: '/admin/events/$slug/speakers',
     pattern: /^admin_\.events\._slug_\.speakers(-[A-Za-z0-9_-]+)?(\.js)?$/,
+  },
+  {
+    route: '/admin/events/$slug/messages',
+    pattern: /^admin_\.events\._slug_\.messages(-[A-Za-z0-9_-]+)?(\.js)?$/,
   },
   { route: '/headshot', pattern: /^headshot(-[A-Za-z0-9_-]+)?(\.js)?$/ },
 ]

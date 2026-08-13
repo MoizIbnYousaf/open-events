@@ -62,10 +62,15 @@ describe('integration bindings', () => {
     expect(Object.keys(resolved).sort()).toEqual([
       'ALLOWED_ORIGINS',
       'DB',
+      // Outbound email credentials. Present in the surface and pinned EMPTY by
+      // the helper, so the suite exercises the capture-only fallback rather
+      // than a special test path.
+      'EMAIL_FROM',
       'FILES',
       'LOCAL_ADMIN_TOKEN',
       'LOCAL_DEV_MODE',
       'ORGANIZER_SESSION_TTL_MS',
+      'RESEND_API_KEY',
       'SUBMITTER_SESSION_TTL_MS',
       'SUBMITTER_TOKEN_TTL_MS',
     ])

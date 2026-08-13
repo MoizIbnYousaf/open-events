@@ -32,6 +32,11 @@ function pinnedBindings(ambient: AmbientEnv): Record<keyof ServerBindings, unkno
     DB: ambient.DB,
     FILES: ambient.FILES,
     // The committed TTL defaults, which `wrangler.jsonc` `vars` mirrors.
+    // Pinned EMPTY on purpose. The suite must never be able to deliver real
+    // mail, and capture-only is what an absent provider gives, so this is the
+    // production fallback exercised rather than a special test path.
+    RESEND_API_KEY: '',
+    EMAIL_FROM: '',
     ORGANIZER_SESSION_TTL_MS: String(DEFAULT_ORGANIZER_SESSION_TTL_MS),
     SUBMITTER_SESSION_TTL_MS: String(DEFAULT_SUBMITTER_SESSION_TTL_MS),
     SUBMITTER_TOKEN_TTL_MS: String(DEFAULT_SUBMITTER_TOKEN_TTL_MS),

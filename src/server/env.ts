@@ -30,6 +30,10 @@ export type ServerBindings = Pick<
   readonly LOCAL_ADMIN_TOKEN?: string
   readonly LOCAL_DEV_MODE?: string
   readonly ALLOWED_ORIGINS?: string
+  /** Provider credentials for outbound email; absent means capture-only. */
+  readonly RESEND_API_KEY?: string
+  /** The From address deliveries are sent as; required alongside the key. */
+  readonly EMAIL_FROM?: string
 }
 
 /** Per-request context values set by the session/actor middleware. */

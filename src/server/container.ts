@@ -6,6 +6,9 @@ import {
 } from '../application/security/webcrypto'
 import { AgendaService } from '../application/services/agenda'
 import { SpeakerService } from '../application/services/speakers'
+import { capturingEmailSender, selectEmailSender } from './email'
+import type { EmailSender } from '../application/ports/email-sender'
+import type { CapturedMessageRepository } from '../application/ports/captured-message-repository'
 import { CapturedMessageService } from '../application/services/captured-messages'
 import { CommunicationsService } from '../application/services/communications'
 import { DocumentService } from '../application/services/documents'
@@ -83,7 +86,42 @@ export interface ServerDeps {
 }
 
 /** Builds every frozen service/adapters for the raw D1 and R2 bindings. */
-export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): ServerDeps {
+/**
+ * Records the message, then tries to deliver it.
+ *
+ * Wrapping the repository rather than editing every service is deliberate:
+ * magic links, acceptances and reminders all already write through this one
+ * seam, so delivery reaches all of them without a single call site learning
+ * that email exists. The save happens FIRST and its failure still propagates —
+ * losing the record is a real error — while a delivery failure is swallowed by
+ * the sender, because a proposal is submitted whether or not its confirmation
+ * left the building.
+ */
+function withDelivery(
+  inner: CapturedMessageRepository,
+  sender: EmailSender,
+): CapturedMessageRepository {
+  return {
+    ...inner,
+    async save(message) {
+      await inner.save(message)
+      await sender.send({
+        to: message.toEmail,
+        subject: message.subject,
+        body: message.body,
+      })
+    },
+  }
+}
+
+export function buildServerDeps(
+  db: D1Database,
+  files: R2Bucket | null = null,
+  // Capture-only unless a deployment configures a provider, so the safe
+  // behaviour is what you get by default and turning on real delivery is the
+  // deliberate act.
+  emailSender: EmailSender = capturingEmailSender,
+): ServerDeps {
   const clock: Clock = { now: () => new Date().toISOString() }
   const events = createEventRepository(db)
   const forms = createFormRepository(db)
@@ -159,8 +197,10 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
       contacts,
       createEvaluationRepository(db),
       clock,
-      createCapturedMessageRepository(db),
+      withDelivery(createCapturedMessageRepository(db), emailSender),
     ),
+    // The dev inbox READS the log; it never sends, so it is deliberately not
+    // wrapped — reading a message must not be able to re-deliver it.
     capturedMessages: new CapturedMessageService(createCapturedMessageRepository(db)),
     speakers: new SpeakerService(contacts),
     documents:
@@ -184,7 +224,7 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
       createSubmissionRepository(db),
       events,
       contacts,
-      createCapturedMessageRepository(db),
+      withDelivery(createCapturedMessageRepository(db), emailSender),
       createSpeakerTaskRepository(db),
       clock,
     ),
@@ -194,5 +234,7 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
 /** Resolves the deps for a request, or null when the D1 binding is missing. */
 export function depsFromContext(context: ServerContext): ServerDeps | null {
   const db = getDatabaseBinding(context)
-  return db === null ? null : buildServerDeps(db, getFilesBinding(context))
+  return db === null
+    ? null
+    : buildServerDeps(db, getFilesBinding(context), selectEmailSender(context.env))
 }

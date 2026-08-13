@@ -96,6 +96,10 @@ export function dtoToBuilderDraft(dto: FormVersionDetailDto): BuilderDraft {
       maxLength: element.maxLength,
       questionType: element.questionType,
       options: element.options,
+      // The builder edits literal lists. A question that takes the event's
+      // vocabulary is resolved when the form is READ, so the editor has no
+      // source of its own to carry.
+      optionsSource: null,
     }))
     .sort(
       (a, b) =>
@@ -189,6 +193,7 @@ export function rebindDraft(
         maxLength: element.maxLength,
         questionType: element.questionType,
         options: element.options,
+        optionsSource: null,
       }
     })
     .sort(

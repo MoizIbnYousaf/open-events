@@ -301,6 +301,9 @@ export function toFormElement(row: CfpElementRow): FormElement {
     maxLength: row.maxLength,
     questionType: row.questionType,
     options: parseStringArray(row.optionsJson),
+    // Carried, never resolved here. This function is a pure row-to-domain
+    // mapping with no repository behind it, and resolving a taxonomy needs one.
+    optionsSource: row.optionsSource ?? null,
   }
 }
 

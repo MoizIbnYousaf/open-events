@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 
+import type { FormElement } from '../domain/form-version'
 import type { CapturedMessageRepository } from '../application/ports/captured-message-repository'
 import type { ConfirmationRepository } from '../application/ports/confirmation-repository'
 import type { ContactRepository } from '../application/ports/contact-repository'
@@ -640,6 +641,48 @@ export function createFormVersionRepository(db: D1Database): FormVersionReposito
   }
 }
 
+/**
+ * Replaces the stored option list of every taxonomy-sourced question with the
+ * event's live vocabulary, in the order the organizer put it in.
+ *
+ * THE single resolution point, and it is here rather than in a service on
+ * purpose: `loadByVersion` has callers in the form builder (what the public
+ * form OFFERS), in submit and in edit (what the server ACCEPTS), and in
+ * onboarding. Resolving in one of them would leave the offer and the acceptance
+ * reading different lists, which is a worse bug than the one being fixed —
+ * a submitter would be shown a choice the server then refuses. Resolved here,
+ * everything downstream keeps consuming one array and cannot disagree.
+ *
+ * Untouched when nothing is taxonomy-sourced, which is every form until an
+ * organizer says otherwise, so the ordinary path costs no extra query.
+ */
+async function resolveTaxonomyOptions(
+  database: ReturnType<typeof drizzle>,
+  eventId: string,
+  elements: readonly FormElement[],
+): Promise<readonly FormElement[]> {
+  if (!elements.some((element) => element.optionsSource !== null)) return elements
+  const items = await database
+    .select()
+    .from(taxonomyItems)
+    .where(eq(taxonomyItems.eventId, eventId))
+    .orderBy(asc(taxonomyItems.position))
+  const byKind = new Map<string, string[]>()
+  for (const item of items) {
+    const held = byKind.get(item.kind)
+    // The LABEL, because the label is what a submitter reads and what the
+    // answer stores. A key would make the stored answer an identifier nobody
+    // can read on an organizer's screen.
+    if (held === undefined) byKind.set(item.kind, [item.label])
+    else held.push(item.label)
+  }
+  return elements.map((element) =>
+    element.optionsSource === null
+      ? element
+      : { ...element, options: byKind.get(element.optionsSource) ?? [] },
+  )
+}
+
 export function createFormContentRepository(db: D1Database): FormContentRepository {
   const database = drizzle(db)
   return {
@@ -670,9 +713,10 @@ export function createFormContentRepository(db: D1Database): FormContentReposito
           )
           .orderBy(asc(cfpRoutingRules.position)),
       ])
+      const mapped = elements.map(toFormElement)
       return {
         pages: pages.map(toFormPage),
-        elements: elements.map(toFormElement),
+        elements: await resolveTaxonomyOptions(database, eventId, mapped),
         conditionRules: toElementRules(conditionRules),
         routingRules: routingRules.map(toRoutingRule),
       }

@@ -141,6 +141,7 @@ const PREVIEW_CONTENT: FormVersionContent = {
       maxLength: null,
       questionType: 'short_text',
       options: [],
+      optionsSource: null,
     },
   ],
   conditionRules: [],
@@ -390,6 +391,7 @@ describe('forms a11y contract', () => {
             maxLength: null,
             questionType: 'short_text',
             options: [],
+            optionsSource: null,
           }}
           invalid
           onUpdate={() => undefined}
@@ -432,6 +434,7 @@ describe('forms a11y contract', () => {
               maxLength: null,
               questionType: 'single_choice',
               options: ['talk'],
+              optionsSource: null,
             },
           ]}
           invalidConditionKey="r-1:0:0"
@@ -476,6 +479,7 @@ describe('forms a11y contract', () => {
               maxLength: null,
               questionType: 'single_choice',
               options: ['talk'],
+              optionsSource: null,
             },
           ]}
           invalidConditionKey={null}

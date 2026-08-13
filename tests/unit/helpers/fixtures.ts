@@ -214,6 +214,7 @@ export function createElement(overrides: Partial<FormElement> = {}): FormElement
     maxLength: 200,
     questionType: 'short_text',
     options: [],
+    optionsSource: null,
     ...overrides,
   }
 }

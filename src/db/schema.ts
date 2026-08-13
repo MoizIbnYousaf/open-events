@@ -203,6 +203,8 @@ export const cfpElements = sqliteTable(
     maxLength: integer('max_length'),
     questionType: text('question_type', { enum: [...QUESTION_TYPES] }),
     optionsJson: text('options_json'),
+    /** A taxonomy kind when the choices come from the event's vocabulary. */
+    optionsSource: text('options_source', { enum: [...TAXONOMY_KINDS] }),
   },
   (table) => [
     primaryKey({ columns: [table.eventId, table.id] }),

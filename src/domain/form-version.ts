@@ -1,3 +1,4 @@
+import type { TaxonomyKind } from './taxonomy.ts'
 import type { EventId, UtcInstant } from './event.ts'
 import type { FormId } from './form.ts'
 import type { ElementRule, RoutingRule } from './rules.ts'
@@ -75,6 +76,15 @@ export interface FormElement {
   readonly maxLength: number | null
   readonly questionType: QuestionType | null
   readonly options: readonly string[]
+  /**
+   * Where `options` came from: a taxonomy kind when the question takes the
+   * event's own vocabulary, null when it keeps its own literal list.
+   *
+   * `options` is always the RESOLVED list either way, so everything downstream
+   * — what the form offers and what the submit gate accepts — keeps reading one
+   * array and cannot disagree with itself.
+   */
+  readonly optionsSource: TaxonomyKind | null
 }
 
 /** Full immutable snapshot of one form version: pages, elements, and rules. */

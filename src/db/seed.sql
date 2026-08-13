@@ -24,8 +24,8 @@ ON CONFLICT(slug) DO NOTHING;
 -- — a submitter picked a format twice and the programme learned nothing about
 -- subject matter.
 INSERT INTO taxonomy_items (event_id, id, kind, key, label, position) VALUES
-  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000501', 'format', 'workshop', 'Workshop', 0),
-  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000502', 'format', 'talk', 'Talk', 1),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000502', 'format', 'talk', 'Talk', 0),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000501', 'format', 'workshop', 'Workshop', 1),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000507', 'format', 'lightning-talk', 'Lightning talk', 2),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000505', 'room', 'main-hall', 'Main hall', 0),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000506', 'room', 'workshop-a', 'Workshop A', 1),
@@ -89,40 +89,43 @@ ON CONFLICT(event_id, id) DO NOTHING;
 -- and what the organizer sees on the submission, and they match the event's own
 -- format and track vocabulary above.
 INSERT INTO cfp_elements (event_id, id, version_id, page_id, position, kind,
-                          field_key, label, required, max_length, question_type, options_json) VALUES
+                          field_key, label, required, max_length, question_type, options_json,
+                          options_source) VALUES
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000201',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
    0, 'question', 'format', 'Session format', 1, NULL, 'single_choice',
-   '["Talk","Workshop","Lightning talk"]'),
+   -- The literal list stays as the value a pre-0020 deployment reads; the
+   -- source is what makes the published form follow the Formats taxonomy.
+   '["Talk","Workshop","Lightning talk"]', 'format'),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000203',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
    1, 'question', 'track', 'Track', 1, NULL, 'single_choice',
-   '["Platform & Infra","AI Engineering","Developer Experience"]'),
+   '["Platform & Infra","AI Engineering","Developer Experience"]', 'track'),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000204',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
-   2, 'question', 'abstract', 'Abstract', 1, 2000, 'long_text', NULL),
+   2, 'question', 'abstract', 'Abstract', 1, 2000, 'long_text', NULL, NULL),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000205',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
    3, 'question', 'audience_level', 'Audience level', 1, NULL, 'single_choice',
-   '["Beginner","Intermediate","Advanced"]'),
+   '["Beginner","Intermediate","Advanced"]', NULL),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000206',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
-   4, 'question', 'key_takeaway', 'Key takeaway', 1, 200, 'short_text', NULL),
+   4, 'question', 'key_takeaway', 'Key takeaway', 1, 200, 'short_text', NULL, NULL),
   -- Optional on its own and made mandatory by rule when the format is Workshop.
   -- The column flag stays 0 deliberately: a required-but-hidden field blocks a
   -- Talk submission on a question the submitter was never shown.
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000202',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000101',
-   5, 'question', 'workshop_details', 'Workshop details', 0, 2000, 'long_text', NULL),
+   5, 'question', 'workshop_details', 'Workshop details', 0, 2000, 'long_text', NULL, NULL),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000207',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000102',
-   0, 'question', 'speaker_bio', 'Speaker bio', 1, 1000, 'long_text', NULL),
+   0, 'question', 'speaker_bio', 'Speaker bio', 1, 1000, 'long_text', NULL, NULL),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000208',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000102',
-   1, 'question', 'job_title', 'Job title', 0, 120, 'short_text', NULL),
+   1, 'question', 'job_title', 'Job title', 0, 120, 'short_text', NULL, NULL),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'f0000000-0000-4000-8000-000000000209',
    'f0000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000102',
-   2, 'question', 'company', 'Company', 0, 120, 'short_text', NULL)
+   2, 'question', 'company', 'Company', 0, 120, 'short_text', NULL, NULL)
 ON CONFLICT(event_id, id) DO NOTHING;
 
 -- Two effects on one question, because "appears for a workshop" and "must be

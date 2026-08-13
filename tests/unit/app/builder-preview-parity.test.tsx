@@ -50,6 +50,7 @@ const CONTENT: FormVersionContent = {
       maxLength: 120,
       questionType: 'short_text',
       options: [],
+      optionsSource: null,
     },
     {
       id: 'e-2',
@@ -64,6 +65,7 @@ const CONTENT: FormVersionContent = {
       maxLength: null,
       questionType: 'long_text',
       options: [],
+      optionsSource: null,
     },
   ],
   conditionRules: [

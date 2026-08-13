@@ -39,6 +39,7 @@ const CONTENT: FormVersionContent = {
       maxLength: null,
       questionType: 'short_text',
       options: [],
+      optionsSource: null,
     },
   ],
   conditionRules: [],

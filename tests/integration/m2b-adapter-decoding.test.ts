@@ -115,8 +115,11 @@ describe('D1 adapter row decoding round-trips', () => {
 
     const taxonomy = await createTaxonomyRepository(env.DB).listByEvent(DEMO_CONF_2026_ID)
     expect(taxonomy.map((item) => `${item.kind}:${item.key}`)).toEqual([
-      'format:workshop',
+      // Taxonomy position IS the order the published form offers, now that the
+      // format question takes its choices from this vocabulary rather than
+      // keeping a second copy that could disagree with it.
       'format:talk',
+      'format:workshop',
       'format:lightning-talk',
       'room:main-hall',
       'room:workshop-a',

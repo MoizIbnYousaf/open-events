@@ -6,6 +6,10 @@ import { spawnSync } from 'node:child_process'
 
 const root = resolve(import.meta.dirname, '..')
 const stateDir = resolve(root, '.wrangler', 'state')
+// OPT-IN. The base seed is the minimal fixture a great many tests assert
+// exactly, and the golden journeys assert ABSOLUTE row totals that a seeded
+// proposal would silently inflate — so the demo programme is never the default.
+const withProgramme = process.argv.includes('--programme')
 
 const run = (args) => {
   const result = spawnSync('pnpm', ['exec', ...args], { cwd: root, stdio: 'inherit' })
@@ -21,4 +25,11 @@ if (existsSync(stateDir)) {
 
 run(['wrangler', 'd1', 'migrations', 'apply', 'open-events-production', '--local'])
 run(['wrangler', 'd1', 'execute', 'open-events-production', '--local', '--file', 'src/db/seed.sql'])
-console.log('db:reset — migrations applied and DemoConf 2026 seed executed (local only)')
+if (withProgramme) {
+  run(['wrangler', 'd1', 'execute', 'open-events-production', '--local', '--file', 'src/db/seed-programme.sql'])
+}
+console.log(
+  withProgramme
+    ? 'db:reset — migrations, DemoConf 2026 seed and the demo programme executed (local only)'
+    : 'db:reset — migrations applied and DemoConf 2026 seed executed (local only)',
+)

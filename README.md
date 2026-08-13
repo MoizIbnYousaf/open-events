@@ -69,6 +69,15 @@ pnpm dev       # Vite dev server; Worker API under /api
 pnpm preview   # production preview
 ```
 
+`pnpm db:reset` gives you the minimal seeded event: one call for papers, no
+proposals and an empty programme. `pnpm db:reset:programme` layers a published
+programme on top — six accepted sessions across two days, two rooms and three
+tracks — which is what the public schedule needs in order to show anything.
+
+The programme layer is deliberately opt-in. The base seed's shape is asserted
+exactly by a large part of the suite, and the golden journeys assert absolute row
+totals that a seeded proposal would silently inflate.
+
 ## Quality gates
 
 ```bash

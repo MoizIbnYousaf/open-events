@@ -25,6 +25,7 @@
     "perf:check": "node scripts/perf-check.mjs",
     "clean": "node scripts/clean.mjs",
     "types:generate": "wrangler types generated/worker-configuration.d.ts",
+    "db:reset:programme": "node scripts/db-reset.mjs --programme",
     "db:reset": "node scripts/db-reset.mjs"
   },
   "dependencies": {

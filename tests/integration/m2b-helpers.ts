@@ -19,6 +19,7 @@ import migration0015Sql from '../../migrations/0015_fix_condition_rule_unique_gr
 import migration0018Sql from '../../migrations/0018_cascade_round_scores_to_criteria.sql?raw'
 import migration0019Sql from '../../migrations/0019_add_assignment_recusal.sql?raw'
 import migration0020Sql from '../../migrations/0020_add_element_options_source.sql?raw'
+import seedProgrammeSql from '../../src/db/seed-programme.sql?raw'
 import migration0016Sql from '../../migrations/0016_create_submission_decisions.sql?raw'
 import migration0017Sql from '../../migrations/0017_configurable_review_rounds.sql?raw'
 import seedSql from '../../src/db/seed.sql?raw'
@@ -319,3 +320,19 @@ async function expectPromiseRejects(promise: Promise<D1Result>): Promise<void> {
   }
   if (!rejected) throw new Error('expected the D1 statement to reject')
 }
+
+/**
+ * The optional demo programme, layered on top of `seedDemoConf`.
+ *
+ * Separate from the base seed on purpose: the base fixture's shape is asserted
+ * exactly by a great many tests, and the golden journeys assert absolute row
+ * totals. A test that wants a published programme asks for one.
+ */
+export async function seedDemoConfProgramme(db: D1Database): Promise<void> {
+  for (const statement of splitSqlStatements(seedProgrammeSql)) {
+    await db.prepare(statement).run()
+  }
+}
+
+/** Published sessions the programme layer adds. */
+export const SEEDED_PROGRAMME_SESSIONS = 6

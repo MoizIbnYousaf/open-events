@@ -8,6 +8,11 @@ complete onboarding, and the public browses the programme.
 This repository is the Open Events monolith: one pnpm package, one deployable,
 strict TypeScript.
 
+**Live demo:** [open-events.speakerops.workers.dev](https://open-events.speakerops.workers.dev)
+— the public call for papers and programme are open to anyone. Organizer,
+speaker and reviewer surfaces need a sign-in; see [Deploying](#deploying) to run
+your own.
+
 ## What it does
 
 - **Call for papers** — an organizer builds the form (typed questions, choices

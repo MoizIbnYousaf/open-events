@@ -8,6 +8,23 @@ complete onboarding, and the public browses the programme.
 This repository is the Open Events monolith: one pnpm package, one deployable,
 strict TypeScript.
 
+## What it does
+
+- **Call for papers** — an organizer builds the form (typed questions, choices
+  drawn from the event's own vocabulary, conditional questions), publishes it,
+  and sets the window that opens and closes submissions.
+- **Proposals** — speakers submit with co-speakers, save drafts that survive
+  signing in, and revise what they sent while the call is open.
+- **Review** — committee rounds with their own scorecards (ratings, choices,
+  free text), per-round reviewer pools, blind review, conflict-of-interest
+  recusal, one-action distribution of the reading, and weighted results.
+- **Decisions and onboarding** — accept or reject, with every surface honouring
+  the verdict; accepted speakers get an onboarding checklist.
+- **Programme** — an agenda board with room, track and speaker conflict
+  detection, assisted scheduling, and a public schedule.
+- **Organizer view of people** — a speaker roster and a log of every message
+  the event has sent.
+
 ## Stack
 
 - React + Vite + TanStack Router (file routes, automatic code splitting)
@@ -55,6 +72,7 @@ pnpm lint           # ESLint (zero warnings)
 pnpm typecheck      # tsc strict
 pnpm test           # Vitest: unit + Workers-pool integration
 pnpm build          # production build
+pnpm perf:check     # per-route and entry-closure size budgets
 pnpm ui:check       # shadcn Base UI pin, no foreign UI kits
 pnpm notices:check  # license + third-party provenance
 pnpm e2e            # Playwright end-to-end smoke test (no local secrets needed)
@@ -76,6 +94,43 @@ the dev server, and restores whatever `.dev.vars` was there when the run ends.
 
 Run every gate before submitting a contribution — see
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Deploying
+
+Open Events runs on Cloudflare Workers with D1 and R2. From a Cloudflare
+account with Wrangler authenticated:
+
+```bash
+npx wrangler d1 create <your-database>
+npx wrangler r2 bucket create <your-bucket>
+# put both names into wrangler.jsonc, then:
+npx wrangler d1 migrations apply <your-database> --remote
+npx wrangler d1 execute <your-database> --remote --file src/db/seed.sql
+npx wrangler deploy
+```
+
+Set `ALLOWED_ORIGINS` in `wrangler.jsonc` to the origin you deploy to — a
+mismatch refuses every authenticated write as cross-origin. Then set the
+organizer secret:
+
+```bash
+npx wrangler secret put LOCAL_ADMIN_TOKEN
+```
+
+### Email
+
+Outbound email is capture-only unless a provider is configured: every message
+is recorded in the event's message log, and nothing is delivered. That is the
+default so a checkout running the test suite can never mail real people. To
+deliver for real, set both:
+
+```bash
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put EMAIL_FROM     # must be on a domain you have verified
+```
+
+With no provider configured, organizers can still read every message — including
+speaker and reviewer sign-in links — from **Messages** in the admin.
 
 ## License
 

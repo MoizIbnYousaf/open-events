@@ -31,6 +31,7 @@ import { ApplicationError, ValidationFailedError } from '../errors'
 import type { AcceptUnitOfWork } from '../ports/accept-unit-of-work'
 import type { Clock } from '../ports/clock'
 import type { EventRepository } from '../ports/event-repository'
+import type { TaxonomyRepository } from '../ports/taxonomy-repository'
 import type { ContactRepository } from '../ports/contact-repository'
 import type { FormContentRepository } from '../ports/form-content-repository'
 import type { FormRepository } from '../ports/form-repository'
@@ -54,6 +55,7 @@ export interface AssignFormTaskInput {
 export class OnboardingService {
   readonly #submissions: SubmissionRepository
   readonly #events: EventRepository
+  readonly #taxonomies: TaxonomyRepository
   readonly #tasks: SpeakerTaskRepository
   readonly #acceptUnitOfWork: AcceptUnitOfWork
   readonly #clock: Clock
@@ -74,8 +76,10 @@ export class OnboardingService {
     content: FormContentRepository,
     contacts: ContactRepository,
     uploads: UploadedFileRepository,
+    taxonomies: TaxonomyRepository,
   ) {
     this.#submissions = submissions
+    this.#taxonomies = taxonomies
     this.#events = events
     this.#tasks = tasks
     this.#acceptUnitOfWork = acceptUnitOfWork
@@ -135,6 +139,17 @@ export class OnboardingService {
     // acceptance instant is the fallback for an event still without dates.
     const event = await this.#events.findById(submission.eventId)
     const slot = defaultAgendaSlot(event?.dates?.startsAt ?? now)
+    // The submitter already told us the track. Matching on the LABEL is right
+    // rather than lax: an answer stores the label a person read, which is the
+    // same string the taxonomy shows, so this is the two records of one
+    // vocabulary meeting rather than a guess. An answer naming a track the
+    // event no longer recognises resolves to null instead of inventing one.
+    const answeredTrack = submission.answers['track']
+    const items = await this.#taxonomies.listByEvent(submission.eventId)
+    const trackId =
+      typeof answeredTrack === 'string'
+        ? (items.find((item) => item.kind === 'track' && item.label === answeredTrack)?.id ?? null)
+        : null
 
     const result = await this.#acceptUnitOfWork.execute({
       eventId: submission.eventId,
@@ -143,6 +158,7 @@ export class OnboardingService {
       tasks,
       session: {
         ...slot,
+        trackId,
         speakerContactIds: contributors.map((contributor) => contributor.contactId),
       },
     })

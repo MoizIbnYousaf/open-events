@@ -24,6 +24,7 @@ import {
   InMemoryFormRepository,
   InMemoryFormVersionRepository,
   InMemorySubmissionRepository,
+  InMemoryTaxonomyRepository,
 } from '../helpers/in-memory-repositories'
 import {
   InMemoryAcceptUnitOfWork,
@@ -134,6 +135,7 @@ function buildService(): OnboardingService {
     content,
     new InMemoryContactRepository([{ ...ownerContact, bio: 'Seeded bio' }]),
     seededUploads(),
+    new InMemoryTaxonomyRepository(),
   )
 }
 

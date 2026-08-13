@@ -18,6 +18,16 @@ export interface AcceptSessionDraft {
   readonly start: UtcInstant
   readonly end: UtcInstant
   readonly speakerContactIds: readonly ContactId[]
+  /**
+   * The track the proposal itself chose, resolved to a taxonomy id, or null
+   * when it named none the event recognises.
+   *
+   * Carried at acceptance rather than left for the organizer to re-enter: the
+   * submitter already answered this, and a programme that forgets it publishes
+   * a schedule with a blank track column and gives its own track filter
+   * nothing to filter on.
+   */
+  readonly trackId: string | null
 }
 
 export interface AcceptBatchInput {

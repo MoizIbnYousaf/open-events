@@ -20,6 +20,7 @@ import {
   InMemoryFormRepository,
   InMemoryFormVersionRepository,
   InMemorySubmissionRepository,
+  InMemoryTaxonomyRepository,
 } from '../helpers/in-memory-repositories'
 import {
   InMemoryAcceptUnitOfWork,
@@ -74,6 +75,7 @@ function buildService(event = eventFixture): OnboardingService {
       },
     ]),
     seededUploads(),
+    new InMemoryTaxonomyRepository(),
   )
 }
 

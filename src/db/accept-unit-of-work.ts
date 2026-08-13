@@ -122,7 +122,7 @@ export function createAcceptUnitOfWork(db: D1Database): AcceptUnitOfWork {
             `INSERT INTO agenda_sessions
                (event_id, submission_id, track_id, room_id, day, start, end,
                 position, status, assignment, created_at, updated_at)
-             SELECT ?, ?, NULL, NULL, ?, ?, ?, NULL, 'draft', 'unassigned', ?, ?
+             SELECT ?, ?, ?, NULL, ?, ?, ?, NULL, 'draft', 'unassigned', ?, ?
              WHERE EXISTS (
                SELECT 1 FROM submission_acceptances WHERE event_id = ? AND submission_id = ?
              )
@@ -131,6 +131,7 @@ export function createAcceptUnitOfWork(db: D1Database): AcceptUnitOfWork {
           .bind(
             input.eventId,
             input.submissionId,
+            input.session.trackId,
             input.session.day,
             input.session.start,
             input.session.end,

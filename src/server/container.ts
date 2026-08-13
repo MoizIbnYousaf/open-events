@@ -191,6 +191,7 @@ export function buildServerDeps(
       content,
       contacts,
       createUploadedFileRepository(db),
+      createTaxonomyRepository(db),
     ),
     evaluations: new EvaluationService(
       createSubmissionRepository(db),

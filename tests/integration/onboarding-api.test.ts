@@ -227,7 +227,10 @@ describe('POST /api/admin/events/demo-conf-2026/submissions/:id/accept', () => {
     expect(session?.status).toBe('draft')
     expect(session?.assignment).toBe('unassigned')
     expect(session?.room_id).toBeNull()
-    expect(session?.track_id).toBeNull()
+    // The ROOM is still the organizer's to choose, but the TRACK is not — the
+    // submitter answered it, and acceptance carries that answer through rather
+    // than making them say it twice.
+    expect(session?.track_id).toBe('f0000000-0000-4000-8000-000000000503')
     expect(session?.position).toBeNull()
     // The seeded event starts 2026-05-13T08:00:00.000Z.
     expect(session?.day).toBe('2026-05-13')
@@ -306,6 +309,7 @@ describe('POST /api/admin/events/demo-conf-2026/submissions/:id/accept', () => {
           day: '2026-05-13',
           start: '2026-05-13T08:00:00.000Z',
           end: '2026-05-13T09:00:00.000Z',
+          trackId: null,
           speakerContactIds: [await contactIdFor(SPEAKER_EMAIL)],
         },
       }),

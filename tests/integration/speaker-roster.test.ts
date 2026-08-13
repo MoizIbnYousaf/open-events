@@ -121,3 +121,77 @@ describe('the organizer speaker roster', () => {
     expect(response.status).toBe(401)
   })
 })
+
+/**
+ * The track the submitter chose has to reach the programme.
+ *
+ * An accepted proposal became an agenda session with no track at all, so the
+ * public schedule published a blank track column and the track filter built on
+ * top of it had nothing to filter. The submitter had answered the question;
+ * acceptance simply dropped the answer.
+ */
+describe('accepting a proposal keeps its track', () => {
+  beforeEach(async () => {
+    await reset()
+    await applyMigrations(env.DB)
+    await seedDemoConf(env.DB)
+  })
+
+  it('carries the answered track onto the agenda session', async () => {
+    const organizer = (await loginOrganizer()).token ?? ''
+    const speaker = await submitterCookie(env.DB, {}, 'tracked@example.test')
+    const draftId = await savePublicDraft(speaker, {
+      title: 'Tracked talk',
+      answers: SEEDED_TALK_ANSWERS,
+    })
+    const submitted = await app.request(
+      '/api/public/submit',
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(speaker),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          originDraftId: draftId,
+          formVersionId: DEMO_CONF_2026_VERSION_ID,
+          title: 'Tracked talk',
+          answers: SEEDED_TALK_ANSWERS,
+          coSpeakers: [],
+        }),
+      },
+      bindings(),
+    )
+    const submissionId = ((await submitted.json()) as { id: string }).id
+
+    const accepted = await app.request(
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/accept`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(organizer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+      },
+      bindings(),
+    )
+    expect(accepted.status).toBe(200)
+
+    const session = await env.DB.prepare(
+      'SELECT track_id FROM agenda_sessions WHERE submission_id = ?',
+    )
+      .bind(submissionId)
+      .first<{ track_id: string | null }>()
+
+    // The seeded proposal answers 'Platform & Infra', which the event's own
+    // vocabulary knows — so the session carries that track's id rather than
+    // null, and the programme can group and filter by it.
+    expect(session?.track_id).not.toBeNull()
+    const track = await env.DB.prepare('SELECT label FROM taxonomy_items WHERE id = ?')
+      .bind(session?.track_id)
+      .first<{ label: string }>()
+    expect(track?.label).toBe('Platform & Infra')
+  })
+})

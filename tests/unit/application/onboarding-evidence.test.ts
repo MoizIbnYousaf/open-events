@@ -19,6 +19,7 @@ import {
   InMemoryFormRepository,
   InMemoryFormVersionRepository,
   InMemorySubmissionRepository,
+  InMemoryTaxonomyRepository,
 } from '../helpers/in-memory-repositories'
 import {
   InMemoryAcceptUnitOfWork,
@@ -83,6 +84,7 @@ beforeEach(async () => {
     new InMemoryFormContentRepository(),
     contacts,
     uploads,
+    new InMemoryTaxonomyRepository(),
   )
   await service.accept(organizerActor, EVENT_ID, submission.id)
 })

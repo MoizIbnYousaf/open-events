@@ -37,6 +37,8 @@ const OTHER_EVENT_SLUG = 'other-conf-2026'
 const ROOM_MAIN_HALL = 'f0000000-0000-4000-8000-000000000505'
 const ROOM_WORKSHOP_A = 'f0000000-0000-4000-8000-000000000506'
 const TRACK_TALK = 'f0000000-0000-4000-8000-000000000504'
+/** The track the seeded proposal answers, and therefore the one it arrives with. */
+const TRACK_PLATFORM_INFRA = 'f0000000-0000-4000-8000-000000000503'
 const FORMAT_TALK = 'f0000000-0000-4000-8000-000000000502'
 const DAY = '2026-05-13'
 const START = '2026-05-13T09:00:00.000Z'
@@ -218,7 +220,10 @@ describe('GET /api/admin/events/:slug/agenda', () => {
       submissionId,
       title: 'Workshop proposal',
       roomId: null,
-      trackId: null,
+      // The submitter answered the track question, so acceptance carries that
+      // answer onto the session. It used to arrive null, which published a
+      // blank track column and left the track filter nothing to filter.
+      trackId: TRACK_PLATFORM_INFRA,
       status: 'draft',
       assignment: 'unassigned',
     })

@@ -1,6 +1,6 @@
 # Release acceptance checklist
 
-SpeakerOps ships as one pnpm package and one deployable strict-TypeScript
+Open Events ships as one pnpm package and one deployable strict-TypeScript
 modular monolith. Verify every item below from a clean checkout of the exact
 candidate commit:
 

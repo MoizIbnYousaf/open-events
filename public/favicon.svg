@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SpeakerOps">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Open Events">
   <rect width="64" height="64" rx="16" fill="#171717"/>
   <path d="M18 22h28v8H27v5h16v8H27v9h-9V22Z" fill="#fff"/>
   <circle cx="47" cy="47" r="5" fill="#a3e635"/>

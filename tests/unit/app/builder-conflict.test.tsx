@@ -849,7 +849,7 @@ describe('builder draft conflict handling and payload contract', () => {
       expect(screen.queryByText('Start a new draft')).not.toBeInTheDocument()
       // V-B4-H11: the tab is the one place a reader is told which page they are
       // on when the page is not on screen, and it said "Form builder".
-      await waitFor(() => expect(document.title).toBe('Not found — SpeakerOps'))
+      await waitFor(() => expect(document.title).toBe('Not found — Open Events'))
     })
 
     it('titles the tab for the builder itself when the form is merely draftless', async () => {
@@ -857,7 +857,7 @@ describe('builder draft conflict handling and payload contract', () => {
       await mountBuilder()
 
       await screen.findByRole('button', { name: /start a new draft/i })
-      await waitFor(() => expect(document.title).toBe('Form builder — SpeakerOps'))
+      await waitFor(() => expect(document.title).toBe('Form builder — Open Events'))
     })
   })
 
@@ -879,7 +879,7 @@ describe('builder draft conflict handling and payload contract', () => {
 
     expect(await screen.findByText('Session expired')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in again' })).toBeInTheDocument()
-    await waitFor(() => expect(document.title).toBe('Session expired — SpeakerOps'))
+    await waitFor(() => expect(document.title).toBe('Session expired — Open Events'))
   })
 
   it('shows Saving… and keeps Save disabled while the mutation is pending, then re-enables', async () => {

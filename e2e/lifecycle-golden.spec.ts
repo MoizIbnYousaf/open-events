@@ -48,7 +48,7 @@ const ROW_LINK = (title: string) => `${title} — ${SPEAKER_EMAIL}`
 const CHECKLIST_SIZE = 3
 
 /** Stable published UID domain for the calendar invite (src/domain/invite.ts). */
-const INVITE_UID_DOMAIN = 'speakerops'
+const INVITE_UID_DOMAIN = 'open-events'
 
 // Explicit mutation accounting: every 2xx write in the whole journey must
 // match this normalized endpoint + method + intended-count map exactly. Path

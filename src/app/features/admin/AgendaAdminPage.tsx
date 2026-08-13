@@ -853,7 +853,7 @@ export default function AgendaAdminPage({ eventSlug }: AgendaAdminPageProps) {
 function ExpiredAgendaSession() {
   const navigate = useNavigate()
   useEffect(() => {
-    document.title = 'Session expired — SpeakerOps'
+    document.title = 'Session expired — Open Events'
   }, [])
   return <ExpiredSessionState onLogin={() => void navigate({ to: '/admin' })} />
 }
@@ -932,7 +932,7 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
   const dayFields = useRef(new Map<string, HTMLSelectElement>())
 
   useEffect(() => {
-    document.title = 'Agenda — SpeakerOps'
+    document.title = 'Agenda — Open Events'
   }, [])
 
   const registerDayField = useCallback(

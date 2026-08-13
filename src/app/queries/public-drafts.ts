@@ -143,7 +143,7 @@ export interface CfpDraftStash {
 }
 
 function cfpStashKey(formVersionId: string): string {
-  return `speakerops.cfp-draft.${formVersionId}`
+  return `open-events.cfp-draft.${formVersionId}`
 }
 
 export function stashCfpDraft(formVersionId: string, draft: CfpDraftStash): void {

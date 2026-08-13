@@ -56,7 +56,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
   const unauthenticated = data === null
 
   useEffect(() => {
-    document.title = 'Your submissions — SpeakerOps'
+    document.title = 'Your submissions — Open Events'
   }, [])
 
   useEffect(() => {

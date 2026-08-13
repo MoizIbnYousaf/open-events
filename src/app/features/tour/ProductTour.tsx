@@ -22,10 +22,10 @@ import {
  * Fired on `window` to toggle the tour from a visible control (the header
  * button). Same additive-door pattern as the command menu's open event.
  */
-export const TOUR_TOGGLE_EVENT = 'speakerops:tour-toggle'
+export const TOUR_TOGGLE_EVENT = 'open-events:tour-toggle'
 
 /** Set when the tour is finished or skipped. The tour NEVER auto-opens. */
-const TOUR_DONE_KEY = 'speakerops:tour-done'
+const TOUR_DONE_KEY = 'open-events:tour-done'
 
 /** How long a step waits for its [data-tour] hook before rendering centered. */
 const TARGET_POLL_MS = 2000

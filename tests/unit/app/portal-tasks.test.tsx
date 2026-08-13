@@ -286,7 +286,7 @@ describe('portal task queries', () => {
       .filter((url) => url.includes('readiness'))
     expect(readinessCalls.length).toBeGreaterThan(0)
     for (const url of readinessCalls) {
-      const parsed = new URL(url, 'https://speakerops.test')
+      const parsed = new URL(url, 'https://open-events.test')
       expect(parsed.pathname).toBe(READINESS_PATH)
       expect(parsed.searchParams.get('eventSlug')).toBe(EVENT_SLUG)
     }
@@ -296,7 +296,7 @@ describe('portal task queries', () => {
     fetchHandler = () => jsonResponse(EMPTY_READINESS)
     await getOrganizerReadiness('a&b c')
     const [input] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined]
-    const parsed = new URL(requestUrl(input), 'https://speakerops.test')
+    const parsed = new URL(requestUrl(input), 'https://open-events.test')
     expect(parsed.pathname).toBe(READINESS_PATH)
     expect(parsed.searchParams.get('eventSlug')).toBe('a&b c')
   })

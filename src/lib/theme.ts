@@ -13,7 +13,7 @@
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type ResolvedScheme = 'light' | 'dark'
 
-export const THEME_STORAGE_KEY = 'speakerops.theme'
+export const THEME_STORAGE_KEY = 'open-events.theme'
 export const THEME_PREFERENCES = ['system', 'light', 'dark'] as const
 export const THEME_LABELS: Readonly<Record<ThemePreference, string>> = {
   system: 'System',

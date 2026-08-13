@@ -40,7 +40,7 @@ function VersionDetailScreen() {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    document.title = 'Version detail — SpeakerOps'
+    document.title = 'Version detail — Open Events'
   }, [])
 
   if (detailQuery.isError) {

@@ -18,7 +18,7 @@ import type {} from '../../routeTree.gen'
  */
 function HeadshotRouteComponent() {
   useEffect(() => {
-    document.title = 'Your headshot — SpeakerOps'
+    document.title = 'Your headshot — Open Events'
   }, [])
 
   return (

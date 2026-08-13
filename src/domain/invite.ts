@@ -11,9 +11,9 @@ import type { UtcInstant } from './event.ts'
 import type { SubmissionId } from './submission.ts'
 
 /** UID right-hand side; part of the stable published identity of an invite. */
-export const INVITE_UID_DOMAIN = 'speakerops'
+export const INVITE_UID_DOMAIN = 'open-events'
 
-export const INVITE_PRODID = '-//SpeakerOps//Event Program//EN'
+export const INVITE_PRODID = '-//Open Events//Event Program//EN'
 
 /** RFC 5545 §3.1: content lines are folded at 75 octets (CRLF + one space). */
 const MAX_LINE_OCTETS = 75
@@ -28,7 +28,7 @@ export interface CalendarInviteInput {
   readonly dtstamp: UtcInstant
 }
 
-/** Stable, submission-derived UID: `<submissionId>@speakerops`. */
+/** Stable, submission-derived UID: `<submissionId>@open-events`. */
 export function buildInviteUid(submissionId: SubmissionId): string {
   const trimmed = submissionId.trim()
   if (trimmed.length === 0) {

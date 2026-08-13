@@ -76,7 +76,7 @@ function ScheduleScreen({ eventSlug }: { readonly eventSlug: string | undefined 
   const query = usePublicSchedule(eventSlug)
 
   useEffect(() => {
-    document.title = 'Schedule — SpeakerOps'
+    document.title = 'Schedule — Open Events'
   }, [])
 
   if (query.data === null) {

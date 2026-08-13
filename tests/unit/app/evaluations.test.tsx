@@ -189,7 +189,7 @@ describe('evaluations UI', () => {
       expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
       const h1s = screen.getAllByRole('heading', { level: 1 })
       expect(h1s).toHaveLength(1)
-      expect(h1s[0]).not.toHaveTextContent('SpeakerOps')
+      expect(h1s[0]).not.toHaveTextContent('Open Events')
     },
   )
 

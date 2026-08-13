@@ -190,10 +190,10 @@ describe('root shell', () => {
   // page is not on screen, and an unmatched URL kept the title of whatever they
   // were reading before it (WCAG 2.4.2).
   it('titles the tab for the state, not for the page the reader came from', async () => {
-    document.title = 'Your submissions — SpeakerOps'
+    document.title = 'Your submissions — Open Events'
     await mountNotFound()
 
-    await waitFor(() => expect(document.title).toBe('Not found — SpeakerOps'))
+    await waitFor(() => expect(document.title).toBe('Not found — Open Events'))
   })
 
   it('lands an unknown URL on a designed card with a way out, not on an alert', async () => {

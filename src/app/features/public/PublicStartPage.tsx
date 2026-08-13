@@ -18,7 +18,7 @@ export function PublicStartPage() {
   // speaker with several tabs open could not tell which one held the sign-in
   // step (WCAG 2.4.2).
   useEffect(() => {
-    document.title = 'Start — SpeakerOps'
+    document.title = 'Start — Open Events'
   }, [])
 
   return (

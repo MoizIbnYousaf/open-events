@@ -121,6 +121,6 @@ describe('signed-out organizer routes render one bare dead end', () => {
     expect(document.body.textContent ?? '').not.toContain('raw session copy')
     // V7-TITLES / H11: the tab names the state the page is actually in, not the
     // page the reader was refused.
-    await waitFor(() => expect(document.title).toBe('Session expired — SpeakerOps'))
+    await waitFor(() => expect(document.title).toBe('Session expired — Open Events'))
   })
 })

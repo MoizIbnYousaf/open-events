@@ -243,10 +243,10 @@ function BuilderEditorScreen({
 
   useEffect(() => {
     document.title = notFound
-      ? 'Not found — SpeakerOps'
+      ? 'Not found — Open Events'
       : expired
-        ? 'Session expired — SpeakerOps'
-        : 'Form builder — SpeakerOps'
+        ? 'Session expired — Open Events'
+        : 'Form builder — Open Events'
   }, [notFound, expired])
 
   useEffect(() => {

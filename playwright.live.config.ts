@@ -6,7 +6,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   use: {
-    baseURL: 'https://speakerops.speakerops.workers.dev',
+    baseURL: 'https://open-events.speakerops.workers.dev',
     trace: 'on-first-retry',
   },
   projects: [

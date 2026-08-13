@@ -98,7 +98,7 @@ export default function EvaluationCommitteePage() {
 function ExpiredCommitteeSession() {
   const navigate = useNavigate()
   useEffect(() => {
-    document.title = 'Session expired — SpeakerOps'
+    document.title = 'Session expired — Open Events'
   }, [])
   return <ExpiredSessionState onLogin={() => void navigate({ to: '/admin' })} />
 }
@@ -115,7 +115,7 @@ function EvaluationCommitteeScreen() {
   const committeeRoster = committee.data ?? []
 
   useEffect(() => {
-    document.title = 'Review committee — SpeakerOps'
+    document.title = 'Review committee — Open Events'
   }, [])
 
   const loadError = criteria.error ?? rounds.error

@@ -32,7 +32,7 @@ function ReadinessRoutePage() {
 function ExpiredReadinessSession() {
   const navigate = useNavigate()
   useEffect(() => {
-    document.title = 'Session expired — SpeakerOps'
+    document.title = 'Session expired — Open Events'
   }, [])
   return <ExpiredSessionState onLogin={() => void navigate({ to: '/admin' })} />
 }

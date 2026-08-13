@@ -228,8 +228,8 @@ describe('rendered navigation', () => {
       'href',
       '/admin',
     )
-    expect(screen.getByRole('link', { name: 'SpeakerOps' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'SpeakerOps' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open Events' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Open Events' })).toBeNull()
   })
 
   it('names its two public landmarks distinctly so an evaluator is not told the portal is theirs', async () => {

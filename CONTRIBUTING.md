@@ -1,6 +1,6 @@
-# Contributing to SpeakerOps
+# Contributing to Open Events
 
-Thanks for contributing. SpeakerOps is an open-source event-program platform
+Thanks for contributing. Open Events is an open-source event-program platform
 built as one pnpm package / one deployable strict-TypeScript modular
 monolith. This guide covers setup, the quality gates, and contribution
 conventions.

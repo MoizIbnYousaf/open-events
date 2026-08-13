@@ -49,7 +49,7 @@ export default function AdminLogin() {
   }, [setFocus])
 
   useEffect(() => {
-    document.title = 'Admin sign in — SpeakerOps'
+    document.title = 'Admin sign in — Open Events'
   }, [])
 
   const onSubmit = (values: LoginValues) => {

@@ -34,7 +34,7 @@ import {
  * Fired on `window` to open the palette from a visible control (the topbar
  * search button). The chord path stays untouched; this is an additive door.
  */
-export const COMMAND_MENU_OPEN_EVENT = 'speakerops:command-menu-open'
+export const COMMAND_MENU_OPEN_EVENT = 'open-events:command-menu-open'
 
 /**
  * The `data-tour` value the site toolbar's palette button carries. Exported so

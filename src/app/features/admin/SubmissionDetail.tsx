@@ -68,7 +68,7 @@ export default function SubmissionDetail() {
   const headingRef = useRef<HTMLHeadingElement | null>(null)
 
   useEffect(() => {
-    document.title = 'Submission — SpeakerOps'
+    document.title = 'Submission — Open Events'
   }, [])
 
   useEffect(() => {

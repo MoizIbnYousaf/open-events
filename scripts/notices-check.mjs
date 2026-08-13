@@ -112,7 +112,7 @@ export function runNoticesCheck(root) {
       '9. Accepting Warranty or Additional Liability.',
       'END OF TERMS AND CONDITIONS',
       'APPENDIX: How to apply the Apache License to your work.',
-      'Copyright 2026 SpeakerOps contributors',
+      'Copyright 2026 Open Events contributors',
     ]
     for (const section of requiredLicenseSections) {
       if (!license.includes(section)) errors.push(`LICENSE section missing: ${section}`)

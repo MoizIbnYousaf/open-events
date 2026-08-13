@@ -379,14 +379,14 @@ describe('public form routes', () => {
 
 describe('public route titles', () => {
   beforeEach(() => {
-    document.title = 'Your submissions — SpeakerOps'
+    document.title = 'Your submissions — Open Events'
   })
 
   it('titles the sign-in step instead of keeping the previous page title', async () => {
     renderPage(<PublicStartPage />)
 
     await screen.findByRole('heading', { level: 1 })
-    expect(document.title).toBe('Start — SpeakerOps')
+    expect(document.title).toBe('Start — Open Events')
   })
 
   it('titles the call for papers in every state the URL can reach', async () => {
@@ -398,10 +398,10 @@ describe('public route titles', () => {
     renderPage(<PublicCfpPage eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Not found' })).toBeInTheDocument()
-    expect(document.title).toBe('Call for papers — SpeakerOps')
+    expect(document.title).toBe('Call for papers — Open Events')
 
     cleanup()
-    document.title = 'Your submissions — SpeakerOps'
+    document.title = 'Your submissions — Open Events'
 
     // The wizard itself.
     fetchHandler = (url) => {
@@ -416,6 +416,6 @@ describe('public route titles', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Call for papers' }),
     ).toBeInTheDocument()
-    expect(document.title).toBe('Call for papers — SpeakerOps')
+    expect(document.title).toBe('Call for papers — Open Events')
   })
 })

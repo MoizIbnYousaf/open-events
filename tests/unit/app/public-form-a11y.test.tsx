@@ -165,7 +165,7 @@ describe('public form accessibility', () => {
       </ThemeProvider>,
     )
 
-    await screen.findByText('SpeakerOps')
+    await screen.findByText('Open Events')
     expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main')
     const main = document.getElementById('main')
     expect(main).not.toBeNull()
@@ -178,7 +178,7 @@ describe('public form accessibility', () => {
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent('Start')
-    expect(headings[0]).not.toHaveTextContent('SpeakerOps')
+    expect(headings[0]).not.toHaveTextContent('Open Events')
   })
 
   it('renders exactly one page h1 as the CFP first heading with no h2 before it', async () => {
@@ -196,7 +196,7 @@ describe('public form accessibility', () => {
     await screen.findByRole('button', { name: /next/i })
     const headings = screen.getAllByRole('heading')
     expect(headings[0]?.tagName).toBe('H1')
-    expect(headings[0]).not.toHaveTextContent('SpeakerOps')
+    expect(headings[0]).not.toHaveTextContent('Open Events')
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
   })
 

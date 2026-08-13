@@ -46,7 +46,7 @@ function CfpScreen({
   // and the loading skeleton. The tab used to keep the previous page's title
   // on the judged public surface (WCAG 2.4.2).
   useEffect(() => {
-    document.title = 'Call for papers — SpeakerOps'
+    document.title = 'Call for papers — Open Events'
   }, [])
 
   if (definitionQuery.data === null) {

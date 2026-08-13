@@ -51,7 +51,7 @@ function octetLength(value: string): number {
 
 describe('buildInviteUid', () => {
   it('derives a stable submission-based UID', () => {
-    expect(buildInviteUid(SUBMISSION_ID)).toBe('submission-1@speakerops')
+    expect(buildInviteUid(SUBMISSION_ID)).toBe('submission-1@open-events')
   })
 
   it('is deterministic across calls and distinct per submission', () => {
@@ -142,7 +142,7 @@ describe('buildCalendarInvite', () => {
   it('carries the stable submission-based UID', () => {
     const { properties } = readCalendar(buildCalendarInvite(BASE_INPUT))
 
-    expect(properties.get('UID')).toEqual(['submission-1@speakerops'])
+    expect(properties.get('UID')).toEqual(['submission-1@open-events'])
     expect(buildCalendarInvite(BASE_INPUT)).toBe(buildCalendarInvite(BASE_INPUT))
   })
 

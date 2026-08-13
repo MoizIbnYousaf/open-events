@@ -83,7 +83,7 @@ function Root() {
             >
               S
             </span>
-            <span className="text-sm font-medium text-foreground">SpeakerOps</span>
+            <span className="text-sm font-medium text-foreground">Open Events</span>
           </Link>
           {/* A visible way into the command palette; ⌘K/Ctrl+K still works
               everywhere. A real button, not a decorative field: it opens the

@@ -131,7 +131,7 @@ export default function SubmissionList() {
   const listQuery = useSubmissionList(slug)
 
   useEffect(() => {
-    document.title = 'Submissions — SpeakerOps'
+    document.title = 'Submissions — Open Events'
   }, [])
 
   if (listQuery.isError) {

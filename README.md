@@ -1,11 +1,11 @@
-# SpeakerOps
+# Open Events
 
-SpeakerOps is an open-source event-program platform: organizers configure an
+Open Events is an open-source event-program platform: organizers configure an
 event and call for papers, speakers submit proposals (optionally with
 co-speakers), evaluators score and organizers accept submissions, speakers
 complete onboarding, and the public browses the programme.
 
-This repository is the SpeakerOps monolith: one pnpm package, one deployable,
+This repository is the Open Events monolith: one pnpm package, one deployable,
 strict TypeScript.
 
 ## Stack

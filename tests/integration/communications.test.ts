@@ -359,7 +359,7 @@ describe('calendar invite ownership boundary', () => {
     }
     expect(lines[0]).toBe('BEGIN:VCALENDAR')
     expect(lines).toContain('BEGIN:VEVENT')
-    expect(lines).toContain(`UID:${submissionId}@speakerops`)
+    expect(lines).toContain(`UID:${submissionId}@open-events`)
     expect(lines).toContain('DTSTART:20260513T080000Z')
     expect(lines).toContain('DTEND:20260515T170000Z')
     expect(lines).toContain('SUMMARY:Rust\\, C++\\; a workshop')

@@ -134,7 +134,7 @@ function EventConfigScreen() {
   const save = useUpdateEventConfig(slug ?? '')
 
   useEffect(() => {
-    document.title = 'Event settings — SpeakerOps'
+    document.title = 'Event settings — Open Events'
   }, [])
 
   if (configQuery.isError) {

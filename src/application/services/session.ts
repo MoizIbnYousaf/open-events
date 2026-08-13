@@ -124,7 +124,7 @@ export class SessionService {
       id: crypto.randomUUID(),
       eventId,
       toEmail: normalized,
-      subject: 'Your SpeakerOps CFP link',
+      subject: 'Your Open Events CFP link',
       body: `Open your CFP session: ${linkBuilder(token, publicCfpPath(input.eventSlug, input.formSlug))}`,
       createdAt: now,
       kind: 'confirmation' as const,

@@ -66,7 +66,7 @@ export default function ReadinessPage({ eventSlug }: ReadinessPageProps) {
   const query = useOrganizerReadiness(eventSlug)
 
   useEffect(() => {
-    document.title = 'Readiness — SpeakerOps'
+    document.title = 'Readiness — Open Events'
   }, [])
 
   if (eventSlug === '') {

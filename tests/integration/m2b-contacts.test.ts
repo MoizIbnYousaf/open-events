@@ -74,7 +74,7 @@ describe('contact dedupe by normalized email', () => {
       id,
       eventId: DEMO_CONF_2026_ID,
       toEmail: email,
-      subject: 'Your SpeakerOps CFP link',
+      subject: 'Your Open Events CFP link',
       body: 'Open your CFP session',
       createdAt: NOW,
       kind: 'confirmation' as const,

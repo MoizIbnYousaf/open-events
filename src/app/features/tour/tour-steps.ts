@@ -51,8 +51,8 @@ export const TOUR_ORGANIZER_HOLD = {
 export const TOUR_STEPS: readonly TourStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to SpeakerOps',
-    body: 'SpeakerOps runs a conference programme end to end: the call for papers, evaluation, agenda building, and the public schedule. This tour walks the whole loop in a few steps. The organizer half needs a signed-in session; the next step is where you get one.',
+    title: 'Welcome to Open Events',
+    body: 'Open Events runs a conference programme end to end: the call for papers, evaluation, agenda building, and the public schedule. This tour walks the whole loop in a few steps. The organizer half needs a signed-in session; the next step is where you get one.',
   },
   {
     id: 'admin-signin',

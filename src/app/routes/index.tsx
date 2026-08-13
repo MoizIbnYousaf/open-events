@@ -10,7 +10,7 @@ export const Route = createFileRoute('/')({
 
 function IndexPage() {
   useEffect(() => {
-    document.title = 'DemoConf 2026 — SpeakerOps'
+    document.title = 'DemoConf 2026 — Open Events'
   }, [])
 
   // The landing page is outside the public shell, so it carries the same

@@ -23,7 +23,7 @@
     sans-serif;
 
   /* Near-monochrome neutral system with exactly ONE structural accent
-     (SpeakerOps blue). Light mode reads canvas-dark → surface-light: the page
+     (Open Events blue). Light mode reads canvas-dark → surface-light: the page
      sits a step below white and cards/popovers rise to white. Depth is carried
      by hairlines, never by shadow on resting surfaces. */
   --background: #fcfcfc;

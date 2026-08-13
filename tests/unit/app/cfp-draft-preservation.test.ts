@@ -125,11 +125,11 @@ describe('public CFP draft stash', () => {
   })
 
   it('ignores corrupted or foreign-shaped stash content', () => {
-    window.sessionStorage.setItem(`speakerops.cfp-draft.${VERSION_A}`, '{not json')
+    window.sessionStorage.setItem(`open-events.cfp-draft.${VERSION_A}`, '{not json')
     expect(readCfpDraftStash(VERSION_A)).toBeNull()
 
     window.sessionStorage.setItem(
-      `speakerops.cfp-draft.${VERSION_A}`,
+      `open-events.cfp-draft.${VERSION_A}`,
       JSON.stringify({ title: 42, answers: 'nope', stepIndex: 'first' }),
     )
     expect(readCfpDraftStash(VERSION_A)).toBeNull()

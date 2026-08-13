@@ -159,7 +159,7 @@ export default function EvaluationsPage() {
   const [writeCode, setWriteCode] = useState<string | null>(null)
 
   useEffect(() => {
-    document.title = 'Evaluations — SpeakerOps'
+    document.title = 'Evaluations — Open Events'
   }, [])
 
   const code = getApiErrorCode(query.error) ?? writeCode

@@ -141,7 +141,7 @@ export class SubmitService {
       eventId: actor.eventId,
       toEmail: owner.email,
       subject: 'Your submission was received',
-      body: `SpeakerOps: your submission "${input.title}" was received (${submissionId}).`,
+      body: `Open Events: your submission "${input.title}" was received (${submissionId}).`,
       createdAt: now,
       kind: 'confirmation',
     }

@@ -41,7 +41,7 @@ export function NotFoundState() {
   // this component is the router's `defaultNotFoundComponent` and is rendered
   // from several boundaries, so the title belongs to the state, not to a route.
   useEffect(() => {
-    document.title = 'Not found — SpeakerOps'
+    document.title = 'Not found — Open Events'
   }, [])
   return (
     <div className="mx-auto w-full max-w-md px-4 py-16">
@@ -50,7 +50,7 @@ export function NotFoundState() {
           <PaperStack className="mb-1" />
           <h1 className={titleClass}>Not found</h1>
           <StatusLive>
-            This address does not match any screen in SpeakerOps. It may have been mistyped, or the
+            This address does not match any screen in Open Events. It may have been mistyped, or the
             page it pointed at may have moved.
           </StatusLive>
           <div className="flex flex-wrap items-center gap-3">

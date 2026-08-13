@@ -14,7 +14,7 @@ const stored = {
   id: 'message-1',
   eventId: EVENT_ID,
   toEmail: 'speaker.a@example.test',
-  subject: 'Your SpeakerOps CFP link',
+  subject: 'Your Open Events CFP link',
   body: 'Open your CFP session: http://localhost/cfp/demo-conf-2026/cfp?token=demo-token',
   createdAt: NOW,
   kind: 'confirmation' as const,

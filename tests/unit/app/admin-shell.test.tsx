@@ -279,14 +279,14 @@ describe('admin shell', () => {
   it('renders the brand as header text, not as a heading', async () => {
     await mountAt('/')
 
-    expect(await screen.findByText('SpeakerOps')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'SpeakerOps' })).not.toBeInTheDocument()
+    expect(await screen.findByText('Open Events')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Open Events' })).not.toBeInTheDocument()
   })
 
   it('gives the main content region id="main" a tabindex of -1', async () => {
     await mountAt('/')
 
-    await screen.findByText('SpeakerOps')
+    await screen.findByText('Open Events')
     const main = document.getElementById('main')
     expect(main).not.toBeNull()
     expect(main).toHaveAttribute('tabindex', '-1')
@@ -308,7 +308,7 @@ describe('admin shell', () => {
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent(title)
-    expect(headings[0]).not.toHaveTextContent('SpeakerOps')
+    expect(headings[0]).not.toHaveTextContent('Open Events')
   })
 
   it('renders exactly one page-owned h1 in the home error state (Could not load DemoConf 2026)', async () => {
@@ -319,7 +319,7 @@ describe('admin shell', () => {
     expect(h1s).toHaveLength(1)
     expect(screen.getAllByRole('heading')[0]?.tagName).toBe('H1')
     expect(h1s[0]).toHaveTextContent('Could not load DemoConf 2026')
-    expect(h1s[0]).not.toHaveTextContent('SpeakerOps')
+    expect(h1s[0]).not.toHaveTextContent('Open Events')
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent(/failed to load event/i)
     expect(alert).not.toHaveTextContent('server exploded raw copy')
@@ -335,7 +335,7 @@ describe('admin shell', () => {
     expect(h1s).toHaveLength(1)
     expect(screen.getAllByRole('heading')[0]?.tagName).toBe('H1')
     expect(h1s[0]).toHaveTextContent('Event not found')
-    expect(h1s[0]).not.toHaveTextContent('SpeakerOps')
+    expect(h1s[0]).not.toHaveTextContent('Open Events')
     expect(screen.getByRole('status')).toHaveTextContent(/no event named democonf 2026/i)
   })
 
@@ -349,7 +349,7 @@ describe('admin shell', () => {
     expect(h1s).toHaveLength(1)
     expect(screen.getAllByRole('heading')[0]?.tagName).toBe('H1')
     expect(h1s[0]).toHaveTextContent('DemoConf 2026')
-    expect(h1s[0]).not.toHaveTextContent('SpeakerOps')
+    expect(h1s[0]).not.toHaveTextContent('Open Events')
   })
 
   it('keeps the home loading state heading-free (zero h1s, aria-busy skeleton)', async () => {
@@ -439,7 +439,7 @@ describe('admin shell', () => {
       component: () => (
         <div className="flex min-h-svh flex-col">
           <header>
-            <span className="text-base font-semibold tracking-tight">SpeakerOps</span>
+            <span className="text-base font-semibold tracking-tight">Open Events</span>
           </header>
           <main id="main">
             <Outlet />
@@ -482,6 +482,6 @@ describe('admin shell', () => {
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent(title)
-    expect(headings[0]).not.toHaveTextContent('SpeakerOps')
+    expect(headings[0]).not.toHaveTextContent('Open Events')
   })
 })

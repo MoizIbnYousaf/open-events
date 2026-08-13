@@ -117,7 +117,7 @@ function TaxonomyEditorScreen() {
   const save = useReplaceTaxonomies(slug ?? '')
 
   useEffect(() => {
-    document.title = 'Taxonomies — SpeakerOps'
+    document.title = 'Taxonomies — Open Events'
   }, [])
 
   if (taxonomyQuery.isError) {

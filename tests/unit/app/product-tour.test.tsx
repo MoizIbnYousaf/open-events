@@ -19,7 +19,7 @@ import {
 } from '../../../src/app/features/tour/tour-steps'
 
 const STEP_COUNT = TOUR_STEPS.length
-const DONE_KEY = 'speakerops:tour-done'
+const DONE_KEY = 'open-events:tour-done'
 /** The gate waits out the tour's real 2s target poll, then re-checks at 400ms. */
 const TARGET_POLL_MS = 2000
 const HOLD_RECHECK_MS = 400
@@ -174,7 +174,7 @@ describe('product tour', () => {
 
     toggleTour()
     const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveAccessibleName(/welcome to speakerops/i)
+    expect(dialog).toHaveAccessibleName(/welcome to open events/i)
 
     toggleTour()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -217,7 +217,7 @@ describe('product tour', () => {
     expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer sign-in/i)
 
     await user.click(screen.getByRole('button', { name: /^back$/i }))
-    expect(screen.getByRole('dialog')).toHaveAccessibleName(/welcome to speakerops/i)
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
   })
 
   it('navigates a route-bearing step with the exact route and params', async () => {
@@ -499,7 +499,7 @@ describe('tour header affordance', () => {
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: /^tour$/i }))
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/welcome to speakerops/i)
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
 
     await user.click(screen.getByRole('button', { name: /^tour$/i }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())

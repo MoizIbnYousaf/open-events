@@ -31,7 +31,7 @@ event day, or the row count grows enough that a full refetch is wasteful.
 > The blanket "no toast overlay" no longer does: four named outcomes now also
 > raise a visible transient card. Read DEC-019 for which ones and why.
 
-**Decision.** SpeakerOps does not ship a toast/snackbar system. Feedback is
+**Decision.** Open Events does not ship a toast/snackbar system. Feedback is
 delivered by (a) the inline `StatusLive` / `AlertLive` node next to the control
 that caused it, and (b) one always-mounted, screen-reader-only announcer in the
 root shell (`src/components/ui/live-announcer.tsx`, fed by
@@ -229,7 +229,7 @@ place.
 
 ## DEC-017 — A command palette on top of the navigation
 
-**Decision.** SpeakerOps ships a command menu (`src/app/features/command/`,
+**Decision.** Open Events ships a command menu (`src/app/features/command/`,
 `src/components/ui/command.tsx`), opened by `Cmd/Ctrl+K` **and** by a visible
 button in the site header. It lists every destination in
 `src/app/features/nav/nav-model.ts` plus the three theme preferences.

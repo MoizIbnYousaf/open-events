@@ -138,7 +138,7 @@ export interface EvaluationDraft {
   readonly comments: string
 }
 
-const DRAFT_PREFIX = 'speakerops.evaluation-draft.'
+const DRAFT_PREFIX = 'open-events.evaluation-draft.'
 
 function draftKey(submissionId: string): string {
   return `${DRAFT_PREFIX}${submissionId}`

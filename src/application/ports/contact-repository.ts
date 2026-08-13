@@ -1,6 +1,31 @@
+import type { EventId } from '../../domain/event'
 import type { Contact, ContactId, UtcInstant } from '../../domain'
 
+/**
+ * One person on an event's programme, with the numbers an organizer asks about
+ * them. Assembled in one statement rather than a query per speaker: a roster is
+ * a list, and a list that costs a round trip per row stops loading long before
+ * the programme stops growing.
+ */
+export interface SpeakerRosterRow {
+  readonly contactId: ContactId
+  readonly email: string
+  readonly name: string
+  readonly bio: string | null
+  /** Proposals they are on, in any capacity. */
+  readonly proposalCount: number
+  /** Sessions they are scheduled to present. */
+  readonly sessionCount: number
+  /** Onboarding tasks assigned to them, and how many they have finished. */
+  readonly taskCount: number
+  readonly taskCompletedCount: number
+  /** Whether they have uploaded a headshot — a thing organizers chase. */
+  readonly hasHeadshot: boolean
+}
+
 export interface ContactRepository {
+  /** Everyone on this event's programme, alphabetically, with their workload. */
+  listSpeakersByEvent(eventId: EventId): Promise<readonly SpeakerRosterRow[]>
   findById(id: ContactId): Promise<Contact | null>
   /** `email` must already be normalized (see `normalizeEmail`). */
   findByEmail(email: string): Promise<Contact | null>

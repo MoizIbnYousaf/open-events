@@ -304,6 +304,19 @@ export async function handleAutoPlaceAgenda(context: ServerContext): Promise<Res
   return context.json(await deps.agendaBoard.autoPlace(actor, slug))
 }
 
+/** GET /api/admin/events/:slug/speakers: the people on this programme. */
+export async function handleListSpeakers(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.speakers.listRoster(actor, eventId))
+}
+
 /** GET /api/admin/events/:slug/forms. */
 export async function handleListForms(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -1129,6 +1142,12 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handlePublishAgenda,
+  )
+  app.get(
+    '/api/admin/events/:slug/speakers',
+    requireSession(),
+    requireActor('organizer'),
+    handleListSpeakers,
   )
   app.get(
     '/api/admin/events/:slug/forms',

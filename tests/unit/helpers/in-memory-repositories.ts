@@ -1,3 +1,4 @@
+import type { SpeakerRosterRow } from '../../../src/application/ports/contact-repository'
 import type {
   AnswerMap,
   CapturedMessage,
@@ -478,6 +479,16 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
 }
 
 export class InMemoryContactRepository implements ContactRepository {
+  /**
+   * The double has no submissions, tasks or files behind it, so the roster it
+   * reports is empty. Stated rather than thrown: the services under test here
+   * do not read the roster, and a throwing stub would fail them for a method
+   * they never call.
+   */
+  async listSpeakersByEvent(): Promise<readonly SpeakerRosterRow[]> {
+    return []
+  }
+
   readonly #contacts = new Map<string, Contact>()
 
   constructor(contacts: readonly Contact[] = []) {

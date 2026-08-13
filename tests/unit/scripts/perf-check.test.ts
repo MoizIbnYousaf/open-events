@@ -30,6 +30,7 @@ const MANIFEST = {
       'assets/headshot-abc123.js',
       'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
       'assets/admin_.events._slug_.readiness-abc123.js',
+      'assets/admin_.events._slug_.speakers-abc123.js',
       'assets/admin_.events._slug_.evaluations-abc123.js',
     ],
   },
@@ -54,6 +55,9 @@ const MANIFEST = {
   'assets/admin_.events._slug_.submissions_._submissionId-abc123.js': {
     file: 'assets/admin_.events._slug_.submissions_._submissionId-abc123.js',
   },
+  'assets/admin_.events._slug_.speakers-abc123.js': {
+    file: 'assets/admin_.events._slug_.speakers-abc123.js',
+  },
   'assets/admin_.events._slug_.readiness-abc123.js': {
     file: 'assets/admin_.events._slug_.readiness-abc123.js',
   },
@@ -73,6 +77,7 @@ const EXPECTED_ROUTE_CHUNKS = {
   '/evaluations': 'assets/evaluations-abc123.js',
   '/portal': 'assets/portal-abc123.js',
   '/admin/events/$slug/readiness': 'assets/admin_.events._slug_.readiness-abc123.js',
+  '/admin/events/$slug/speakers': 'assets/admin_.events._slug_.speakers-abc123.js',
   '/admin/events/$slug/evaluations': 'assets/admin_.events._slug_.evaluations-abc123.js',
   '/headshot': 'assets/headshot-abc123.js',
 } as const

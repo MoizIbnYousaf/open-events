@@ -126,6 +126,10 @@ describe('nav model', () => {
       'Event settings',
       'Taxonomies',
       'Submissions',
+      // The people, beside the proposals. Every speaker-facing surface existed
+      // before this destination did, so the work speakers were doing arrived on
+      // a screen no organizer had.
+      'Speakers',
       'Readiness',
       // Not "Evaluations": the page this opens is titled Review committee, and
       // the product has a separate speaker-facing /evaluations surface. One

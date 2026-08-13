@@ -5,6 +5,7 @@ import {
   createUuidTokenGenerator,
 } from '../application/security/webcrypto'
 import { AgendaService } from '../application/services/agenda'
+import { SpeakerService } from '../application/services/speakers'
 import { CapturedMessageService } from '../application/services/captured-messages'
 import { CommunicationsService } from '../application/services/communications'
 import { DocumentService } from '../application/services/documents'
@@ -72,6 +73,7 @@ export interface ServerDeps {
   readonly profile: ProfileService
   readonly evaluations: EvaluationService
   readonly capturedMessages: CapturedMessageService
+  readonly speakers: SpeakerService
   /** Null when the Worker has no R2 uploads binding. */
   readonly headshots: HeadshotService | null
   /** Null when the Worker has no R2 uploads binding. */
@@ -160,6 +162,7 @@ export function buildServerDeps(db: D1Database, files: R2Bucket | null = null): 
       createCapturedMessageRepository(db),
     ),
     capturedMessages: new CapturedMessageService(createCapturedMessageRepository(db)),
+    speakers: new SpeakerService(contacts),
     documents:
       files === null
         ? null

@@ -174,6 +174,65 @@ export function createEventConfigRepository(db: D1Database): EventConfigReposito
 export function createContactRepository(db: D1Database): ContactRepository {
   const database = drizzle(db)
   return {
+    /**
+     * The event's programme, one row per person, in ONE statement.
+     *
+     * Everyone who is on a proposal is a speaker of this event — that is the
+     * definition the rest of the product already uses, so the roster cannot
+     * disagree with the submissions list about who exists. The counts are
+     * correlated subqueries over the same event scope rather than a query per
+     * person, because a roster that costs a round trip per row stops loading
+     * long before a programme stops growing.
+     */
+    async listSpeakersByEvent(eventId: string) {
+      const result = await db
+        .prepare(
+          `SELECT c.id                    AS contact_id,
+                  c.email                 AS email,
+                  COALESCE(c.name, '')    AS name,
+                  c.bio                   AS bio,
+                  COUNT(DISTINCT sc.submission_id) AS proposal_count,
+                  (SELECT COUNT(*) FROM agenda_session_speakers a
+                    WHERE a.event_id = ? AND a.contact_id = c.id) AS session_count,
+                  (SELECT COUNT(*) FROM speaker_tasks t
+                    WHERE t.event_id = ? AND t.contact_id = c.id) AS task_count,
+                  (SELECT COUNT(*) FROM speaker_tasks t
+                    WHERE t.event_id = ? AND t.contact_id = c.id
+                      AND t.status = 'completed') AS task_done_count,
+                  (SELECT COUNT(*) FROM uploaded_files f
+                    WHERE f.event_id = ? AND f.owner_contact_id = c.id
+                      AND f.kind = 'headshot') AS headshot_count
+             FROM submission_contributors sc
+             JOIN contacts c ON c.id = sc.contact_id
+            WHERE sc.event_id = ?
+            GROUP BY c.id
+            ORDER BY LOWER(COALESCE(c.name, '')), LOWER(c.email)`,
+        )
+        .bind(eventId, eventId, eventId, eventId, eventId)
+        .all<{
+          contact_id: string
+          email: string
+          name: string
+          bio: string | null
+          proposal_count: number
+          session_count: number
+          task_count: number
+          task_done_count: number
+          headshot_count: number
+        }>()
+      return result.results.map((row) => ({
+        contactId: row.contact_id,
+        email: row.email,
+        name: row.name,
+        bio: row.bio ?? null,
+        proposalCount: row.proposal_count,
+        sessionCount: row.session_count,
+        taskCount: row.task_count,
+        taskCompletedCount: row.task_done_count,
+        hasHeadshot: row.headshot_count > 0,
+      }))
+    },
+
     async findById(id: string) {
       const rows = await database.select().from(contacts).where(eq(contacts.id, id)).limit(1)
       const row = rows[0]

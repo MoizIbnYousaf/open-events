@@ -1,4 +1,5 @@
 import type {
+  AgendaAutoPlaceResultDto,
   AgendaBoardDto,
   AgendaPublishResultDto,
   PlaceAgendaSessionInput,
@@ -36,6 +37,14 @@ export function unplaceAgendaSession(
   return requestJson(`${agendaPath(slug)}/${encodeURIComponent(submissionId)}`, {
     method: 'DELETE',
   })
+}
+
+/**
+ * POST /api/admin/events/:slug/agenda/auto-place — fill the grid's free slots
+ * with the unscheduled sessions, never creating a conflict.
+ */
+export function autoPlaceAgenda(slug: EventSlug): Promise<AgendaAutoPlaceResultDto> {
+  return requestJson(`${agendaPath(slug)}/auto-place`, { method: 'POST' })
 }
 
 /** POST /api/admin/events/:slug/agenda/publish — idempotent, scheduled-only. */

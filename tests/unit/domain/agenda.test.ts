@@ -9,6 +9,7 @@ import {
   isPlaceableSlot,
   latestAgendaEnd,
   placeSessions,
+  proposeAgendaPlacements,
   trackGroupLabel,
   transitionAgendaStatus,
   transitionSessionAssignment,
@@ -816,5 +817,103 @@ describe('agenda state transitions', () => {
     expect(transitionSessionAssignment('scheduled', 'unassigned')).toBe('unassigned')
     expect(() => transitionSessionAssignment('unassigned', 'unassigned')).toThrow()
     expect(() => transitionSessionAssignment('scheduled', 'scheduled')).toThrow()
+  })
+})
+
+/**
+ * Assisted placement.
+ *
+ * The value is not that it fills a board — it is that everything it fills is
+ * something the organizer could have dragged there themselves. A fuller board
+ * carrying a double-booked speaker is worse than an emptier one, because now
+ * the schedule has to be audited before it can be trusted.
+ */
+describe('proposeAgendaPlacements', () => {
+  const GRID = {
+    days: [
+      { day: '2026-05-13', slots: [{ startTime: '09:00', endTime: '10:00' }] },
+      { day: '2026-05-14', slots: [{ startTime: '09:00', endTime: '10:00' }] },
+    ],
+    windowDays: 2,
+  }
+
+  it('places every unscheduled session into a free slot', () => {
+    const proposals = proposeAgendaPlacements(
+      GRID,
+      'event-1',
+      ['room-a', 'room-b'],
+      [],
+      [
+        { submissionId: 's-1', trackId: null, speakerIds: ['c-1'] },
+        { submissionId: 's-2', trackId: null, speakerIds: ['c-2'] },
+      ],
+    )
+
+    expect(proposals).toHaveLength(2)
+    // Earliest slot first, rooms in the organizer's own order: two sessions
+    // with nothing in common share the first slot in different rooms.
+    expect(proposals[0]).toMatchObject({ day: '2026-05-13', roomId: 'room-a' })
+    expect(proposals[1]).toMatchObject({ day: '2026-05-13', roomId: 'room-b' })
+  })
+
+  it('never double-books a speaker, even when a room is free', () => {
+    const proposals = proposeAgendaPlacements(
+      GRID,
+      'event-1',
+      ['room-a', 'room-b'],
+      [],
+      [
+        { submissionId: 's-1', trackId: null, speakerIds: ['shared'] },
+        { submissionId: 's-2', trackId: null, speakerIds: ['shared'] },
+      ],
+    )
+
+    // Room B is empty in the first slot, and taking it would still be wrong:
+    // one person cannot be in two rooms at once.
+    expect(proposals[0]?.day).toBe('2026-05-13')
+    expect(proposals[1]?.day).toBe('2026-05-14')
+  })
+
+  it('fills around what an organizer has already placed', () => {
+    const placed = [
+      {
+        submissionId: 'already',
+        eventId: 'event-1',
+        trackId: '',
+        roomId: 'room-a',
+        day: '2026-05-13',
+        start: '2026-05-13T09:00:00.000Z',
+        end: '2026-05-13T10:00:00.000Z',
+        position: 0,
+        speakerIds: [],
+      },
+    ]
+
+    const proposals = proposeAgendaPlacements(GRID, 'event-1', ['room-a'], placed, [
+      { submissionId: 's-1', trackId: null, speakerIds: [] },
+    ])
+
+    // The only room is taken in the first slot, so the proposal moves on rather
+    // than stacking on top of a session already there.
+    expect(proposals[0]).toMatchObject({ day: '2026-05-14', roomId: 'room-a' })
+  })
+
+  it('leaves a session unplaced rather than forcing a clash', () => {
+    const proposals = proposeAgendaPlacements(
+      GRID,
+      'event-1',
+      ['room-a'],
+      [],
+      [
+        { submissionId: 's-1', trackId: null, speakerIds: ['shared'] },
+        { submissionId: 's-2', trackId: null, speakerIds: ['shared'] },
+        { submissionId: 's-3', trackId: null, speakerIds: ['shared'] },
+      ],
+    )
+
+    // Two slots, one room, one speaker: the third has nowhere legal to go and
+    // is reported by its absence instead of being forced somewhere it clashes.
+    expect(proposals).toHaveLength(2)
+    expect(proposals.map((proposal) => proposal.submissionId)).toEqual(['s-1', 's-2'])
   })
 })

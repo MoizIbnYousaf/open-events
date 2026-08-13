@@ -290,6 +290,20 @@ export async function handlePublishAgenda(context: ServerContext): Promise<Respo
   return context.json(await deps.agendaBoard.publish(actor, slug))
 }
 
+/**
+ * POST /api/admin/events/:slug/agenda/auto-place: fill the grid's free slots
+ * with the sessions nobody has placed, never creating a conflict.
+ */
+export async function handleAutoPlaceAgenda(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  return context.json(await deps.agendaBoard.autoPlace(actor, slug))
+}
+
 /** GET /api/admin/events/:slug/forms. */
 export async function handleListForms(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -1101,6 +1115,13 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleUnplaceAgendaSession,
+  )
+  app.post(
+    '/api/admin/events/:slug/agenda/auto-place',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleAutoPlaceAgenda,
   )
   app.post(
     '/api/admin/events/:slug/agenda/publish',

@@ -5,6 +5,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import type {
   AgendaBoardDto,
   AgendaOptionDto,
+  AgendaAutoPlaceResultDto,
   AgendaPublishResultDto,
   AgendaSessionDto,
   PlaceAgendaSessionInput,
@@ -36,7 +37,12 @@ import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import { SectionHeading } from '../../../components/ui/section-heading'
 import { getApiErrorCode } from '../../api/admin-events'
-import { placeAgendaSession, publishAgenda, unplaceAgendaSession } from '../../api/admin-agenda'
+import {
+  autoPlaceAgenda,
+  placeAgendaSession,
+  publishAgenda,
+  unplaceAgendaSession,
+} from '../../api/admin-agenda'
 import { adminAgendaQueryKeys, useAgendaBoard } from '../../queries/admin-agenda'
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
@@ -895,6 +901,22 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
       void queryClient.invalidateQueries({ queryKey })
     },
   })
+  const autoPlace = useMutation({
+    mutationFn: () => autoPlaceAgenda(eventSlug),
+    onSuccess: (result: AgendaAutoPlaceResultDto) => {
+      queryClient.setQueryData(queryKey, result.board)
+      // What it did, in numbers. An organizer whose grid ran out of room needs
+      // to be told some sessions are still waiting, not shown a bare success.
+      setAutoPlaceOutcome(
+        result.remainingCount === 0
+          ? `Scheduled ${result.placedCount} session(s).`
+          : `Scheduled ${result.placedCount} session(s). ${result.remainingCount} still need a slot.`,
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey })
+    },
+  })
   const publish = useMutation({
     mutationFn: () => publishAgenda(eventSlug),
     onSuccess: (result: AgendaPublishResultDto) => {
@@ -906,6 +928,7 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
   })
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [confirmPublish, setConfirmPublish] = useState(false)
+  const [autoPlaceOutcome, setAutoPlaceOutcome] = useState<string | null>(null)
   const dayFields = useRef(new Map<string, HTMLSelectElement>())
 
   useEffect(() => {
@@ -1048,11 +1071,30 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
               {board.conflicts.length} {board.conflicts.length === 1 ? 'conflict' : 'conflicts'}
             </Badge>
           )}
+          {/* Assisted, not automatic. It only makes placements the organizer
+              could have made by hand, so it needs no confirmation: everything
+              it does is an ordinary placement afterwards, movable and
+              removable like any other. */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setAutoPlaceOutcome(null)
+              autoPlace.mutate()
+            }}
+            pending={autoPlace.isPending}
+          >
+            {autoPlace.isPending ? 'Scheduling…' : 'Schedule the unplaced sessions'}
+          </Button>
           <Button type="button" onClick={() => setConfirmPublish(true)} pending={publish.isPending}>
             Publish agenda
           </Button>
         </PageHeaderActions>
       </PageHeader>
+
+      <StatusLive aria-live="polite" aria-label="Scheduling result">
+        {autoPlace.isPending ? null : autoPlaceOutcome}
+      </StatusLive>
 
       {/* Publishing is what an audience reads, so it asks first — and the ask
             names the sessions this press really moves and the conflicts that go

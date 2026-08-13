@@ -75,6 +75,14 @@ export interface AgendaBoardDto {
 }
 
 /** Result of moving the event's scheduled sessions to published. */
+/** What an assisted placement run did, in the terms an organizer asked in. */
+export interface AgendaAutoPlaceResultDto {
+  readonly placedCount: number
+  /** Sessions the grid had no legal room for — still waiting, never forced. */
+  readonly remainingCount: number
+  readonly board: AgendaBoardDto
+}
+
 export interface AgendaPublishResultDto {
   readonly publishedCount: number
   readonly board: AgendaBoardDto

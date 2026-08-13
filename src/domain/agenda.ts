@@ -393,6 +393,102 @@ const CONFLICT_KIND_ORDER: readonly AgendaConflictKind[] = ['room', 'speaker', '
  * reported. Returns every distinct (kind, first, second) exactly once, sorted
  * by kind then submission id.
  */
+/** One session the organizer has not placed, and what it already carries. */
+export interface UnplacedSession {
+  readonly submissionId: string
+  readonly trackId: string | null
+  readonly speakerIds: readonly string[]
+}
+
+/** One proposed placement: where an unplaced session could go. */
+export interface ProposedPlacement {
+  readonly submissionId: string
+  readonly day: string
+  readonly start: UtcInstant
+  readonly end: UtcInstant
+  readonly roomId: string
+}
+
+/** A slot of the grid, paired with the day it belongs to. */
+interface OpenSlot {
+  readonly day: string
+  readonly start: UtcInstant
+  readonly end: UtcInstant
+}
+
+/**
+ * Fills the empty slots of the grid with the sessions nobody has placed.
+ *
+ * Assisted rather than clever, and the distinction is deliberate: this proposes
+ * placements a human can read, undo and override, and it refuses to create a
+ * conflict rather than producing a fuller-looking board with a double-booked
+ * speaker on it. A schedule an organizer has to audit is worth less than one
+ * they can trust, so the rule is that anything this places would have been
+ * legal if they had dragged it there themselves.
+ *
+ * Earliest free slot first, rooms in the organizer's own order, so the result
+ * is deterministic and re-running it after placing a few by hand fills around
+ * them instead of starting again. A session with nowhere legal left is simply
+ * not placed — reported to the caller, never forced into a clash.
+ */
+export function proposeAgendaPlacements(
+  grid: AgendaGrid,
+  eventId: string,
+  rooms: readonly string[],
+  placed: readonly AgendaPlacement[],
+  unplaced: readonly UnplacedSession[],
+): readonly ProposedPlacement[] {
+  if (rooms.length === 0) return []
+  const openSlots: OpenSlot[] = grid.days.flatMap((day) =>
+    day.slots.map((slot) => {
+      const instants = gridSlotInstants(day.day, slot)
+      return { day: day.day, start: instants.start, end: instants.end }
+    }),
+  )
+
+  // Everything already on the board, plus everything this run has proposed, so
+  // two proposals cannot collide with each other any more than with a session
+  // an organizer placed by hand.
+  const taken: AgendaPlacement[] = [...placed]
+  const proposals: ProposedPlacement[] = []
+
+  for (const session of unplaced) {
+    let landed = false
+    for (const slot of openSlots) {
+      if (landed) break
+      for (const roomId of rooms) {
+        const candidate: AgendaPlacement = {
+          submissionId: session.submissionId,
+          eventId,
+          trackId: session.trackId ?? '',
+          roomId,
+          day: slot.day,
+          start: slot.start,
+          end: slot.end,
+          position: 0,
+          speakerIds: session.speakerIds,
+        }
+        // The same conflict rule the board reports, asked BEFORE placing rather
+        // than after: a proposal that would be flagged the moment it landed is
+        // not a proposal, it is extra work for the organizer.
+        if (findAgendaConflicts([...taken, candidate]).length > 0) continue
+        taken.push(candidate)
+        proposals.push({
+          submissionId: session.submissionId,
+          day: slot.day,
+          start: slot.start,
+          end: slot.end,
+          roomId,
+        })
+        landed = true
+        break
+      }
+    }
+  }
+
+  return proposals
+}
+
 export function findAgendaConflicts(
   placements: readonly AgendaPlacement[],
 ): readonly AgendaConflict[] {

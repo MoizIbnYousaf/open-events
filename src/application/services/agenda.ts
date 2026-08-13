@@ -3,6 +3,7 @@ import { isValidUtcInstant } from '../../domain/invariants/time.ts'
 import {
   buildAgendaAggregates,
   buildAgendaGrid,
+  proposeAgendaPlacements,
   deriveReq014Views,
   findAgendaConflicts,
   isAgendaDay,
@@ -17,6 +18,7 @@ import {
 import type { OrganizerActor } from '../actors'
 import type {
   AgendaBoardDto,
+  AgendaAutoPlaceResultDto,
   AgendaPublishResultDto,
   AgendaSessionDto,
   PlaceAgendaSessionInput,
@@ -234,6 +236,89 @@ export class AgendaService {
       ),
     )
     return { publishedCount: publishable.length, board: await this.#board(event) }
+  }
+
+  /**
+   * Places every unscheduled session the grid has room for, in one action.
+   *
+   * Assisted, not automatic, and the difference is the point: it proposes only
+   * placements the organizer could have made by hand, refuses to create a
+   * conflict, and leaves anything with nowhere legal to go unplaced and
+   * counted. A fuller board carrying a double-booked speaker is worse than an
+   * emptier one, because the schedule then has to be audited before it can be
+   * trusted. Everything it does is an ordinary placement afterwards — movable,
+   * removable, and indistinguishable from one an organizer dragged.
+   */
+  async autoPlace(_actor: OrganizerActor, slug: EventSlug): Promise<AgendaAutoPlaceResultDto> {
+    const event = await this.#eventOrNotFound(slug)
+    const [sessions, items, decisions] = await Promise.all([
+      this.#agenda.listByEvent(event.id),
+      this.#taxonomies.listByEvent(event.id),
+      this.#submissions.listDecisionsByEvent(event.id),
+    ])
+    // A rejected talk is not scheduling work waiting to be done. Re-read here
+    // rather than trusted from a board load, exactly as publish does.
+    const rejected = new Set(
+      decisions
+        .filter((decision) => decision.outcome === 'rejected')
+        .map((decision) => decision.submissionId),
+    )
+    const rooms = items.filter((item) => item.kind === 'room').map((item) => item.id)
+    const placed = sessions
+      .filter((session) => session.roomId !== null && !rejected.has(session.submissionId))
+      .map((session) => ({
+        submissionId: session.submissionId,
+        eventId: event.id,
+        trackId: session.trackId ?? '',
+        roomId: session.roomId ?? '',
+        day: session.day,
+        start: session.start,
+        end: session.end,
+        position: session.position ?? 0,
+        speakerIds: session.speakerIds,
+      }))
+    const unplaced = sessions
+      .filter((session) => session.roomId === null && !rejected.has(session.submissionId))
+      .map((session) => ({
+        submissionId: session.submissionId,
+        trackId: session.trackId,
+        speakerIds: session.speakerIds,
+      }))
+
+    const proposals = proposeAgendaPlacements(
+      buildAgendaGrid(event.dates),
+      event.id,
+      rooms,
+      placed,
+      unplaced,
+    )
+    const now = this.#clock.now()
+    const byId = new Map(sessions.map((session) => [session.submissionId, session]))
+    for (const proposal of proposals) {
+      const session = byId.get(proposal.submissionId)
+      if (session === undefined) continue
+      await this.#agenda.saveSession({
+        ...session,
+        roomId: proposal.roomId,
+        day: proposal.day,
+        start: proposal.start,
+        end: proposal.end,
+        position: 0,
+        assignment:
+          session.assignment === 'unassigned'
+            ? transitionSessionAssignment('unassigned', 'scheduled')
+            : session.assignment,
+        updatedAt: now,
+      })
+    }
+
+    return {
+      placedCount: proposals.length,
+      // Named rather than left to subtraction: an organizer whose grid ran out
+      // of room needs to be told some sessions are still waiting.
+      remainingCount: unplaced.length - proposals.length,
+      board: await this.#board(event),
+    }
   }
 
   async #eventOrNotFound(slug: EventSlug): Promise<Event> {

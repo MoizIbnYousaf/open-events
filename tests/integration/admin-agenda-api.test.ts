@@ -419,6 +419,67 @@ describe('PUT /api/admin/events/:slug/agenda/:submissionId', () => {
   })
 })
 
+/**
+ * Assisted placement, end to end.
+ *
+ * The value is not a fuller board — it is that everything on it is something
+ * the organizer could have dragged there. A board with a double-booked speaker
+ * has to be audited before it can be trusted, which is more work than placing
+ * the sessions by hand would have been.
+ */
+describe('POST /api/admin/events/:slug/agenda/auto-place', () => {
+  const AUTO_PLACE_PATH = `${AGENDA_PATH}/auto-place`
+
+  it('schedules the unplaced sessions and reports what it did', async () => {
+    const second = await submitProposal(speakerCookie, 'Also unplaced')
+    await acceptSubmission(second)
+
+    const response = await organizerRequest('POST', AUTO_PLACE_PATH)
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      placedCount: number
+      remainingCount: number
+      board: Board
+    }
+    expect(body.placedCount).toBeGreaterThan(0)
+    const placed = body.board.sessions.filter((session) => session.roomId !== null)
+    expect(placed.length).toBe(body.placedCount)
+  })
+
+  it('never places a session into a conflict', async () => {
+    const second = await submitProposal(speakerCookie, 'Also unplaced')
+    await acceptSubmission(second)
+
+    await organizerRequest('POST', AUTO_PLACE_PATH)
+    const board = await readBoard()
+
+    // The board's OWN conflict rule, asked after the run: an assisted
+    // placement that produces work for the organizer has not helped them.
+    expect(board.conflicts).toEqual([])
+  })
+
+  it('leaves what an organizer already placed exactly where it is', async () => {
+    await organizerRequest('PUT', `${AGENDA_PATH}/${submissionId}`, placement())
+    const second = await submitProposal(speakerCookie, 'Also unplaced')
+    await acceptSubmission(second)
+
+    await organizerRequest('POST', AUTO_PLACE_PATH)
+    const board = await readBoard()
+
+    const byId = new Map(board.sessions.map((session) => [session.submissionId, session]))
+    expect(byId.get(submissionId)?.roomId).toBe(ROOM_MAIN_HALL)
+    expect(byId.get(submissionId)?.start).toBe(START)
+  })
+
+  it('is refused without an organizer session', async () => {
+    // 403 rather than 401: the CSRF gate runs before the session check on every
+    // admin POST, so a request with no same-origin header never reaches it.
+    const response = await app.request(AUTO_PLACE_PATH, { method: 'POST' }, bindings())
+    expect(response.status).toBe(403)
+  })
+})
+
 describe('POST /api/admin/events/:slug/agenda/publish', () => {
   it('publishes the scheduled sessions and leaves the unplaced ones alone', async () => {
     const unplaced = await submitProposal(speakerCookie, 'Still unplaced')

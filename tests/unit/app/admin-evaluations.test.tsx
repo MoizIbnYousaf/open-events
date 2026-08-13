@@ -232,6 +232,34 @@ describe('organizer review committee panel', () => {
     expect(document.body.textContent ?? '').not.toContain('0.00')
   })
 
+  it('assigns into the round the organizer picked, not whichever one is open', async () => {
+    const user = userEvent.setup()
+    // BOTH rounds open: round 2 shadows round 1 for every consumer that asks
+    // for "the open round", which is the situation the defect describes.
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === ROUNDS_PATH) {
+        return jsonResponse([{ ...ROUND_ONE, status: 'open' }, ROUND_TWO])
+      }
+      return defaultHandler(url, init)
+    }
+    mountPanel()
+
+    await user.type(await screen.findByLabelText(/evaluator email/i), 'reviewer.two@example.test')
+    // Round 1 is still open but round 2 shadows it, so before this control
+    // existed there was no way to staff round 1 at all — and no feedback that
+    // the assignment had landed somewhere else.
+    await user.selectOptions(screen.getByLabelText(/^round$/i), 'round-1')
+    await user.click(screen.getByRole('button', { name: /assign evaluator/i }))
+
+    await waitFor(() =>
+      expect(bodyOf(ASSIGNMENTS_PATH, 'POST')).toMatchObject({
+        evaluatorEmail: 'reviewer.two@example.test',
+        roundId: 'round-1',
+      }),
+    )
+  })
+
   it('assigns an evaluator once and refetches the roster and the result', async () => {
     const user = userEvent.setup()
     mountPanel()
@@ -243,6 +271,10 @@ describe('organizer review committee panel', () => {
     await waitFor(() => expect(callsTo(ASSIGNMENTS_PATH, 'POST')).toBe(1))
     expect(bodyOf(ASSIGNMENTS_PATH, 'POST')).toEqual({
       evaluatorEmail: 'reviewer.two@example.test',
+      // The assignment names its round. Without it the server picked whichever
+      // round happened to be open, so an organizer could not staff round 1
+      // once round 2 existed — and was told nothing either way.
+      roundId: 'round-2',
     })
     await waitFor(() => expect(callsTo(ASSIGNMENTS_PATH, 'GET')).toBe(2))
     await waitFor(() => expect(callsTo(SUMMARY_PATH, 'GET')).toBe(2))

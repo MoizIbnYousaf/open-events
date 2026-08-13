@@ -1618,3 +1618,64 @@ describe('an organizer nudges the reviewers who are behind', () => {
     expect(crossOrigin.status).toBe(403)
   })
 })
+
+/**
+ * Blinding has to survive the reviewer holding the same proposal twice.
+ *
+ * Judged in the wild: the Round 1 card correctly hid the author while the
+ * Round 2 card for the same proposal, rendered directly below it, named them.
+ * The blind round was defeated by the product, on the reviewer's own screen,
+ * without anyone doing anything wrong.
+ */
+describe('a reviewer in a blind round on a proposal', () => {
+  it('is not told the author by another round they hold on the same proposal', async () => {
+    const organizer = await organizerCookie()
+    const firstRoundId = await liveRoundId(organizer)
+    const { submissionId, reviewerCookie: reviewer } = await seedAssignedReviewer(organizer)
+    const secondRoundId = await openSecondRound(organizer)
+    await app.request(
+      `/api/admin/events/demo-conf-2026/submissions/${submissionId}/assignments`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookieHeader(organizer),
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          evaluatorEmail: 'round.reviewer@example.test',
+          roundId: secondRoundId,
+        }),
+      },
+      bindings(),
+    )
+
+    const queue = async (): Promise<readonly EvaluationRowDto[]> =>
+      (await (
+        await app.request(
+          '/api/public/evaluations',
+          { headers: { cookie: cookieHeader(reviewer) } },
+          bindings(),
+        )
+      ).json()) as readonly EvaluationRowDto[]
+
+    // Both rounds name the author while neither is blind: the control case, so
+    // the withholding below is a real change and not an empty surface.
+    expect((await queue()).every((row) => row.speakerName !== null)).toBe(true)
+
+    await configureRound(organizer, firstRoundId, {
+      name: 'Round 1',
+      opensAt: null,
+      closesAt: null,
+      anonymize: true,
+    })
+
+    const blinded = await queue()
+    expect(blinded).toHaveLength(2)
+    // EVERY card, not just the blind round's own. Once someone must not know,
+    // they must not know anywhere.
+    expect(blinded.map((row) => row.speakerName)).toEqual([null, null])
+    expect(blinded.every((row) => (row.coSpeakers ?? []).length === 0)).toBe(true)
+    expect(blinded.some((row) => row.roundId === secondRoundId)).toBe(true)
+  })
+})

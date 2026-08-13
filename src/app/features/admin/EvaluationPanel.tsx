@@ -8,6 +8,7 @@ import { EmptyState } from '../../../components/ui/empty-state'
 import { StarIcon } from '../../../components/ui/icons'
 import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import { NativeSelect } from '../../../components/ui/native-select'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import type {
@@ -112,6 +113,7 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
   const assign = useAssignEvaluator(slug, submissionId)
   const round = useRunEvaluationRound(slug, submissionId)
   const [email, setEmail] = useState('')
+  const [chosenRound, setChosenRound] = useState('')
   const [emailMissing, setEmailMissing] = useState(false)
   const [confirmRound, setConfirmRound] = useState<'open' | 'close' | null>(null)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
@@ -132,6 +134,14 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
   const loadError = rounds.error ?? assignments.error ?? summary.error
   const isRetrying = rounds.isFetching || assignments.isFetching || summary.isFetching
   const liveRound = (rounds.data ?? []).filter((entry) => entry.status === 'open').at(-1) ?? null
+  // Only rounds that can still take reading. A closed round is a record, and
+  // offering it here would invite an assignment the server refuses.
+  const openRounds = (rounds.data ?? []).filter((entry) => entry.status === 'open')
+  // Defaults to the live round, which is what the control did implicitly
+  // before it existed — so the common case is unchanged and the other rounds
+  // simply become reachable.
+  const targetRound = chosenRound === '' ? (liveRound?.id ?? '') : chosenRound
+  const setTargetRound = setChosenRound
   const summaryRounds = summary.data?.rounds ?? []
   const assignmentList = assignments.data ?? []
   /**
@@ -161,7 +171,10 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
       return
     }
     setEmailMissing(false)
-    assign.mutate(trimmed, { onSuccess: () => setEmail('') })
+    assign.mutate(
+      { evaluatorEmail: trimmed, ...(targetRound === '' ? {} : { roundId: targetRound }) },
+      { onSuccess: () => setEmail('') },
+    )
   }
 
   const handleRetry = () => {
@@ -344,6 +357,25 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
                     setEmailMissing(false)
                   }}
                 />
+              </Field>
+              {/* WHICH round this reading belongs to. Without it every
+                  assignment silently went to whichever round happened to be
+                  open, so an organizer who had opened round 2 could not staff
+                  round 1 at all — and was told nothing, because from the
+                  outside a successful assignment looks the same either way. */}
+              <Field className="min-w-40">
+                <FieldLabel htmlFor="evaluation-assign-round">Round</FieldLabel>
+                <NativeSelect
+                  id="evaluation-assign-round"
+                  value={targetRound}
+                  onChange={(event) => setTargetRound(event.target.value)}
+                >
+                  {openRounds.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {`Round ${entry.number}: ${entry.name}`}
+                    </option>
+                  ))}
+                </NativeSelect>
               </Field>
               <Button type="button" pending={assign.isPending} onClick={handleAssign}>
                 {assign.isPending ? 'Assigning evaluator…' : 'Assign evaluator'}

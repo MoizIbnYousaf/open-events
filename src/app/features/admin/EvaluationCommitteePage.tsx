@@ -805,6 +805,31 @@ function RoundEditor({
   // The saved scorecard is the starting point for editing it; the local draft
   // only takes over once the organizer has actually changed something.
   const questions = draft.length > 0 ? draft : (scorecard.data ?? []).map(toCriterionInput)
+
+  /**
+   * The question currently typed into the editor, or null when there is none.
+   *
+   * One definition shared by Add and by Save. They used to disagree — Add built
+   * a question from these fields and Save ignored them entirely — so typing a
+   * question and pressing Save discarded it and still said "Scorecard saved."
+   */
+  const pendingQuestion = (): RoundCriterionInput | null => {
+    if (label.trim() === '') return null
+    return {
+      label: label.trim(),
+      kind,
+      weight: kind === 'rating' ? Number(weight) : null,
+      ...(kind === 'rating' ? { scale: { min: 1, max: 5 } } : {}),
+      ...(kind === 'select'
+        ? {
+            options: choices
+              .split('\n')
+              .map((choice) => choice.trim())
+              .filter((choice) => choice !== ''),
+          }
+        : {}),
+    }
+  }
   const pooled = selected ?? (pool.data ?? []).map((entry) => entry.contactId)
 
   return (
@@ -1004,24 +1029,9 @@ function RoundEditor({
               type="button"
               variant="outline"
               onClick={() => {
-                if (label.trim() === '') return
-                setDraft([
-                  ...questions,
-                  {
-                    label: label.trim(),
-                    kind,
-                    weight: kind === 'rating' ? Number(weight) : null,
-                    ...(kind === 'rating' ? { scale: { min: 1, max: 5 } } : {}),
-                    ...(kind === 'select'
-                      ? {
-                          options: choices
-                            .split('\n')
-                            .map((choice) => choice.trim())
-                            .filter((choice) => choice !== ''),
-                        }
-                      : {}),
-                  },
-                ])
+                const pending = pendingQuestion()
+                if (pending === null) return
+                setDraft([...questions, pending])
                 setLabel('')
                 setChoices('')
                 // The weight has to go back to its default too. It used to
@@ -1039,7 +1049,19 @@ function RoundEditor({
               pending={saveScorecard.isPending}
               onClick={() => {
                 setScorecardSaved(null)
-                saveScorecard.mutate(questions, {
+                // A question typed but not yet added is still a question the
+                // organizer wrote. Saving used to drop it and report success,
+                // so the scorecard came back one question short with nothing
+                // on screen admitting it — data loss behind a green message.
+                const pending = pendingQuestion()
+                const toSave = pending === null ? questions : [...questions, pending]
+                if (pending !== null) {
+                  setDraft(toSave)
+                  setLabel('')
+                  setChoices('')
+                  setWeight('1')
+                }
+                saveScorecard.mutate(toSave, {
                   onSuccess: () => setScorecardSaved('Scorecard saved.'),
                 })
               }}

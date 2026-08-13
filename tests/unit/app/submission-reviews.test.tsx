@@ -319,12 +319,22 @@ async function mountDetail() {
   )
 }
 
-/** The list item for one round inside the reviews section. */
+/**
+ * The list item for one round inside the reviews section.
+ *
+ * Scoped to a list item on purpose: the assignment control names the same
+ * rounds in its round picker, so a bare text query now legitimately matches a
+ * heading and an <option>. Narrowing here keeps the ambiguity out of every
+ * caller instead of renaming a control to suit a test.
+ */
 async function roundEntry(name: string): Promise<HTMLElement> {
-  const label = await screen.findByText(name)
-  const entry = label.closest('li')
-  expect(entry).not.toBeNull()
-  return entry as HTMLElement
+  await screen.findAllByText(name)
+  const items = screen
+    .getAllByText(name)
+    .map((element) => element.closest('li'))
+    .filter((item): item is HTMLLIElement => item !== null)
+  expect(items.length).toBeGreaterThan(0)
+  return items[0] as HTMLElement
 }
 
 beforeEach(() => {

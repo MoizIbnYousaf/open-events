@@ -75,17 +75,24 @@ export function listEvaluationAssignments(
   )
 }
 
-/** POST /api/admin/submissions/:id/assignments — idempotent, into the live round. */
+/**
+ * POST /api/admin/submissions/:id/assignments — idempotent.
+ *
+ * Into the named round, or the live one when no round is named. The server has
+ * accepted a round all along; not sending one is what made every assignment
+ * land in whichever round happened to be open.
+ */
 export function assignEvaluator(
   slug: EventSlug,
   submissionId: SubmissionId,
   evaluatorEmail: string,
+  roundId?: string,
 ): Promise<EvaluationAssignmentDto> {
   return requestJson(
     `/api/admin/events/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(submissionId)}/assignments`,
     {
       method: 'POST',
-      body: JSON.stringify({ evaluatorEmail }),
+      body: JSON.stringify({ evaluatorEmail, ...(roundId === undefined ? {} : { roundId }) }),
     },
   )
 }

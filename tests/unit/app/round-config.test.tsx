@@ -494,3 +494,23 @@ describe('the round editor answers back', () => {
     expect(await screen.findByLabelText(/rating weight \(round 1\)/i)).toBeInTheDocument()
   })
 })
+
+describe('the scorecard keeps what the organizer typed', () => {
+  it('saves a question that was typed but never added', async () => {
+    const user = userEvent.setup()
+    mountCommittee()
+
+    await user.type(await screen.findByLabelText(/^question$/i), 'Comments')
+    await user.selectOptions(screen.getByLabelText(/answer type/i), 'text')
+    // Straight to Save, without pressing Add question. The two controls used to
+    // disagree about what a question is: Add built one from these fields and
+    // Save ignored them, so the typed question was dropped and the save still
+    // said "Scorecard saved."
+    await user.click(screen.getByRole('button', { name: /save scorecard/i }))
+
+    await waitFor(() => {
+      const sent = bodyOf(SCORECARD_PATH, 'PUT') as { criteria: { label: string }[] } | null
+      expect(sent?.criteria.map((criterion) => criterion.label)).toContain('Comments')
+    })
+  })
+})

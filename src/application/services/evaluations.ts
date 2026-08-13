@@ -25,6 +25,7 @@ import {
   isAnswerValidFor,
   isRoundCriterionKind,
   weightedRoundAverageCentis,
+  blindedSubmissionsFor,
   distributeAssignments,
   roundStateOf,
   selectQueueAssignments,
@@ -1169,6 +1170,12 @@ export class EvaluationService {
       this.#evaluations.listRounds(actor.eventId),
     ])
     const criterion = selectDefaultCriterion(criteria)
+    // Blinding is a fact about this READER and this proposal, not about one
+    // round of it. A reviewer holding the same proposal in a blind round and an
+    // open one was shown two cards, and the open card named the author the
+    // blind card was hiding — so the blind round was defeated on the reviewer's
+    // own screen, by the product, without anyone doing anything wrong.
+    const blinded = blindedSubmissionsFor(assignments, rounds)
     return Promise.all(
       // One row per submission AND round. A reviewer sitting on two rounds is
       // being asked two different sets of questions, and showing only the
@@ -1186,9 +1193,10 @@ export class EvaluationService {
           actor.eventId,
           assignment.roundId,
         )
+        const blindHere = blinded.has(assignment.submissionId)
         return roundCriteria.length > 0
-          ? this.#toTypedRow(actor, assignment, roundCriteria, rounds)
-          : this.#toRow(assignment, criterion, assignments, rounds)
+          ? this.#toTypedRow(actor, assignment, roundCriteria, rounds, blindHere)
+          : this.#toRow(assignment, criterion, assignments, rounds, blindHere)
       }),
     )
   }
@@ -1277,7 +1285,13 @@ export class EvaluationService {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     })
-    return this.#toRow(assignment, criterion, assignments, rounds)
+    return this.#toRow(
+      assignment,
+      criterion,
+      assignments,
+      rounds,
+      blindedSubmissionsFor(assignments, rounds).has(assignment.submissionId),
+    )
   }
 
   /**
@@ -1370,7 +1384,15 @@ export class EvaluationService {
         updatedAt: now,
       })
     }
-    return this.#toTypedRow(actor, assignment, criteria, rounds)
+    return this.#toTypedRow(
+      actor,
+      assignment,
+      criteria,
+      rounds,
+      blindedSubmissionsFor(await this.#requireAssignments(actor), rounds).has(
+        assignment.submissionId,
+      ),
+    )
   }
 
   /** One queue row whose fields are the round's own questions. */
@@ -1379,6 +1401,7 @@ export class EvaluationService {
     assignment: EvaluationAssignment,
     criteria: readonly RoundCriterion[],
     rounds: readonly EvaluationRound[],
+    blindHere = false,
   ): Promise<EvaluationRowDto> {
     const [submission, stored] = await Promise.all([
       this.#submissions.findById(assignment.submissionId),
@@ -1387,8 +1410,8 @@ export class EvaluationService {
     const round = rounds.find((candidate) => candidate.id === assignment.roundId)
     const byCriterion = new Map(stored.map((score) => [score.criterionId, score]))
     const [speakerName, coSpeakers] = await Promise.all([
-      this.#speakerNameFor(submission, round),
-      this.#coSpeakersFor(submission, round),
+      this.#speakerNameFor(submission, round, blindHere),
+      this.#coSpeakersFor(submission, round, blindHere),
     ])
     return {
       submissionId: assignment.submissionId,
@@ -1439,8 +1462,9 @@ export class EvaluationService {
   async #speakerNameFor(
     submission: { readonly ownerContactId: ContactId } | null,
     round: EvaluationRound | undefined,
+    blindHere = false,
   ): Promise<string | null> {
-    if (submission === null || round === undefined || round.anonymize) return null
+    if (submission === null || round === undefined || round.anonymize || blindHere) return null
     const owner = await this.#contacts.findById(submission.ownerContactId)
     return owner?.name ?? null
   }
@@ -1457,8 +1481,9 @@ export class EvaluationService {
   async #coSpeakersFor(
     submission: { readonly id: SubmissionId; readonly eventId: EventId } | null,
     round: EvaluationRound | undefined,
+    blindHere = false,
   ): Promise<readonly { readonly name: string; readonly role: string }[]> {
-    if (submission === null || round === undefined || round.anonymize) return []
+    if (submission === null || round === undefined || round.anonymize || blindHere) return []
     const contributors = await this.#submissions.listContributorsBySubmission(
       submission.eventId,
       submission.id,
@@ -1535,6 +1560,7 @@ export class EvaluationService {
     criterion: EvaluationCriterion | null,
     ownAssignments: readonly EvaluationAssignment[],
     rounds: readonly EvaluationRound[],
+    blindHere = false,
   ): Promise<EvaluationRowDto> {
     const [submission, score] = await Promise.all([
       this.#submissions.findById(assignment.submissionId),
@@ -1569,8 +1595,8 @@ export class EvaluationService {
     return {
       submissionId: assignment.submissionId,
       sessionTitle: submission?.title ?? '',
-      speakerName: await this.#speakerNameFor(submission, round),
-      coSpeakers: await this.#coSpeakersFor(submission, round),
+      speakerName: await this.#speakerNameFor(submission, round, blindHere),
+      coSpeakers: await this.#coSpeakersFor(submission, round, blindHere),
       anonymized: round?.anonymize === true,
       roundId: assignment.roundId,
       roundNumber: round?.number ?? 0,

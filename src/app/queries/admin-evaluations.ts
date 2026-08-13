@@ -226,7 +226,8 @@ export function useEvaluationSummary(
 export function useAssignEvaluator(slug: EventSlug, submissionId: SubmissionId) {
   const queryClient = useQueryClient()
   return useServerMutation({
-    mutationFn: (evaluatorEmail: string) => assignEvaluator(slug, submissionId, evaluatorEmail),
+    mutationFn: (input: { readonly evaluatorEmail: string; readonly roundId?: string }) =>
+      assignEvaluator(slug, submissionId, input.evaluatorEmail, input.roundId),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({

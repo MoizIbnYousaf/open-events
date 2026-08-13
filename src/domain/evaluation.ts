@@ -487,6 +487,32 @@ export function roundStateOf(round: EvaluationRound, now: UtcInstant): RoundStat
   return 'open'
 }
 
+/**
+ * The proposals this reviewer must not be shown the authors of.
+ *
+ * Blinding belongs to the pair (reader, proposal), not to a round of it. A
+ * reviewer holding one proposal in a blind round AND in an open one gets a card
+ * for each, and the open card would name the author the blind card is hiding —
+ * so the blind round is defeated on the reviewer's own screen, by the product,
+ * without anyone doing anything wrong. Once someone must not know, they must
+ * not know anywhere.
+ *
+ * The reverse is deliberately not true: blinding one round does not blind the
+ * proposal for reviewers who are not in that round, because they were never
+ * asked to judge it unaware.
+ */
+export function blindedSubmissionsFor(
+  assignments: readonly EvaluationAssignment[],
+  rounds: readonly EvaluationRound[],
+): ReadonlySet<SubmissionId> {
+  const byId = new Map(rounds.map((round) => [round.id, round]))
+  const blinded = new Set<SubmissionId>()
+  for (const assignment of assignments) {
+    if (byId.get(assignment.roundId)?.anonymize === true) blinded.add(assignment.submissionId)
+  }
+  return blinded
+}
+
 /** One reviewer a round can be shared out among, with what they already hold. */
 export interface DistributionCandidate {
   readonly contactId: ContactId

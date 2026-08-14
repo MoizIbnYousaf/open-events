@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useServerMutation } from '../../../adapters/tanstack-react-query'
@@ -12,6 +13,11 @@ export const publicHeadshotQueryKeys = {
 
 /** Own headshot bytes as an object URL, or null when none is stored yet. */
 export interface OwnHeadshot {
+  readonly blob: Blob
+  readonly contentType: string
+}
+
+export interface OwnHeadshotView {
   readonly objectUrl: string
   readonly contentType: string
 }
@@ -31,7 +37,7 @@ export async function getOwnHeadshot(): Promise<OwnHeadshot | null> {
   if (!response.ok) throw await toApiError(response)
   const blob = await response.blob()
   return {
-    objectUrl: URL.createObjectURL(blob),
+    blob,
     contentType: response.headers.get('content-type') ?? blob.type,
   }
 }
@@ -49,11 +55,34 @@ export async function putOwnHeadshot(file: File): Promise<HeadshotDto> {
 }
 
 export function useOwnHeadshot() {
-  return useQuery({
+  const query = useQuery({
     queryKey: publicHeadshotQueryKeys.own,
     queryFn: getOwnHeadshot,
     retry: false,
   })
+  const blob = query.data?.blob
+  const contentType = query.data?.contentType
+  const [objectUrl, setObjectUrl] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (blob === undefined) {
+      setObjectUrl(undefined)
+      return
+    }
+    const url = URL.createObjectURL(blob)
+    setObjectUrl(url)
+    return () => {
+      URL.revokeObjectURL(url)
+    }
+  }, [blob])
+  return {
+    ...query,
+    data:
+      objectUrl === undefined || contentType === undefined
+        ? query.data === null
+          ? null
+          : undefined
+        : { objectUrl, contentType },
+  }
 }
 
 export function useUploadHeadshot() {

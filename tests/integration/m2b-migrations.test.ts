@@ -33,6 +33,14 @@ const EXPECTED_TABLES = [
   'submission_decisions',
   'speaker_tasks',
   'uploaded_files',
+  'uploaded_file_versions',
+  'uploaded_file_comments',
+  'speaker_profiles',
+  'embeds',
+  'content_revisions',
+  'session_content_status',
+  'speaker_assignments',
+  'speaker_assignment_assignees',
   'evaluation_criteria',
   'evaluation_rounds',
   'evaluation_assignments',
@@ -74,6 +82,7 @@ describe('migration apply from an empty local D1', () => {
       '0018_cascade_round_scores_to_criteria.sql',
       '0019_add_assignment_recusal.sql',
       '0020_add_element_options_source.sql',
+      '0021_programme_depth.sql',
     ])
 
     const tables = await env.DB.prepare(

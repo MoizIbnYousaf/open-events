@@ -6,7 +6,10 @@ import {
   ApplicationError,
   CommunicationsService,
   SPEAKER_PORTAL_PATH,
+  SPEAKER_WELCOME_BODY_TEMPLATE,
+  SPEAKER_WELCOME_SUBJECT_TEMPLATE,
   renderAcceptanceTemplate,
+  renderSpeakerTemplate,
 } from '../../../src/application'
 import type { Event, SubmissionDecisionOutcome } from '../../../src/domain'
 import { buildInviteUid } from '../../../src/domain'
@@ -84,7 +87,7 @@ function buildHarness({
   const service = new CommunicationsService(submissions, events, contacts, messages, tasks, {
     now: () => FIXED_NOW,
   })
-  return { service, messages }
+  return { service, messages, contacts }
 }
 
 describe('renderAcceptanceTemplate', () => {
@@ -396,5 +399,47 @@ describe('CommunicationsService.buildInvite', () => {
     const { service } = buildHarness({ accepted: true, decision: null })
 
     expect(await service.buildInvite(ownerActor, SUBMISSION_ID)).toContain('BEGIN:VCALENDAR')
+  })
+})
+
+describe('renderSpeakerTemplate', () => {
+  it('substitutes name, event, and portal link', () => {
+    expect(
+      renderSpeakerTemplate('Hi {{name}} — {{eventName}} {{portalLink}}', {
+        name: 'Priya',
+        eventName: 'DemoConf 2026',
+        portalLink: SPEAKER_PORTAL_PATH,
+      }),
+    ).toBe('Hi Priya — DemoConf 2026 /portal')
+  })
+})
+
+describe('CommunicationsService.sendSpeakerBroadcast', () => {
+  it('renders merge fields and records one captured message per selected speaker', async () => {
+    const { service, messages, contacts } = buildHarness()
+    await contacts.upsertSpeakerProfile({
+      eventId: EVENT_ID,
+      contactId: ownerContact.id,
+      jobTitle: '',
+      company: '',
+      travelNotes: '',
+      workflowStatus: 'invited',
+      createdAt: FIXED_NOW,
+      updatedAt: FIXED_NOW,
+    })
+
+    const result = await service.sendSpeakerBroadcast(organizerActor, EVENT_ID, {
+      subject: SPEAKER_WELCOME_SUBJECT_TEMPLATE,
+      body: SPEAKER_WELCOME_BODY_TEMPLATE,
+      contactIds: [ownerContact.id],
+    })
+
+    expect(result.sent).toBe(1)
+    expect(result.messages[0]?.subject).toContain(eventFixture.name)
+    const stored = await messages.listByEvent(EVENT_ID, 10)
+    expect(stored).toHaveLength(1)
+    expect(stored[0]?.toEmail).toBe(ownerContact.email)
+    expect(stored[0]?.body).toContain(ownerContact.name)
+    expect(stored[0]?.body).toContain(SPEAKER_PORTAL_PATH)
   })
 })

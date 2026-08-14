@@ -20,6 +20,29 @@ export interface UploadedFileRecord {
   readonly fileName?: string | null
 }
 
+export interface UploadedFileVersionRecord {
+  readonly id: string
+  readonly eventId: EventId
+  readonly ownerContactId: ContactId
+  readonly kind: UploadedFileKind
+  readonly version: number
+  readonly storageKey: string
+  readonly contentType: string
+  readonly sizeBytes: number
+  readonly fileName: string | null
+  readonly createdAt: UtcInstant
+}
+
+export interface UploadedFileCommentRecord {
+  readonly id: string
+  readonly eventId: EventId
+  readonly ownerContactId: ContactId
+  readonly kind: UploadedFileKind
+  readonly authorName: string
+  readonly body: string
+  readonly createdAt: UtcInstant
+}
+
 export interface UploadedFileRepository {
   findOwn(
     eventId: EventId,
@@ -32,4 +55,17 @@ export interface UploadedFileRepository {
    * superseded object. Exactly one row per owner+kind survives.
    */
   upsert(record: UploadedFileRecord): Promise<UploadedFileRecord | null>
+  listByEvent(eventId: EventId): Promise<readonly UploadedFileRecord[]>
+  listVersions(
+    eventId: EventId,
+    ownerContactId: ContactId,
+    kind: UploadedFileKind,
+  ): Promise<readonly UploadedFileVersionRecord[]>
+  recordVersion(record: UploadedFileVersionRecord): Promise<void>
+  listComments(
+    eventId: EventId,
+    ownerContactId: ContactId,
+    kind: UploadedFileKind,
+  ): Promise<readonly UploadedFileCommentRecord[]>
+  addComment(record: UploadedFileCommentRecord): Promise<void>
 }

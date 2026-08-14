@@ -35,6 +35,9 @@ export function washKindForPath(pathname: string): ShaderWashKind | null {
   if (pathname === '/' || pathname === '') return 'mesh'
   if (pathname.startsWith('/cfp/')) return 'grain'
   if (pathname.startsWith('/schedule/')) return 'grain'
+  if (pathname.startsWith('/sessions/')) return 'grain'
+  if (pathname.startsWith('/speakers/')) return 'grain'
+  if (pathname.startsWith('/embed/')) return 'grain'
   if (pathname === '/portal' || pathname.startsWith('/portal/')) return 'grain'
   if (pathname === '/evaluations' || pathname.startsWith('/evaluations')) return 'grain-hint'
   return null

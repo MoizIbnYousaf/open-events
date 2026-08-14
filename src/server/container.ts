@@ -6,6 +6,9 @@ import {
 } from '../application/security/webcrypto'
 import { AgendaService } from '../application/services/agenda'
 import { SpeakerService } from '../application/services/speakers'
+import { AssignmentService } from '../application/services/assignments'
+import { ContentLibraryService } from '../application/services/content-library'
+import { EmbedService } from '../application/services/embeds'
 import { capturingEmailSender, selectEmailSender } from './email'
 import type { EmailSender } from '../application/ports/email-sender'
 import type { CapturedMessageRepository } from '../application/ports/captured-message-repository'
@@ -27,7 +30,9 @@ import type { AgendaRepository } from '../application/ports/agenda-repository'
 import type { Clock } from '../application/ports/clock'
 import type { ContactRepository } from '../application/ports/contact-repository'
 import type { EventRepository } from '../application/ports/event-repository'
+import type { FormContentRepository } from '../application/ports/form-content-repository'
 import type { FormRepository } from '../application/ports/form-repository'
+import type { ProgrammeRepository } from '../application/ports/programme-repository'
 import type { SubmissionRepository } from '../application/ports/submission-repository'
 import type { TaxonomyRepository } from '../application/ports/taxonomy-repository'
 import { createAcceptUnitOfWork } from '../db/accept-unit-of-work'
@@ -48,6 +53,7 @@ import {
   createTaxonomyRepository,
   createTokenRepository,
 } from '../db/repositories'
+import { createProgrammeRepository } from '../db/programme-repository'
 import { createSessionUnitOfWork } from '../db/session-unit-of-work'
 import { createSpeakerTaskRepository } from '../db/speaker-task-repository'
 import { createSubmitUnitOfWork } from '../db/submit-unit-of-work'
@@ -64,10 +70,15 @@ export interface ServerDeps {
   readonly forms: FormRepository
   readonly getEvent: GetEvent
   readonly contacts: ContactRepository
+  readonly formContent: FormContentRepository
+  readonly programme: ProgrammeRepository
   readonly agenda: AgendaRepository
   readonly agendaBoard: AgendaService
   readonly submissions: SubmissionRepository
   readonly taxonomies: TaxonomyRepository
+  readonly embeds: EmbedService
+  readonly contentLibrary: ContentLibraryService
+  readonly assignments: AssignmentService
   readonly session: SessionService
   readonly eventConfig: EventConfigService
   readonly taxonomy: TaxonomyService
@@ -160,7 +171,9 @@ export function buildServerDeps(
       createSessionUnitOfWork(db),
       clock,
     ),
-    eventConfig: new EventConfigService(createEventConfigRepository(db)),
+    formContent: content,
+    programme: createProgrammeRepository(db),
+    eventConfig: new EventConfigService(createEventConfigRepository(db), clock),
     taxonomy: new TaxonomyService(events, createTaxonomyRepository(db)),
     formBuilder: new FormBuilderService(
       events,
@@ -206,7 +219,18 @@ export function buildServerDeps(
     // The dev inbox READS the log; it never sends, so it is deliberately not
     // wrapped — reading a message must not be able to re-deliver it.
     capturedMessages: new CapturedMessageService(createCapturedMessageRepository(db)),
-    speakers: new SpeakerService(contacts),
+    speakers: new SpeakerService(contacts, clock),
+    embeds: new EmbedService(events, createProgrammeRepository(db), clock),
+    contentLibrary: new ContentLibraryService(
+      events,
+      createUploadedFileRepository(db),
+      createProgrammeRepository(db),
+      createSubmissionRepository(db),
+      contacts,
+      clock,
+      files === null ? null : createR2ObjectStorage(files),
+    ),
+    assignments: new AssignmentService(events, createProgrammeRepository(db), clock),
     documents:
       files === null
         ? null

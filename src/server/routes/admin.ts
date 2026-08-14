@@ -26,15 +26,31 @@ import {
 } from '../auth'
 import type { ServerDeps } from '../container'
 import { depsFromContext } from '../container'
+import { readBearerToken, verifyClerkSessionToken } from '../clerk'
 import { csrfGate } from '../csrf'
-import type { ServerContext, ServerEnv } from '../env'
-import { databaseUnavailableResponse, getTtlConfig, localAdminToken } from '../env'
+import {
+  clerkPublishableKey,
+  clerkSecretKey,
+  databaseUnavailableResponse,
+  getAllowedOrigins,
+  getTtlConfig,
+  localAdminToken,
+  type ServerContext,
+  type ServerEnv,
+} from '../env'
 import {
   forbiddenResponse,
   notFoundResponse,
+  toErrorResponse,
   unauthorizedResponse,
   validationFailedResponse,
 } from '../error'
+import {
+  HEADSHOT_MAX_BYTES,
+  HeadshotEmptyError,
+  HeadshotTooLargeError,
+  HeadshotUnsupportedTypeError,
+} from '../../application'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -146,6 +162,35 @@ export async function handleAdminSession(context: ServerContext): Promise<Respon
   if (expected.length === 0) return unauthorizedResponse(context)
   const ttlMs = getTtlConfig(context).organizerSessionMs
   const result = await deps.session.organizerLogin(secret, expected, ttlMs)
+  const secure = new URL(context.req.url).protocol === 'https:'
+  const maxAge = sessionCookieMaxAgeSeconds(result.expiresAt, deps.clock.now())
+  context.header('Set-Cookie', serializeSessionCookie(result.token, maxAge, secure))
+  context.header('Cache-Control', 'no-store')
+  return context.json({ expiresAt: result.expiresAt })
+}
+
+/** POST /api/admin/session/clerk: exchange a verified Clerk JWT for the organizer cookie. */
+export async function handleAdminClerkSession(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const publishableKey = clerkPublishableKey(context)
+  const secretKey = clerkSecretKey(context)
+  if (publishableKey.length === 0 && secretKey.length === 0) {
+    return unauthorizedResponse(context)
+  }
+  const body = await readJsonBody(context)
+  const bodyToken = body !== null && typeof body.token === 'string' ? body.token : null
+  const token = readBearerToken(context) ?? bodyToken
+  if (token === null || token.length === 0) return unauthorizedResponse(context)
+  const identity = await verifyClerkSessionToken(token, {
+    publishableKey,
+    secretKey,
+    authorizedParties: getAllowedOrigins(context),
+    nowMs: Date.parse(deps.clock.now()),
+  })
+  if (identity === null) return unauthorizedResponse(context)
+  const ttlMs = getTtlConfig(context).organizerSessionMs
+  const result = await deps.session.issueOrganizerSession(ttlMs)
   const secure = new URL(context.req.url).protocol === 'https:'
   const maxAge = sessionCookieMaxAgeSeconds(result.expiresAt, deps.clock.now())
   context.header('Set-Cookie', serializeSessionCookie(result.token, maxAge, secure))
@@ -328,6 +373,464 @@ export async function handleListSpeakers(context: ServerContext): Promise<Respon
   const eventId = await resolveEventId(deps, slug)
   if (eventId === null) return notFoundResponse(context)
   return context.json(await deps.speakers.listRoster(actor, eventId))
+}
+
+/** GET /api/admin/events — every event this organizer can open. */
+export async function handleListEvents(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  return context.json(await deps.eventConfig.list(actor))
+}
+
+/** POST /api/admin/events — create a second (or first) event. */
+export async function handleCreateEvent(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.name !== 'string') return validationFailedResponse(context)
+  const created = await deps.eventConfig.create(actor, {
+    name: body.name,
+    timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+    startsAt: typeof body.startsAt === 'string' ? body.startsAt : null,
+    endsAt: typeof body.endsAt === 'string' ? body.endsAt : null,
+  })
+  return context.json(created, 201)
+}
+
+/** POST /api/admin/events/:slug/speakers */
+export async function handleAddSpeaker(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.name !== 'string' || typeof body.email !== 'string') {
+    return validationFailedResponse(context)
+  }
+  return context.json(
+    await deps.speakers.addSpeaker(actor, eventId, {
+      name: body.name,
+      email: body.email,
+      bio: typeof body.bio === 'string' ? body.bio : undefined,
+      jobTitle: typeof body.jobTitle === 'string' ? body.jobTitle : undefined,
+      company: typeof body.company === 'string' ? body.company : undefined,
+      travelNotes: typeof body.travelNotes === 'string' ? body.travelNotes : undefined,
+    }),
+    201,
+  )
+}
+
+/** POST /api/admin/events/:slug/speakers/import */
+export async function handleImportSpeakers(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.csv !== 'string') return validationFailedResponse(context)
+  return context.json(await deps.speakers.importCsv(actor, eventId, body.csv))
+}
+
+/** PATCH /api/admin/events/:slug/speakers/:contactId */
+export async function handlePatchSpeaker(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const contactId = context.req.param('contactId')
+  if (slug === undefined || contactId === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null) return validationFailedResponse(context)
+  if (typeof body.workflowStatus === 'string') {
+    return context.json(
+      await deps.speakers.setStatus(actor, eventId, contactId, body.workflowStatus),
+    )
+  }
+  return context.json(
+    await deps.speakers.updateOrganizerProfile(actor, eventId, contactId, {
+      name: typeof body.name === 'string' ? body.name : undefined,
+      bio: typeof body.bio === 'string' || body.bio === null ? body.bio : undefined,
+      jobTitle: typeof body.jobTitle === 'string' ? body.jobTitle : undefined,
+      company: typeof body.company === 'string' ? body.company : undefined,
+      travelNotes: typeof body.travelNotes === 'string' ? body.travelNotes : undefined,
+    }),
+  )
+}
+
+/** POST /api/admin/events/:slug/speakers/:contactId/invite */
+export async function handleInviteSpeaker(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const contactId = context.req.param('contactId')
+  if (slug === undefined || contactId === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const roster = await deps.speakers.listRoster(actor, eventId)
+  const person = roster.find((row) => row.contactId === contactId)
+  if (person === undefined) return notFoundResponse(context)
+  await deps.capturedMessages.record({
+    id: crypto.randomUUID(),
+    eventId,
+    toEmail: person.email,
+    subject: `You're invited to speak`,
+    body: `Welcome to the speaker portal. Sign in at /start with ${person.email}.`,
+    createdAt: deps.clock.now(),
+    kind: 'reminder',
+  })
+  return context.json({ sent: true, to: person.email })
+}
+
+/** GET /api/admin/events/:slug/speakers/templates */
+export async function handleSpeakerMailTemplates(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  return context.json(deps.communications.speakerMailTemplates())
+}
+
+/** POST /api/admin/events/:slug/speakers/broadcast */
+export async function handleBroadcastSpeakers(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.subject !== 'string' || typeof body.body !== 'string') {
+    return validationFailedResponse(context)
+  }
+  const contactIds = Array.isArray(body.contactIds)
+    ? body.contactIds.filter((id): id is string => typeof id === 'string')
+    : []
+  if (body.preview === true) {
+    return context.json(
+      await deps.communications.previewSpeakerBroadcast(actor, eventId, {
+        subject: body.subject,
+        body: body.body,
+        contactIds,
+      }),
+    )
+  }
+  return context.json(
+    await deps.communications.sendSpeakerBroadcast(actor, eventId, {
+      subject: body.subject,
+      body: body.body,
+      contactIds,
+    }),
+  )
+}
+
+/** PUT /api/admin/events/:slug/speakers/:contactId/headshot */
+export async function handleUploadSpeakerHeadshot(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.headshots === null) return notFoundResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const contactId = context.req.param('contactId')
+  if (slug === undefined || contactId === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const roster = await deps.speakers.listRoster(actor, eventId)
+  if (!roster.some((person) => person.contactId === contactId)) return notFoundResponse(context)
+  const contentType = (context.req.header('content-type') ?? '').split(';')[0]?.trim() ?? ''
+  const declared = Number(context.req.header('content-length') ?? '')
+  if (Number.isFinite(declared) && declared > HEADSHOT_MAX_BYTES) {
+    return toErrorResponse(context, 'validation_failed', 413)
+  }
+  const bytes = await context.req.arrayBuffer()
+  if (bytes.byteLength > HEADSHOT_MAX_BYTES) {
+    return toErrorResponse(context, 'validation_failed', 413)
+  }
+  try {
+    return context.json(
+      await deps.headshots.storeForOwner(eventId, contactId, { contentType, bytes }),
+    )
+  } catch (error) {
+    if (error instanceof HeadshotUnsupportedTypeError) {
+      return toErrorResponse(context, 'validation_failed', 415)
+    }
+    if (error instanceof HeadshotTooLargeError) {
+      return toErrorResponse(context, 'validation_failed', 413)
+    }
+    if (error instanceof HeadshotEmptyError) return validationFailedResponse(context)
+    throw error
+  }
+}
+
+/** GET /api/admin/events/:slug/embeds */
+export async function handleListEmbeds(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const origin = new URL(context.req.url).origin
+  return context.json(await deps.embeds.list(actor, slug, origin))
+}
+
+/** POST /api/admin/events/:slug/embeds */
+export async function handleCreateEmbed(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.name !== 'string' || typeof body.kind !== 'string') {
+    return validationFailedResponse(context)
+  }
+  const origin = new URL(context.req.url).origin
+  return context.json(
+    await deps.embeds.create(
+      actor,
+      slug,
+      {
+        name: body.name,
+        kind: body.kind,
+        format: typeof body.format === 'string' ? body.format : 'html',
+        brandColor: typeof body.brandColor === 'string' ? body.brandColor : undefined,
+        trackFilter: typeof body.trackFilter === 'string' ? body.trackFilter : undefined,
+        enabled: body.enabled === false ? false : true,
+      },
+      origin,
+    ),
+    201,
+  )
+}
+
+/** GET /api/admin/events/:slug/files */
+export async function handleListFiles(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  return context.json(await deps.contentLibrary.listFiles(actor, slug))
+}
+
+/** POST /api/admin/events/:slug/files/zip */
+export async function handleZipFiles(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  const owners = Array.isArray(body?.ownerContactIds)
+    ? body.ownerContactIds.filter((id): id is string => typeof id === 'string')
+    : []
+  const zip = await deps.contentLibrary.zipLatest(actor, slug, owners)
+  return new Response(Uint8Array.from(zip), {
+    status: 200,
+    headers: {
+      'content-type': 'application/zip',
+      'content-disposition': 'attachment; filename="files.zip"',
+    },
+  })
+}
+
+/** PATCH /api/admin/events/:slug/submissions/:id/content */
+export async function handleEditSessionContent(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('id')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.title !== 'string' || typeof body.abstract !== 'string') {
+    return validationFailedResponse(context)
+  }
+  return context.json(
+    await deps.contentLibrary.editSession(actor, slug, submissionId, {
+      title: body.title,
+      abstract: body.abstract,
+      editorName: typeof body.editorName === 'string' ? body.editorName : 'Organizer',
+    }),
+  )
+}
+
+/** GET /api/admin/events/:slug/submissions/:id/revisions */
+export async function handleListRevisions(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('id')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  return context.json(await deps.contentLibrary.listRevisions(actor, slug, submissionId))
+}
+
+/** POST /api/admin/events/:slug/revisions/:revisionId/restore */
+export async function handleRestoreRevision(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const revisionId = context.req.param('revisionId')
+  if (slug === undefined || revisionId === undefined) return notFoundResponse(context)
+  return context.json(await deps.contentLibrary.restoreRevision(actor, slug, revisionId))
+}
+
+/** PUT /api/admin/events/:slug/submissions/:id/content-status */
+export async function handleSetContentStatus(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('id')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.status !== 'string') return validationFailedResponse(context)
+  return context.json(
+    await deps.contentLibrary.setContentStatus(actor, slug, submissionId, body.status),
+  )
+}
+
+/** GET/POST comments on a file */
+export async function handleListFileComments(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const ownerContactId = context.req.param('ownerContactId')
+  const kind = context.req.param('kind')
+  if (slug === undefined || ownerContactId === undefined || kind === undefined) {
+    return notFoundResponse(context)
+  }
+  if (kind !== 'document' && kind !== 'headshot') return validationFailedResponse(context)
+  return context.json(await deps.contentLibrary.listComments(actor, slug, ownerContactId, kind))
+}
+
+export async function handleAddFileComment(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const ownerContactId = context.req.param('ownerContactId')
+  const kind = context.req.param('kind')
+  if (slug === undefined || ownerContactId === undefined || kind === undefined) {
+    return notFoundResponse(context)
+  }
+  if (kind !== 'document' && kind !== 'headshot') return validationFailedResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.body !== 'string') return validationFailedResponse(context)
+  return context.json(
+    await deps.contentLibrary.addComment(actor, slug, {
+      ownerContactId,
+      kind,
+      authorName: typeof body.authorName === 'string' ? body.authorName : 'Organizer',
+      body: body.body,
+    }),
+    201,
+  )
+}
+
+export async function handleListFileVersions(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const ownerContactId = context.req.param('ownerContactId')
+  const kind = context.req.param('kind')
+  if (slug === undefined || ownerContactId === undefined || kind === undefined) {
+    return notFoundResponse(context)
+  }
+  if (kind !== 'document' && kind !== 'headshot') return validationFailedResponse(context)
+  return context.json(await deps.contentLibrary.listVersions(actor, slug, ownerContactId, kind))
+}
+
+/** GET /api/admin/events/:slug/files/:ownerContactId/:kind */
+export async function handleDownloadFile(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const ownerContactId = context.req.param('ownerContactId')
+  const kind = context.req.param('kind')
+  if (slug === undefined || ownerContactId === undefined || kind === undefined) {
+    return notFoundResponse(context)
+  }
+  if (kind !== 'document' && kind !== 'headshot') return validationFailedResponse(context)
+  const file = await deps.contentLibrary.getFile(actor, slug, ownerContactId, kind)
+  if (file === null) return notFoundResponse(context)
+  return new Response(file.body, {
+    status: 200,
+    headers: {
+      'content-type': file.contentType,
+      'content-disposition': `attachment; filename="${file.fileName.replaceAll('"', '')}"`,
+    },
+  })
+}
+
+/** POST /api/admin/events/:slug/assignments */
+export async function handleCreateSpeakerAssignment(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.title !== 'string' || !Array.isArray(body.contactIds)) {
+    return validationFailedResponse(context)
+  }
+  return context.json(
+    await deps.assignments.create(actor, slug, {
+      title: body.title,
+      dueAt: typeof body.dueAt === 'string' ? body.dueAt : null,
+      kind: typeof body.kind === 'string' ? body.kind : 'general',
+      instructions: typeof body.instructions === 'string' ? body.instructions : '',
+      contactIds: body.contactIds.filter((id): id is string => typeof id === 'string'),
+    }),
+    201,
+  )
+}
+
+export async function handleListSpeakerAssignments(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  return context.json(await deps.assignments.list(actor, slug))
 }
 
 /** GET /api/admin/events/:slug/forms. */
@@ -1094,6 +1597,16 @@ export async function handleEvaluationResults(context: ServerContext): Promise<R
 /** Registers the admin surface; CSRF runs before session validation on mutations. */
 export function registerAdminRoutes(app: Hono<ServerEnv>): void {
   app.post('/api/admin/session', handleAdminSession)
+  app.post('/api/admin/session/clerk', handleAdminClerkSession)
+
+  app.get('/api/admin/events', requireSession(), requireActor('organizer'), handleListEvents)
+  app.post(
+    '/api/admin/events',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleCreateEvent,
+  )
 
   app.get(
     '/api/admin/events/:slug',
@@ -1166,6 +1679,145 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleListSpeakers,
+  )
+  app.post(
+    '/api/admin/events/:slug/speakers',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleAddSpeaker,
+  )
+  app.post(
+    '/api/admin/events/:slug/speakers/import',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleImportSpeakers,
+  )
+  app.get(
+    '/api/admin/events/:slug/speakers/templates',
+    requireSession(),
+    requireActor('organizer'),
+    handleSpeakerMailTemplates,
+  )
+  app.post(
+    '/api/admin/events/:slug/speakers/broadcast',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleBroadcastSpeakers,
+  )
+  app.patch(
+    '/api/admin/events/:slug/speakers/:contactId',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handlePatchSpeaker,
+  )
+  app.post(
+    '/api/admin/events/:slug/speakers/:contactId/invite',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleInviteSpeaker,
+  )
+  app.put(
+    '/api/admin/events/:slug/speakers/:contactId/headshot',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleUploadSpeakerHeadshot,
+  )
+  app.get(
+    '/api/admin/events/:slug/embeds',
+    requireSession(),
+    requireActor('organizer'),
+    handleListEmbeds,
+  )
+  app.post(
+    '/api/admin/events/:slug/embeds',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleCreateEmbed,
+  )
+  app.get(
+    '/api/admin/events/:slug/files',
+    requireSession(),
+    requireActor('organizer'),
+    handleListFiles,
+  )
+  app.post(
+    '/api/admin/events/:slug/files/zip',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleZipFiles,
+  )
+  app.get(
+    '/api/admin/events/:slug/files/:ownerContactId/:kind',
+    requireSession(),
+    requireActor('organizer'),
+    handleDownloadFile,
+  )
+  app.get(
+    '/api/admin/events/:slug/files/:ownerContactId/:kind/versions',
+    requireSession(),
+    requireActor('organizer'),
+    handleListFileVersions,
+  )
+  app.get(
+    '/api/admin/events/:slug/files/:ownerContactId/:kind/comments',
+    requireSession(),
+    requireActor('organizer'),
+    handleListFileComments,
+  )
+  app.post(
+    '/api/admin/events/:slug/files/:ownerContactId/:kind/comments',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleAddFileComment,
+  )
+  app.get(
+    '/api/admin/events/:slug/assignments',
+    requireSession(),
+    requireActor('organizer'),
+    handleListSpeakerAssignments,
+  )
+  app.post(
+    '/api/admin/events/:slug/assignments',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleCreateSpeakerAssignment,
+  )
+  app.patch(
+    '/api/admin/events/:slug/submissions/:id/content',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleEditSessionContent,
+  )
+  app.get(
+    '/api/admin/events/:slug/submissions/:id/revisions',
+    requireSession(),
+    requireActor('organizer'),
+    handleListRevisions,
+  )
+  app.put(
+    '/api/admin/events/:slug/submissions/:id/content-status',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleSetContentStatus,
+  )
+  app.post(
+    '/api/admin/events/:slug/revisions/:revisionId/restore',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleRestoreRevision,
   )
   app.get(
     '/api/admin/events/:slug/forms',

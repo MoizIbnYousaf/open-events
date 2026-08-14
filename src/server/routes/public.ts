@@ -43,7 +43,13 @@ import {
 } from '../error'
 import { handleHealth } from '../health'
 import { handleGetEvent } from './events'
-import { handleGetPublicSchedule } from './schedule'
+import {
+  handleGetPublicIcs,
+  handleGetPublicSchedule,
+  handleGetPublicSpeaker,
+  handleGetPublicSpeakerHeadshot,
+  handleGetPublicSpeakers,
+} from './schedule'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -679,6 +685,260 @@ export async function handleGetInvite(context: ServerContext): Promise<Response>
   })
 }
 
+export async function handleListOwnAssignments(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  return context.json(await deps.assignments.listMine(actor))
+}
+
+export async function handleAddOwnFileComment(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const kind = context.req.param('kind')
+  if (kind !== 'document' && kind !== 'headshot') return validationFailedResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.body !== 'string') return validationFailedResponse(context)
+  const event = await deps.events.findById(actor.eventId)
+  if (event === null) return notFoundResponse(context)
+  const contact = await deps.contacts.findById(actor.contactId)
+  return context.json(
+    await deps.contentLibrary.addComment({ kind: 'organizer' } as never, event.slug, {
+      ownerContactId: actor.contactId,
+      kind,
+      authorName: contact?.name || 'Speaker',
+      body: body.body,
+    }),
+    201,
+  )
+}
+
+export async function handleListOwnFileVersions(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const kind = context.req.param('kind')
+  if (kind !== 'document' && kind !== 'headshot') return validationFailedResponse(context)
+  const event = await deps.events.findById(actor.eventId)
+  if (event === null) return notFoundResponse(context)
+  return context.json(
+    await deps.contentLibrary.listVersions(
+      { kind: 'organizer' } as never,
+      event.slug,
+      actor.contactId,
+      kind,
+    ),
+  )
+}
+
+export async function handleListOwnFileComments(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const kind = context.req.param('kind')
+  if (kind !== 'document' && kind !== 'headshot') return validationFailedResponse(context)
+  const event = await deps.events.findById(actor.eventId)
+  if (event === null) return notFoundResponse(context)
+  return context.json(
+    await deps.contentLibrary.listComments(
+      { kind: 'organizer' } as never,
+      event.slug,
+      actor.contactId,
+      kind,
+    ),
+  )
+}
+
+export async function handleCompleteOwnAssignment(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  const id = context.req.param('id')
+  if (id === undefined) return notFoundResponse(context)
+  return context.json(await deps.assignments.completeMine(actor, id))
+}
+
+export async function handleGetPublicEmbed(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const embedId = context.req.param('embedId')
+  if (embedId === undefined) return notFoundResponse(context)
+  const embed = await deps.embeds.getPublic(embedId)
+  if (embed === null) return notFoundResponse(context)
+  const event = await deps.events.findById(embed.eventId)
+  if (event === null) return notFoundResponse(context)
+  const scheduleResponse = await handleGetPublicSchedule(
+    Object.assign(context, {
+      req: {
+        ...context.req,
+        param: (name: string) => (name === 'slug' ? event.slug : context.req.param(name)),
+      },
+    }) as ServerContext,
+  )
+  void scheduleResponse
+  const origin = new URL(context.req.url).origin
+  const dataUrl = `${origin}/api/public/events/${event.slug}/schedule`
+  const speakersUrl = `${origin}/api/public/events/${event.slug}/speakers`
+  if (embed.format === 'json') {
+    const schedule = await fetchSchedule(context, event.slug)
+    return context.json({ embed, schedule })
+  }
+  if (embed.format === 'xml') {
+    const schedule = await fetchSchedule(context, event.slug)
+    const xml = `<embed kind="${embed.kind}"><sessions>${schedule.sessions
+      .map(
+        (session) =>
+          `<session><title>${escapeXml(session.title)}</title><track>${escapeXml(session.track)}</track><room>${escapeXml(session.room)}</room></session>`,
+      )
+      .join('')}</sessions></embed>`
+    return new Response(xml, { status: 200, headers: { 'content-type': 'application/xml' } })
+  }
+  if (embed.format === 'ical') {
+    return handleGetPublicIcs(
+      Object.assign(context, {
+        req: {
+          ...context.req,
+          param: (name: string) => (name === 'slug' ? event.slug : context.req.param(name)),
+        },
+      }) as ServerContext,
+    )
+  }
+  return context.json({ embed, dataUrl, speakersUrl })
+}
+
+export async function handleRenderEmbed(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const embedId = context.req.param('embedId')
+  if (embedId === undefined) return notFoundResponse(context)
+  const embed = await deps.embeds.getPublic(embedId)
+  if (embed === null) return notFoundResponse(context)
+  const event = await deps.events.findById(embed.eventId)
+  if (event === null) return notFoundResponse(context)
+  const origin = new URL(context.req.url).origin
+  const scheduleUrl = `${origin}/api/public/events/${encodeURIComponent(event.slug)}/schedule`
+  const speakersUrl = `${origin}/api/public/events/${encodeURIComponent(event.slug)}/speakers`
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeXml(embed.name)}</title>
+<style>
+body{font-family:Inter,system-ui,sans-serif;margin:0;background:#080808;color:#fcfcfc}
+main{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:20px;font-weight:500}
+input,select{background:#121212;color:#fcfcfc;border:1px solid rgba(255,255,255,.09);padding:8px;border-radius:8px;width:100%;margin:8px 0}
+.card{border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:12px;margin:8px 0;background:#121212}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.muted{color:#929292;font-size:13px}
+.tag{display:inline-block;border:1px solid rgba(255,255,255,.09);border-radius:999px;padding:2px 8px;font-size:12px;margin-right:4px}
+button{background:${embed.brandColor || '#1A72CD'};color:#fff;border:0;border-radius:8px;padding:6px 10px}
+</style></head>
+<body><main>
+<h1>${escapeXml(embed.name)}</h1>
+<p class="muted">${escapeXml(embed.kind)} · ${escapeXml(event.name)}</p>
+<div id="app">Loading…</div>
+<script>
+const KIND=${safeJsonScript(embed.kind)};
+const TRACK=${safeJsonScript(embed.trackFilter)};
+function text(el, value){ el.textContent = value == null ? '' : String(value); }
+function el(tag, className){ const node = document.createElement(tag); if (className) node.className = className; return node; }
+async function load(){
+  const schedule = await (await fetch(${safeJsonScript(scheduleUrl)})).json();
+  const speakers = await (await fetch(${safeJsonScript(speakersUrl)})).json();
+  let sessions = schedule.sessions || [];
+  if (TRACK) sessions = sessions.filter(s => s.track === TRACK);
+  const root = document.getElementById('app');
+  root.replaceChildren();
+  const search = el('input');
+  search.id = 'q';
+  const list = el('div', KIND === 'gallery' ? 'grid' : '');
+  list.id = 'list';
+  if (KIND === 'speakers' || KIND === 'gallery') {
+    search.placeholder = 'Search speakers';
+    root.append(search, list);
+    const people = speakers.speakers || [];
+    const draw = (q='') => {
+      list.replaceChildren();
+      for (const p of people.filter(person => person.name.toLowerCase().includes(q.toLowerCase()))) {
+        const card = el('div', 'card');
+        const name = el('strong'); text(name, p.name);
+        const meta = el('div', 'muted'); text(meta, (p.jobTitle||'') + ' · ' + (p.company||''));
+        const bio = el('p'); text(bio, p.bio||'');
+        card.append(name, meta, bio);
+        list.append(card);
+      }
+    };
+    draw();
+    search.addEventListener('input', e => draw(e.target.value));
+    return;
+  }
+  search.placeholder = 'Search sessions';
+  root.append(search, list);
+  const draw = (q='') => {
+    list.replaceChildren();
+    for (const s of sessions.filter(session => (session.title+' '+(session.speakers||[]).join(' ')).toLowerCase().includes(q.toLowerCase()))) {
+      const card = el('div', 'card');
+      const track = el('span', 'tag'); text(track, s.track||'');
+      const format = el('span', 'tag'); text(format, s.format||'');
+      const title = el('h2'); text(title, s.title);
+      const when = el('div', 'muted'); text(when, s.day+' '+s.start+' · '+s.room);
+      const desc = el('p'); text(desc, s.description||'');
+      const who = el('div', 'muted'); text(who, (s.speakers||[]).join(', '));
+      card.append(track, format, title, when, desc, who);
+      list.append(card);
+    }
+  };
+  draw();
+  search.addEventListener('input', e => draw(e.target.value));
+}
+load();
+</script>
+</main></body></html>`
+  return new Response(html, {
+    status: 200,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=60' },
+  })
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function safeJsonScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+}
+
+async function fetchSchedule(
+  context: ServerContext,
+  slug: string,
+): Promise<{
+  sessions: Array<{ title: string; track: string; room: string }>
+}> {
+  const cloned = {
+    ...context,
+    req: {
+      ...context.req,
+      param: (name: string) => (name === 'slug' ? slug : context.req.param(name)),
+    },
+  } as ServerContext
+  const response = await handleGetPublicSchedule(cloned)
+  return (await response.json()) as {
+    sessions: Array<{ title: string; track: string; room: string }>
+  }
+}
+
 /** Registers the public surface; CSRF runs before session validation on mutations. */
 export function registerPublicRoutes(app: Hono<ServerEnv>): void {
   app.get('/api/health', handleHealth)
@@ -689,6 +949,44 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
   app.delete('/api/session', csrfGate(), handleSessionLogout)
   app.get('/api/public/cfp/:eventSlug/:formSlug', handleGetPublishedCfp)
   app.get('/api/public/events/:slug/schedule', handleGetPublicSchedule)
+  app.get('/api/public/events/:slug/schedule.ics', handleGetPublicIcs)
+  app.get('/api/public/events/:slug/speakers', handleGetPublicSpeakers)
+  app.get('/api/public/events/:slug/speakers/:contactId/headshot', handleGetPublicSpeakerHeadshot)
+  app.get('/api/public/events/:slug/speakers/:contactId', handleGetPublicSpeaker)
+  app.get('/api/public/embeds/:embedId', handleGetPublicEmbed)
+  app.get('/embed/:embedId', handleRenderEmbed)
+  app.get(
+    '/api/public/assignments',
+    requireSession(),
+    requireActor('submitter'),
+    handleListOwnAssignments,
+  )
+  app.post(
+    '/api/public/assignments/:id/complete',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handleCompleteOwnAssignment,
+  )
+  app.post(
+    '/api/public/files/:kind/comments',
+    csrfGate(),
+    requireSession(),
+    requireActor('submitter'),
+    handleAddOwnFileComment,
+  )
+  app.get(
+    '/api/public/files/:kind/comments',
+    requireSession(),
+    requireActor('submitter'),
+    handleListOwnFileComments,
+  )
+  app.get(
+    '/api/public/files/:kind/versions',
+    requireSession(),
+    requireActor('submitter'),
+    handleListOwnFileVersions,
+  )
 
   app.get('/api/public/draft', requireSession(), requireActor('submitter'), handleGetActiveDraft)
   app.get('/api/public/draft/:id', requireSession(), requireActor('submitter'), handleGetDraft)

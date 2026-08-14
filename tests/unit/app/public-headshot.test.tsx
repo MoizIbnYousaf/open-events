@@ -119,14 +119,14 @@ describe('public-headshot query module', () => {
     expect(requestUrl(fetchMock.mock.calls[0]?.[0] as RequestInfo)).toBe(HEADSHOT_URL)
   })
 
-  it('returns an object URL and the served content type for stored bytes', async () => {
+  it('returns the stored bytes and the served content type', async () => {
     fetchHandler = () => pngResponse(32)
 
     const headshot = await getOwnHeadshot()
 
     expect(headshot?.contentType).toBe('image/png')
-    expect(headshot?.objectUrl).toBe('blob:headshot-1')
-    expect(createdObjectUrls).toHaveLength(1)
+    expect(headshot?.blob.size).toBe(32)
+    expect(headshot?.blob.type).toBe('image/png')
   })
 
   it('surfaces the { error: { code, message } } envelope as an ApiClientError', async () => {

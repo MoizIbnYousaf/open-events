@@ -64,6 +64,12 @@ export function headshotStorageKey(
   return `events/${eventId}/contacts/${ownerContactId}/headshot/${id}`
 }
 
+function headshotFileName(contentType: string): string {
+  if (contentType === 'image/jpeg') return 'headshot.jpg'
+  if (contentType === 'image/webp') return 'headshot.webp'
+  return 'headshot.png'
+}
+
 export class HeadshotService {
   readonly #files: UploadedFileRepository
   readonly #storage: ObjectStoragePort
@@ -82,6 +88,14 @@ export class HeadshotService {
    * upload never leaves an orphan behind.
    */
   async storeHeadshot(actor: SubmitterActor, input: StoreHeadshotInput): Promise<HeadshotDto> {
+    return this.storeForOwner(actor.eventId, actor.contactId, input)
+  }
+
+  async storeForOwner(
+    eventId: EventId,
+    ownerContactId: ContactId,
+    input: StoreHeadshotInput,
+  ): Promise<HeadshotDto> {
     if (!HEADSHOT_CONTENT_TYPES.some((allowed) => allowed === input.contentType)) {
       throw new HeadshotUnsupportedTypeError()
     }
@@ -92,19 +106,20 @@ export class HeadshotService {
       throw new HeadshotTooLargeError()
     }
     const now = this.#clock.now()
-    const existing = await this.#files.findOwn(actor.eventId, actor.contactId, HEADSHOT_KIND)
+    const existing = await this.#files.findOwn(eventId, ownerContactId, HEADSHOT_KIND)
     const id = crypto.randomUUID()
-    const storageKey = headshotStorageKey(actor.eventId, actor.contactId, id)
+    const storageKey = headshotStorageKey(eventId, ownerContactId, id)
     const record: UploadedFileRecord = {
       id,
-      eventId: actor.eventId,
-      ownerContactId: actor.contactId,
+      eventId,
+      ownerContactId,
       kind: HEADSHOT_KIND,
       storageKey,
       contentType: input.contentType,
       sizeBytes: input.bytes.byteLength,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      fileName: headshotFileName(input.contentType),
     }
 
     await this.#storage.put(storageKey, input.bytes, input.contentType)
@@ -129,7 +144,18 @@ export class HeadshotService {
    * 404 at the API layer).
    */
   async getOwnHeadshot(actor: SubmitterActor): Promise<HeadshotContent | null> {
-    const record = await this.#files.findOwn(actor.eventId, actor.contactId, HEADSHOT_KIND)
+    return this.getForOwner(actor.eventId, actor.contactId)
+  }
+
+  async hasForOwner(eventId: EventId, ownerContactId: ContactId): Promise<boolean> {
+    return (await this.#files.findOwn(eventId, ownerContactId, HEADSHOT_KIND)) !== null
+  }
+
+  async getForOwner(
+    eventId: EventId,
+    ownerContactId: ContactId,
+  ): Promise<HeadshotContent | null> {
+    const record = await this.#files.findOwn(eventId, ownerContactId, HEADSHOT_KIND)
     if (record === null) return null
     const object = await this.#storage.get(record.storageKey)
     if (object === null) return null

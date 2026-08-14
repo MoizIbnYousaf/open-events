@@ -42,10 +42,22 @@ import { cn } from '../../lib/utils'
  * a content container that positions this row, and adding padding would shift
  * the title out of line with the content beneath it.
  */
-function PageHeader({ className, ...props }: ComponentProps<'div'>) {
+function PageHeader({
+  className,
+  surface = 'toolbar',
+  ...props
+}: ComponentProps<'div'> & {
+  /**
+   * `toolbar` is the organizer workspace: a solid strip over the canvas.
+   * `wash` is the public surface — keep the sticky row, but do not punch a
+   * solid hole through the shader wash behind the title.
+   */
+  readonly surface?: 'toolbar' | 'wash'
+}) {
   return (
     <div
       data-slot="page-header"
+      data-surface={surface}
       className={cn(
         // `min-w-0` on the row itself, not only on its content column: a flex
         // item defaults to min-width:auto, so a long unbroken title refused to
@@ -53,7 +65,8 @@ function PageHeader({ className, ...props }: ComponentProps<'div'>) {
         // the truncation the title asks for cannot happen inside a row that
         // will not narrow.
         'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2',
-        'lg:sticky lg:top-0 lg:z-40 lg:h-14 lg:flex-nowrap lg:border-b lg:border-border lg:bg-background',
+        'lg:sticky lg:top-0 lg:z-40 lg:h-14 lg:flex-nowrap lg:border-b lg:border-border',
+        surface === 'wash' ? 'lg:bg-transparent' : 'lg:bg-background',
         className,
       )}
       {...props}

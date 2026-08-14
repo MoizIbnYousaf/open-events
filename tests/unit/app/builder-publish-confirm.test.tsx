@@ -239,10 +239,10 @@ describe('builder publish confirmation and version history', () => {
     expect(getFormDraft).toBeTypeOf('function')
     expect(listFormVersions).toBeTypeOf('function')
     expect(publishForm).toBeTypeOf('function')
-    expect(getRoutePath(BuilderFormRoute)).toBe('/admin/events/$slug/forms/$formId')
-    expect(getRoutePath(VersionDetailRoute)).toBe(
-      '/admin/events/$slug/forms/$formId/versions/$versionId',
-    )
+    // Nested under /admin/events so the module path is the child segment.
+    // Full URL remains /admin/events/$slug/forms/$formId.
+    expect(getRoutePath(BuilderFormRoute)).toBe('/$slug/forms/$formId')
+    expect(getRoutePath(VersionDetailRoute)).toBe('/$slug/forms/$formId/versions/$versionId')
   })
 
   it('requires an explicit confirmation dialog before publishing and never publishes on cancel', async () => {

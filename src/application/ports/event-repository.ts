@@ -9,4 +9,6 @@ import type { Event, EventId, EventSlug } from '../../domain'
 export interface EventRepository {
   findById(id: EventId): Promise<Event | null>
   findBySlug(slug: EventSlug): Promise<Event | null>
+  /** Every event this deployment knows, newest name first. */
+  list(): Promise<readonly Event[]>
 }

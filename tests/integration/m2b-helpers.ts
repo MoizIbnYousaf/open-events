@@ -19,6 +19,7 @@ import migration0015Sql from '../../migrations/0015_fix_condition_rule_unique_gr
 import migration0018Sql from '../../migrations/0018_cascade_round_scores_to_criteria.sql?raw'
 import migration0019Sql from '../../migrations/0019_add_assignment_recusal.sql?raw'
 import migration0020Sql from '../../migrations/0020_add_element_options_source.sql?raw'
+import migration0021Sql from '../../migrations/0021_programme_depth.sql?raw'
 import seedProgrammeSql from '../../src/db/seed-programme.sql?raw'
 import migration0016Sql from '../../migrations/0016_create_submission_decisions.sql?raw'
 import migration0017Sql from '../../migrations/0017_configurable_review_rounds.sql?raw'
@@ -83,6 +84,10 @@ export const MIGRATIONS: D1Migration[] = [
   {
     name: '0020_add_element_options_source.sql',
     queries: splitSqlStatements(migration0020Sql),
+  },
+  {
+    name: '0021_programme_depth.sql',
+    queries: splitSqlStatements(migration0021Sql),
   },
 ]
 

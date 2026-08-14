@@ -41,6 +41,10 @@ class InMemoryEventRepository implements EventRepository {
   async findBySlug(slug: EventSlug): Promise<Event | null> {
     return this.#events.find((candidate) => candidate.slug === slug) ?? null
   }
+
+  async list(): Promise<readonly Event[]> {
+    return this.#events
+  }
 }
 
 /** Records the exact keys the service asks the port for. */
@@ -61,6 +65,10 @@ class RecordingEventRepository implements EventRepository {
   async findBySlug(slug: EventSlug): Promise<Event | null> {
     this.findBySlugCalls.push(slug)
     return this.#delegate.findBySlug(slug)
+  }
+
+  async list(): Promise<readonly Event[]> {
+    return this.#delegate.list()
   }
 }
 

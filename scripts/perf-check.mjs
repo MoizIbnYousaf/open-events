@@ -35,6 +35,10 @@ const BUDGETS = {
   // unbudgeted route is one nobody is watching.
   '/admin/events/$slug/speakers': 30 * 1024,
   '/admin/events/$slug/messages': 30 * 1024,
+  '/sessions/:eventSlug': 80_000,
+  '/speakers/:eventSlug': 40_000,
+  '/admin/events/$slug/embeds': 30 * 1024,
+  '/admin/events/$slug/files': 30 * 1024,
   '/headshot': 20 * 1024,
 }
 
@@ -111,6 +115,22 @@ const ROUTE_CHUNK_PATTERNS = [
   {
     route: '/admin/events/$slug/evaluations',
     pattern: /^admin_\.events\._slug_\.evaluations(-[A-Za-z0-9_-]+)?(\.js)?$/,
+  },
+  {
+    route: '/sessions/:eventSlug',
+    pattern: /^sessions\._eventSlug(-[A-Za-z0-9_-]+)?(\.js)?$/,
+  },
+  {
+    route: '/speakers/:eventSlug',
+    pattern: /^speakers\._eventSlug(-[A-Za-z0-9_-]+)?(\.js)?$/,
+  },
+  {
+    route: '/admin/events/$slug/embeds',
+    pattern: /^admin_\.events\._slug_\.embeds(-[A-Za-z0-9_-]+)?(\.js)?$/,
+  },
+  {
+    route: '/admin/events/$slug/files',
+    pattern: /^admin_\.events\._slug_\.files(-[A-Za-z0-9_-]+)?(\.js)?$/,
   },
   {
     route: '/schedule/:eventSlug',

@@ -27,6 +27,12 @@ export function organizerDestinations(slug: string): readonly NavDestination[] {
   const params = { slug }
   return [
     {
+      id: 'events',
+      label: 'Events',
+      to: '/admin/events',
+      group: 'Event',
+    },
+    {
       id: 'event-settings',
       label: 'Event settings',
       to: '/admin/events/$slug',
@@ -84,6 +90,20 @@ export function organizerDestinations(slug: string): readonly NavDestination[] {
       group: 'Programme',
     },
     { id: 'agenda', label: 'Agenda', to: '/admin/events/$slug/agenda', params, group: 'Programme' },
+    {
+      id: 'embeds',
+      label: 'Embeds',
+      to: '/admin/events/$slug/embeds',
+      params,
+      group: 'Programme',
+    },
+    {
+      id: 'files',
+      label: 'Files',
+      to: '/admin/events/$slug/files',
+      params,
+      group: 'Programme',
+    },
   ]
 }
 
@@ -114,6 +134,27 @@ export function publicDestinations(eventSlug: string, formSlug: string): readonl
       id: 'public-schedule',
       label: 'Public schedule',
       to: '/schedule/$eventSlug',
+      params: { eventSlug },
+      group: 'Public',
+    },
+    {
+      id: 'public-sessions',
+      label: 'Sessions',
+      to: '/sessions/$eventSlug',
+      params: { eventSlug },
+      group: 'Public',
+    },
+    {
+      id: 'public-speakers',
+      label: 'Public speakers',
+      to: '/speakers/$eventSlug',
+      params: { eventSlug },
+      group: 'Public',
+    },
+    {
+      id: 'public-gallery',
+      label: 'Speaker gallery',
+      to: '/speakers/$eventSlug',
       params: { eventSlug },
       group: 'Public',
     },

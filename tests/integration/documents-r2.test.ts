@@ -165,8 +165,14 @@ describe('document ownership and retrieval', () => {
       "SELECT COUNT(*) AS n FROM uploaded_files WHERE kind = 'document'",
     ).first<{ n: number }>()
     expect(rows?.n).toBe(1)
+    const versions = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM uploaded_file_versions WHERE kind = 'document'",
+    ).first<{ n: number }>()
+    expect(versions?.n).toBe(1)
     const objects = await env.FILES.list()
-    expect(objects.objects.filter((object) => object.key.includes('/document/'))).toHaveLength(1)
+    expect(objects.objects.filter((object) => object.key.includes('/document/'))).toHaveLength(2)
+    const current = await getDocument(speaker)
+    expect((await current.arrayBuffer()).byteLength).toBe(128)
   })
 
   it('denies another speaker access to the stored document', async () => {

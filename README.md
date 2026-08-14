@@ -8,7 +8,7 @@ complete onboarding, and the public browses the programme.
 This repository is the Open Events monolith: one pnpm package, one deployable,
 strict TypeScript.
 
-**Live demo:** [open-events.speakerops.workers.dev](https://open-events.speakerops.workers.dev)
+**Live demo:** [openevents.engineer](https://openevents.engineer)
 — the public call for papers and programme are open to anyone. Organizer,
 speaker and reviewer surfaces need a sign-in; see [Deploying](#deploying) to run
 your own.
@@ -129,6 +129,15 @@ organizer secret:
 
 ```bash
 npx wrangler secret put LOCAL_ADMIN_TOKEN
+```
+
+Organizer OAuth is optional Clerk. Speaker magic links stay on `/start` and
+do not use Clerk. To turn Clerk on, set `VITE_CLERK_PUBLISHABLE_KEY` at
+build time and:
+
+```bash
+npx wrangler secret put CLERK_PUBLISHABLE_KEY
+npx wrangler secret put CLERK_SECRET_KEY
 ```
 
 ### Email

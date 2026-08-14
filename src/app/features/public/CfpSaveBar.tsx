@@ -9,6 +9,7 @@ import {
 } from '../../queries/public-drafts'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
+import { ButtonGroup } from '../../../components/ui/button-group'
 import { cn } from '../../../lib/utils'
 import { StatusLive } from '../../../components/ui/status-live'
 
@@ -87,30 +88,32 @@ export default function CfpSaveBar({ onBack, onNext, onDenied, onSaveStart }: Cf
           Back
         </Button>
       ) : null}
-      <Button
-        type="button"
-        variant="outline"
-        pending={save.isPending}
-        onClick={() => {
-          onSaveStart?.()
-          // No onSuccess announcement: the StatusLive below is a live
-          // region and already says "Saved", and the failure renders its own
-          // alert. One region per outcome (DEC-014, F-R3-13).
-          save.mutate(undefined, {
-            onError: (error) => {
-              const denial = getApiErrorCode(error)
-              if (denial === 'unauthorized' || denial === 'forbidden') onDenied(denial)
-            },
-          })
-        }}
-      >
-        {save.isPending ? 'Saving…' : 'Save'}
-      </Button>
-      {onNext !== undefined ? (
-        <Button type="button" onClick={onNext}>
-          Next
+      <ButtonGroup>
+        <Button
+          type="button"
+          variant="outline"
+          pending={save.isPending}
+          onClick={() => {
+            onSaveStart?.()
+            // No onSuccess announcement: the StatusLive below is a live
+            // region and already says "Saved", and the failure renders its own
+            // alert. One region per outcome (DEC-014, F-R3-13).
+            save.mutate(undefined, {
+              onError: (error) => {
+                const denial = getApiErrorCode(error)
+                if (denial === 'unauthorized' || denial === 'forbidden') onDenied(denial)
+              },
+            })
+          }}
+        >
+          {save.isPending ? 'Saving…' : 'Save'}
         </Button>
-      ) : null}
+        {onNext !== undefined ? (
+          <Button type="button" onClick={onNext}>
+            Next
+          </Button>
+        ) : null}
+      </ButtonGroup>
       {/* One stable region for both, mounted before either has anything to
           say: a live region created together with its text is not in the
           accessibility tree when the text arrives, so it announces nothing.

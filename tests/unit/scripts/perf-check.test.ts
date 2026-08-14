@@ -33,6 +33,10 @@ const MANIFEST = {
       'assets/admin_.events._slug_.speakers-abc123.js',
       'assets/admin_.events._slug_.messages-abc123.js',
       'assets/admin_.events._slug_.evaluations-abc123.js',
+      'assets/sessions._eventSlug-abc123.js',
+      'assets/speakers._eventSlug-abc123.js',
+      'assets/admin_.events._slug_.embeds-abc123.js',
+      'assets/admin_.events._slug_.files-abc123.js',
     ],
   },
   'assets/start-abc123.js': { file: 'assets/start-abc123.js' },
@@ -68,6 +72,18 @@ const MANIFEST = {
   'assets/admin_.events._slug_.evaluations-abc123.js': {
     file: 'assets/admin_.events._slug_.evaluations-abc123.js',
   },
+  'assets/sessions._eventSlug-abc123.js': {
+    file: 'assets/sessions._eventSlug-abc123.js',
+  },
+  'assets/speakers._eventSlug-abc123.js': {
+    file: 'assets/speakers._eventSlug-abc123.js',
+  },
+  'assets/admin_.events._slug_.embeds-abc123.js': {
+    file: 'assets/admin_.events._slug_.embeds-abc123.js',
+  },
+  'assets/admin_.events._slug_.files-abc123.js': {
+    file: 'assets/admin_.events._slug_.files-abc123.js',
+  },
 } as const
 
 const EXPECTED_ROUTE_CHUNKS = {
@@ -85,6 +101,10 @@ const EXPECTED_ROUTE_CHUNKS = {
   '/admin/events/$slug/messages': 'assets/admin_.events._slug_.messages-abc123.js',
   '/admin/events/$slug/evaluations': 'assets/admin_.events._slug_.evaluations-abc123.js',
   '/headshot': 'assets/headshot-abc123.js',
+  '/sessions/:eventSlug': 'assets/sessions._eventSlug-abc123.js',
+  '/speakers/:eventSlug': 'assets/speakers._eventSlug-abc123.js',
+  '/admin/events/$slug/embeds': 'assets/admin_.events._slug_.embeds-abc123.js',
+  '/admin/events/$slug/files': 'assets/admin_.events._slug_.files-abc123.js',
 } as const
 
 describe('manifest-driven perf gate', () => {

@@ -217,4 +217,24 @@ export class InMemoryUploadedFileRepository implements UploadedFileRepository {
     this.#records.set(key, record)
     return previous
   }
+
+  async listByEvent(eventId: string) {
+    return [...this.#records.values()].filter((row) => row.eventId === eventId)
+  }
+
+  async listVersions() {
+    return []
+  }
+
+  async recordVersion(): Promise<void> {
+    return
+  }
+
+  async listComments() {
+    return []
+  }
+
+  async addComment(): Promise<void> {
+    return
+  }
 }

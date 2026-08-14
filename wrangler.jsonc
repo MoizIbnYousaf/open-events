@@ -2,16 +2,22 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "open-events",
   "main": "src/server/index.ts",
+  "account_id": "5486d9f25ff36866b6e50c23d8759d88",
+  "workers_dev": true,
   "compatibility_date": "2026-08-08",
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"],
   },
+  "routes": [
+    { "pattern": "openevents.engineer", "custom_domain": true },
+    { "pattern": "www.openevents.engineer", "custom_domain": true },
+  ],
   "vars": {
-    "ALLOWED_ORIGINS": "https://open-events.speakerops.workers.dev",
+    "ALLOWED_ORIGINS": "https://openevents.engineer,https://www.openevents.engineer,https://open-events.speakerops.workers.dev",
     "LOCAL_DEV_MODE": "false",
     "ORGANIZER_SESSION_TTL_MS": "7200000",
-    "SUBMITTER_SESSION_TTL_MS": "1800000",
+    "SUBMITTER_SESSION_TTL_MS": "28800000",
     "SUBMITTER_TOKEN_TTL_MS": "86400000",
   },
   "d1_databases": [

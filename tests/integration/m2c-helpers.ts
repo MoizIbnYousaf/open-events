@@ -21,8 +21,8 @@ export type AmbientEnv = { readonly [K in keyof ServerBindings]?: unknown }
  * file is not part of the checkout, so nothing may reach the server by way of
  * the ambient environment. The two resource bindings can only come from the
  * pool and are forwarded by name; every value key — the admin token, the local
- * mode flag, the origin allowlist, and all three TTLs — gets a suite value,
- * whatever the ambient environment says.
+ * mode flag, the origin allowlist, the three TTLs, and the Clerk keys — gets a
+ * suite value, whatever the ambient environment says.
  *
  * The return type is keyed by `ServerBindings`, so adding a binding to the
  * server fails `pnpm typecheck` here until the suite pins that one too.
@@ -37,6 +37,8 @@ function pinnedBindings(ambient: AmbientEnv): Record<keyof ServerBindings, unkno
     // production fallback exercised rather than a special test path.
     RESEND_API_KEY: '',
     EMAIL_FROM: '',
+    CLERK_PUBLISHABLE_KEY: '',
+    CLERK_SECRET_KEY: '',
     ORGANIZER_SESSION_TTL_MS: String(DEFAULT_ORGANIZER_SESSION_TTL_MS),
     SUBMITTER_SESSION_TTL_MS: String(DEFAULT_SUBMITTER_SESSION_TTL_MS),
     SUBMITTER_TOKEN_TTL_MS: String(DEFAULT_SUBMITTER_TOKEN_TTL_MS),

@@ -63,6 +63,7 @@ export function useUploadDocument() {
     mutationFn: (file: File) => putOwnDocument(file),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: publicProfileQueryKeys.document })
+      await queryClient.invalidateQueries({ queryKey: ['public', 'document-versions'] })
     },
   })
 }

@@ -22,6 +22,10 @@ export class CapturedMessageService {
     return this.#messages.listByEmail(normalizeEmail(email))
   }
 
+  async record(message: CapturedMessage): Promise<void> {
+    await this.#messages.save(message)
+  }
+
   /**
    * The event's outbound log, for the organizer who sent it.
    *

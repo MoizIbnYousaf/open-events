@@ -9,13 +9,12 @@ import { bindings, bindingsFrom } from './m2c-helpers'
  * A local `.dev.vars` is loaded into the pool environment, and `.dev.vars`
  * is not part of the checkout, so any key left to the ambient environment would
  * silently change what the whole integration suite asserts depending on a file
- * some machines have and others do not. `ServerBindings` declares eight keys:
- * two resource bindings that can only come from the pool, and six values a
+ * some machines have and others do not. `ServerBindings` declares ten keys:
+ * two resource bindings that can only come from the pool, and eight values a
  * `.dev.vars` can supply — the admin token, the local mode flag, the origin
- * allowlist, and three TTLs the example file invites developers to override.
- * These assertions pin all six against an ambient environment where every one
- * of them is wrong, and keep `overrides` as the single opt-in for per-test
- * values.
+ * allowlist, three TTLs, and the Clerk keys. These assertions pin the suite
+ * values against an ambient environment where every one of them is wrong, and
+ * keep `overrides` as the single opt-in for per-test values.
  */
 
 /** Stand-in for the worst `.dev.vars` a developer could reasonably have. */
@@ -35,7 +34,7 @@ const AMBIENT = {
 /** Committed TTL defaults, the values `wrangler.jsonc` `vars` mirrors. */
 const COMMITTED_TTLS = {
   ORGANIZER_SESSION_TTL_MS: '7200000',
-  SUBMITTER_SESSION_TTL_MS: '1800000',
+  SUBMITTER_SESSION_TTL_MS: '28800000',
   SUBMITTER_TOKEN_TTL_MS: '86400000',
 }
 
@@ -61,6 +60,8 @@ describe('integration bindings', () => {
     expect(Object.hasOwn(resolved, 'UNRELATED_LOCAL_KEY')).toBe(false)
     expect(Object.keys(resolved).sort()).toEqual([
       'ALLOWED_ORIGINS',
+      'CLERK_PUBLISHABLE_KEY',
+      'CLERK_SECRET_KEY',
       'DB',
       // Outbound email credentials. Present in the surface and pinned EMPTY by
       // the helper, so the suite exercises the capture-only fallback rather

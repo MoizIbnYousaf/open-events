@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useServerMutation } from '../../../adapters/tanstack-react-query'
 
 import {
+  adminClerkLogin,
   adminLogin,
   getEventConfig,
   getTaxonomies,
@@ -27,6 +28,10 @@ export const adminQueryKeys = {
 
 export function useAdminLogin() {
   return useServerMutation({ mutationFn: (secret: string) => adminLogin(secret) })
+}
+
+export function useAdminClerkLogin() {
+  return useServerMutation({ mutationFn: (token: string) => adminClerkLogin(token) })
 }
 
 export function useEventConfig(slug: EventSlug | undefined) {

@@ -39,6 +39,15 @@ function defaultHandler(url: string, init?: RequestInit): Response {
     }
     return jsonResponse({ id: 'doc-1', updatedAt: '2026-08-10T09:00:00.000Z', ...storedDocument })
   }
+  if (method === 'GET' && url.endsWith('/api/public/files/document/versions')) {
+    return jsonResponse([])
+  }
+  if (
+    (method === 'GET' || method === 'POST') &&
+    url.endsWith('/api/public/files/document/comments')
+  ) {
+    return jsonResponse([])
+  }
   if (method === 'GET' && url === DOCUMENT_URL) {
     if (storedDocument === null) {
       return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)

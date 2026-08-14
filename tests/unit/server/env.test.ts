@@ -7,6 +7,8 @@ import {
   DEFAULT_SUBMITTER_TOKEN_TTL_MS,
   getAllowedOrigins,
   isLocalDevMode,
+  clerkPublishableKey,
+  clerkSecretKey,
   localAdminToken,
   parseTtlMs,
   type ServerContext,
@@ -94,12 +96,19 @@ describe('origin allowlist and env helpers', () => {
     expect(localAdminToken(context({ LOCAL_ADMIN_TOKEN: 'x' }))).toBe('x')
     expect(localAdminToken(context({}))).toBe('')
   })
+
+  it('reads Clerk keys with empty defaults', () => {
+    expect(clerkPublishableKey(context({ CLERK_PUBLISHABLE_KEY: 'pk_test_x' }))).toBe('pk_test_x')
+    expect(clerkPublishableKey(context({}))).toBe('')
+    expect(clerkSecretKey(context({ CLERK_SECRET_KEY: 'sk_test_x' }))).toBe('sk_test_x')
+    expect(clerkSecretKey(context({}))).toBe('')
+  })
 })
 
 describe('committed TTL defaults', () => {
   it('match the frozen maxima', () => {
     expect(DEFAULT_ORGANIZER_SESSION_TTL_MS).toBe(2 * 60 * 60 * 1000)
-    expect(DEFAULT_SUBMITTER_SESSION_TTL_MS).toBe(30 * 60 * 1000)
+    expect(DEFAULT_SUBMITTER_SESSION_TTL_MS).toBe(8 * 60 * 60 * 1000)
     expect(DEFAULT_SUBMITTER_TOKEN_TTL_MS).toBe(24 * 60 * 60 * 1000)
     expect(DEFAULT_ORGANIZER_SESSION_TTL_MS).toBeLessThanOrEqual(MAX_ORGANIZER_SESSION_TTL_MS)
     expect(DEFAULT_SUBMITTER_SESSION_TTL_MS).toBeLessThanOrEqual(MAX_SUBMITTER_SESSION_TTL_MS)

@@ -21,6 +21,10 @@ export interface SpeakerRosterRow {
   readonly taskCompletedCount: number
   /** Whether they have uploaded a headshot — a thing organizers chase. */
   readonly hasHeadshot: boolean
+  readonly jobTitle: string
+  readonly company: string
+  readonly travelNotes: string
+  readonly workflowStatus: string
 }
 
 export interface ContactRepository {
@@ -52,4 +56,14 @@ export interface ContactRepository {
     id: ContactId,
     fields: { readonly name: string; readonly bio: string | null },
   ): Promise<void>
+  upsertSpeakerProfile(input: {
+    readonly eventId: EventId
+    readonly contactId: ContactId
+    readonly jobTitle: string
+    readonly company: string
+    readonly travelNotes: string
+    readonly workflowStatus: string
+    readonly createdAt: UtcInstant
+    readonly updatedAt: UtcInstant
+  }): Promise<void>
 }

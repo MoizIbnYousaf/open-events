@@ -247,7 +247,7 @@ export default function EvaluationsPage() {
  */
 function EvaluationsHeading({ count }: { readonly count?: number }) {
   return (
-    <PageHeader>
+    <PageHeader surface="wash">
       <PageHeaderContent>
         <PageHeaderTitle>Evaluations</PageHeaderTitle>
         <PageHeaderDescription>

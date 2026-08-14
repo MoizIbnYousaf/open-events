@@ -28,6 +28,13 @@ export interface SubmissionRepository {
     readonly title: string
     readonly answers: AnswerMap
   }): Promise<'updated' | 'not-found'>
+  /** Organizer revision of title and answers (event + id, no owner check). */
+  updateContent(input: {
+    readonly eventId: EventId
+    readonly submissionId: SubmissionId
+    readonly title: string
+    readonly answers: AnswerMap
+  }): Promise<'updated' | 'not-found'>
   findByOriginDraftId(originDraftId: DraftId): Promise<ProposalSubmission | null>
   listByEvent(eventId: EventId): Promise<readonly ProposalSubmission[]>
   /**

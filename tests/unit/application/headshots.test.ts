@@ -143,4 +143,13 @@ describe('HeadshotService.storeHeadshot', () => {
 
     expect(await service.getOwnHeadshot(ownerActor)).toBeNull()
   })
+
+  it('serves a stored headshot by owner id for the public programme', async () => {
+    const { service } = buildHarness()
+    await service.storeHeadshot(ownerActor, input())
+    const fetched = await service.getForOwner(ownerActor.eventId, ownerActor.contactId)
+    expect(fetched).not.toBeNull()
+    expect(fetched?.contentType).toBe('image/png')
+    expect(new Uint8Array(fetched?.body ?? new ArrayBuffer(0))).toHaveLength(64)
+  })
 })

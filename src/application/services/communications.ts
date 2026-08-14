@@ -57,6 +57,62 @@ export const REMINDER_BODY_TEMPLATE = [
   'The {{eventName}} programme team',
 ].join('\n')
 
+export const SPEAKER_WELCOME_SUBJECT_TEMPLATE = 'Welcome to {{eventName}} speakers'
+
+export const SPEAKER_WELCOME_BODY_TEMPLATE = [
+  'Hi {{name}},',
+  '',
+  'Welcome to {{eventName}} speakers.',
+  '',
+  `Open your speaker portal at {{portalLink}} to finish onboarding.`,
+  '',
+  'Thank you,',
+  'The {{eventName}} programme team',
+].join('\n')
+
+export const OUTSTANDING_TASK_SUBJECT_TEMPLATE = 'Reminder: outstanding tasks for {{eventName}}'
+
+export const OUTSTANDING_TASK_BODY_TEMPLATE = [
+  'Hi {{name}},',
+  '',
+  'You still have outstanding speaker tasks for {{eventName}}.',
+  '',
+  `Open your speaker portal at {{portalLink}} to complete them.`,
+  '',
+  'Thank you,',
+  'The {{eventName}} programme team',
+].join('\n')
+
+export interface SpeakerTemplateVariables {
+  readonly name: string
+  readonly eventName: string
+  readonly portalLink: string
+}
+
+export function renderSpeakerTemplate(
+  template: string,
+  variables: SpeakerTemplateVariables,
+): string {
+  return template.replace(/\{\{(name|eventName|portalLink)\}\}/g, (_match, key: string) => {
+    return variables[key as keyof SpeakerTemplateVariables]
+  })
+}
+
+export const SPEAKER_MAIL_TEMPLATES = [
+  {
+    id: 'welcome',
+    name: 'Welcome',
+    subject: SPEAKER_WELCOME_SUBJECT_TEMPLATE,
+    body: SPEAKER_WELCOME_BODY_TEMPLATE,
+  },
+  {
+    id: 'outstanding-tasks',
+    name: 'Outstanding tasks reminder',
+    subject: OUTSTANDING_TASK_SUBJECT_TEMPLATE,
+    body: OUTSTANDING_TASK_BODY_TEMPLATE,
+  },
+] as const
+
 export interface AcceptanceTemplateVariables {
   readonly speakerName: string
   readonly eventName: string
@@ -265,6 +321,93 @@ export class CommunicationsService {
     await this.#requireSubmission(submissionId, eventId)
     const messages = await this.#messages.listBySubmissionId(submissionId)
     return messages.map((message) => toCapturedMessageDto(message, submissionId))
+  }
+
+  speakerMailTemplates(): typeof SPEAKER_MAIL_TEMPLATES {
+    return SPEAKER_MAIL_TEMPLATES
+  }
+
+  async previewSpeakerBroadcast(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    input: {
+      readonly subject: string
+      readonly body: string
+      readonly contactIds: readonly string[]
+    },
+  ) {
+    const event = await this.#events.findById(eventId)
+    if (event === null) throw new ApplicationError('not_found', `Event '${eventId}' not found`)
+    const roster = await this.#contacts.listSpeakersByEvent(eventId)
+    const chosen =
+      input.contactIds.length === 0
+        ? roster
+        : roster.filter((person) => input.contactIds.includes(person.contactId))
+    const sample = chosen[0]
+    const variables: SpeakerTemplateVariables = {
+      name: sample?.name || 'Speaker',
+      eventName: event.name,
+      portalLink: SPEAKER_PORTAL_PATH,
+    }
+    return {
+      subject: renderSpeakerTemplate(input.subject, variables),
+      body: renderSpeakerTemplate(input.body, variables),
+      recipientCount: chosen.length,
+      recipients: chosen.map((person) => ({
+        contactId: person.contactId,
+        name: person.name,
+        email: person.email,
+      })),
+    }
+  }
+
+  async sendSpeakerBroadcast(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    input: {
+      readonly subject: string
+      readonly body: string
+      readonly contactIds: readonly string[]
+    },
+  ) {
+    const event = await this.#events.findById(eventId)
+    if (event === null) throw new ApplicationError('not_found', `Event '${eventId}' not found`)
+    const roster = await this.#contacts.listSpeakersByEvent(eventId)
+    const chosen =
+      input.contactIds.length === 0
+        ? roster
+        : roster.filter((person) => input.contactIds.includes(person.contactId))
+    if (chosen.length === 0) {
+      throw new ApplicationError('validation_failed', 'Select at least one speaker')
+    }
+    const now = this.#clock.now()
+    const messages: CapturedMessage[] = []
+    for (const person of chosen) {
+      const variables: SpeakerTemplateVariables = {
+        name: person.name || person.email,
+        eventName: event.name,
+        portalLink: SPEAKER_PORTAL_PATH,
+      }
+      const message: CapturedMessage = {
+        id: crypto.randomUUID(),
+        eventId,
+        toEmail: person.email,
+        subject: renderSpeakerTemplate(input.subject, variables),
+        body: renderSpeakerTemplate(input.body, variables),
+        createdAt: now,
+        kind: 'reminder',
+      }
+      await this.#messages.save(message)
+      messages.push(message)
+    }
+    return {
+      sent: messages.length,
+      messages: messages.map((message) => ({
+        toEmail: message.toEmail,
+        subject: message.subject,
+        createdAt: message.createdAt,
+      })),
+    }
   }
 
   /**

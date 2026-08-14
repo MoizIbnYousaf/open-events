@@ -1,3 +1,10 @@
+import {
+  applySessionCardsToPeople,
+  isPubliclyVisible,
+  toPublicSessions,
+  toPublicSpeakers,
+} from '../../application/services/public-programme'
+import { toIcsCalendar } from '../../domain/calendar'
 import { depsFromContext } from '../container'
 import type { ServerContext } from '../env'
 import { databaseUnavailableResponse } from '../env'
@@ -5,16 +12,8 @@ import { notFoundResponse } from '../error'
 
 /**
  * GET /api/public/events/:slug/schedule — the published-only, PII-stripped
- * schedule envelope for the public programme. Read-only (SELECT statements
- * only), track/room rendered as labels, cacheable for 60 seconds.
- *
- * Two conditions decide what the public sees, and both are checked HERE. A
- * session must be published, and its submission must not stand rejected.
- * Publishing already refuses a rejected talk, but a talk can be published first
- * and rejected afterwards — and a rejection deliberately leaves the agenda row
- * and the acceptance record in place, because onboarding work hangs off them.
- * So the agenda row alone can never answer 'is this on the programme', and this
- * is the one surface an anonymous visitor reaches.
+ * schedule envelope for the public programme. Read-only, track/room rendered
+ * as labels, cacheable for 60 seconds.
  */
 export async function handleGetPublicSchedule(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -24,57 +23,177 @@ export async function handleGetPublicSchedule(context: ServerContext): Promise<R
   const event = await deps.getEvent.executeBySlug({ slug })
   if (event === null) return notFoundResponse(context)
 
-  const [stored, decisions] = await Promise.all([
+  const [stored, decisions, submissions, items, statuses] = await Promise.all([
     deps.agenda.listByEvent(event.id),
     deps.submissions.listDecisionsByEvent(event.id),
+    deps.submissions.listByEvent(event.id),
+    deps.taxonomies.listByEvent(event.id),
+    deps.programme.listContentStatuses(event.id),
   ])
-  // `listDecisionsByEvent` returns the STANDING verdict per submission, so a
-  // rejection that was later reversed correctly leaves the talk on the
-  // programme rather than hiding it forever.
-  const rejected = new Set(
-    decisions
-      .filter((decision) => decision.outcome === 'rejected')
-      .map((decision) => decision.submissionId),
-  )
-  const sessions = stored.filter(
-    (session) => session.status === 'published' && !rejected.has(session.submissionId),
-  )
-  const submissions = await deps.submissions.listByEvent(event.id)
-  const titleBySubmissionId = new Map(
-    submissions.map((submission) => [submission.id, submission.title]),
-  )
-  const items = await deps.taxonomies.listByEvent(event.id)
+  const rejected = new Set<string>()
+  for (const decision of decisions) {
+    if (decision.outcome === 'rejected') rejected.add(decision.submissionId)
+  }
+  const contentStatus = new Map(statuses.map((row) => [row.submissionId, row.status]))
   const labelByTaxonomyId = new Map(items.map((item) => [item.id, item.label]))
-
-  const speakerIds = new Set<string>()
-  for (const session of sessions) {
-    for (const speakerId of session.speakerIds) speakerIds.add(speakerId)
-  }
-  const nameBySpeakerId = new Map<string, string>()
-  for (const speakerId of speakerIds) {
-    const contact = await deps.contacts.findById(speakerId)
-    const name = contact?.name.trim() ?? ''
-    // A contact created from a magic-link email often stores the address as
-    // its name. The public programme may print a name, never an email.
-    if (name !== '' && !name.includes('@')) nameBySpeakerId.set(speakerId, name)
-  }
-
-  const publicSessions = sessions.map((session) => ({
-    submissionId: session.submissionId,
-    title: titleBySubmissionId.get(session.submissionId) ?? '',
-    speakers: session.speakerIds.flatMap((speakerId) => {
-      const name = nameBySpeakerId.get(speakerId)
-      return name === undefined ? [] : [name]
-    }),
-    track: session.trackId === null ? '' : (labelByTaxonomyId.get(session.trackId) ?? ''),
-    room: session.roomId === null ? '' : (labelByTaxonomyId.get(session.roomId) ?? ''),
-    day: session.day,
-    start: session.start,
-    end: session.end,
-    position: session.position,
-  }))
+  const publicSessions = await toPublicSessions({
+    sessions: stored,
+    submissions,
+    rejected,
+    contentStatus,
+    labelByTaxonomyId,
+    contacts: deps.contacts,
+    formContent: deps.formContent,
+    profiles: deps.programme,
+  })
 
   return context.json({ timezone: event.timezone, sessions: publicSessions }, 200, {
     'Cache-Control': 'public, max-age=60',
+  })
+}
+
+/** GET /api/public/events/:slug/speakers */
+export async function handleGetPublicSpeakers(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined || slug.length === 0) return notFoundResponse(context)
+  const event = await deps.getEvent.executeBySlug({ slug })
+  if (event === null) return notFoundResponse(context)
+  const [stored, decisions, submissions, items, statuses, roster] = await Promise.all([
+    deps.agenda.listByEvent(event.id),
+    deps.submissions.listDecisionsByEvent(event.id),
+    deps.submissions.listByEvent(event.id),
+    deps.taxonomies.listByEvent(event.id),
+    deps.programme.listContentStatuses(event.id),
+    deps.contacts.listSpeakersByEvent(event.id),
+  ])
+  const rejected = new Set<string>()
+  for (const decision of decisions) {
+    if (decision.outcome === 'rejected') rejected.add(decision.submissionId)
+  }
+  const contentStatus = new Map(statuses.map((row) => [row.submissionId, row.status]))
+  const sessions = await toPublicSessions({
+    sessions: stored,
+    submissions,
+    rejected,
+    contentStatus,
+    labelByTaxonomyId: new Map(items.map((item) => [item.id, item.label])),
+    contacts: deps.contacts,
+    formContent: deps.formContent,
+    profiles: deps.programme,
+  })
+  const visibleIds = new Set<string>()
+  for (const session of stored) {
+    if (!isPubliclyVisible(session, rejected, contentStatus)) continue
+    for (const speakerId of session.speakerIds) visibleIds.add(speakerId)
+  }
+  const rosterById = new Map(roster.map((row) => [row.contactId, row]))
+  const people = await Promise.all(
+    [...visibleIds].map(async (contactId) => {
+      const row = rosterById.get(contactId)
+      const contact = row === undefined ? await deps.contacts.findById(contactId) : null
+      const storedPhoto =
+        row?.hasHeadshot === true
+          ? true
+          : deps.headshots === null
+            ? false
+            : await deps.headshots.hasForOwner(event.id, contactId)
+      return {
+        id: contactId,
+        name: row?.name ?? contact?.name ?? '',
+        bio: row?.bio ?? contact?.bio ?? '',
+        hasHeadshot: storedPhoto,
+        jobTitle: row?.jobTitle ?? '',
+        company: row?.company ?? '',
+      }
+    }),
+  )
+  return context.json(
+    { speakers: toPublicSpeakers(sessions, applySessionCardsToPeople(people, sessions), slug) },
+    200,
+    {
+      'Cache-Control': 'public, max-age=60',
+    },
+  )
+}
+
+/** GET /api/public/events/:slug/speakers/:contactId */
+export async function handleGetPublicSpeaker(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const slug = context.req.param('slug')
+  const contactId = context.req.param('contactId')
+  if (slug === undefined || contactId === undefined) return notFoundResponse(context)
+  const list = await handleGetPublicSpeakers(context)
+  if (list.status !== 200) return list
+  const body = (await list.json()) as { speakers: Array<{ id: string }> }
+  const speaker = body.speakers.find((person) => person.id === contactId)
+  return speaker === undefined ? notFoundResponse(context) : context.json(speaker)
+}
+
+/** GET /api/public/events/:slug/speakers/:contactId/headshot */
+export async function handleGetPublicSpeakerHeadshot(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.headshots === null) return notFoundResponse(context)
+  const slug = context.req.param('slug')
+  const contactId = context.req.param('contactId')
+  if (slug === undefined || contactId === undefined) return notFoundResponse(context)
+  const list = await handleGetPublicSpeakers(context)
+  if (list.status !== 200) return list
+  const body = (await list.json()) as { speakers: Array<{ id: string; hasHeadshot: boolean }> }
+  const speaker = body.speakers.find((person) => person.id === contactId)
+  if (speaker === undefined || !speaker.hasHeadshot) return notFoundResponse(context)
+  const event = await deps.getEvent.executeBySlug({ slug })
+  if (event === null) return notFoundResponse(context)
+  const headshot = await deps.headshots.getForOwner(event.id, contactId)
+  if (headshot === null) return notFoundResponse(context)
+  return new Response(headshot.body, {
+    status: 200,
+    headers: {
+      'content-type': headshot.contentType,
+      'cache-control': 'public, max-age=60',
+    },
+  })
+}
+
+/** GET /api/public/events/:slug/schedule.ics */
+export async function handleGetPublicIcs(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const event = await deps.getEvent.executeBySlug({ slug })
+  if (event === null) return notFoundResponse(context)
+  const schedule = await handleGetPublicSchedule(context)
+  if (schedule.status !== 200) return schedule
+  const body = (await schedule.json()) as {
+    sessions: Array<{
+      submissionId: string
+      title: string
+      start: string
+      end: string
+      room: string
+      description: string
+    }>
+  }
+  const ics = toIcsCalendar(
+    event.name,
+    body.sessions.map((session) => ({
+      uid: `${session.submissionId}@open-events`,
+      title: session.title,
+      start: session.start,
+      end: session.end,
+      location: session.room,
+      description: session.description,
+    })),
+  )
+  return new Response(ics, {
+    status: 200,
+    headers: {
+      'content-type': 'text/calendar; charset=utf-8',
+      'cache-control': 'public, max-age=60',
+    },
   })
 }

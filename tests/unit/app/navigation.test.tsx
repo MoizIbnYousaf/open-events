@@ -123,6 +123,7 @@ function mountAt(path: string) {
 describe('nav model', () => {
   it('exposes the organizer destinations the product actually has', () => {
     expect(organizerDestinations(EVENT_SLUG).map((d) => d.label)).toEqual([
+      'Events',
       'Event settings',
       'Taxonomies',
       'Submissions',
@@ -138,9 +139,13 @@ describe('nav model', () => {
       // label for two destinations made the rail contradict the page it opened.
       'Review committee',
       'Agenda',
+      'Embeds',
+      'Files',
     ])
     for (const destination of organizerDestinations(EVENT_SLUG)) {
-      expect(destination.params?.slug).toBe(EVENT_SLUG)
+      if (destination.to.includes('$slug')) {
+        expect(destination.params?.slug).toBe(EVENT_SLUG)
+      }
     }
   })
 
@@ -172,6 +177,9 @@ describe('nav model', () => {
       // exists in this candidate, so a nav link would be a control that cannot
       // do anything. Delete this line when the evaluations API lands.
       '/evaluations',
+      '/speakers/$eventSlug/$contactId',
+      '/embed/$embedId',
+      '/admin/events/',
     ])
     const orphans = Array.from(declared).filter((path) => !linked.has(path))
     expect(orphans).toEqual([])
@@ -261,7 +269,13 @@ describe('rendered navigation', () => {
       within(programme)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Call for papers', 'Public schedule'])
+    ).toEqual([
+      'Call for papers',
+      'Public schedule',
+      'Sessions',
+      'Public speakers',
+      'Speaker gallery',
+    ])
     // /evaluations has no API handler in this candidate (DEC-016); linking it
     // would put a dead control in the public programme nav.
     expect(screen.queryByRole('link', { name: 'Evaluations' })).toBeNull()

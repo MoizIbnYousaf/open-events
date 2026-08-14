@@ -251,7 +251,7 @@ describe('public schedule', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Schedule' })
     const captions = Array.from(document.querySelectorAll('table > caption'))
-    expect(captions).toHaveLength(5)
+    expect(captions).toHaveLength(6)
     for (const caption of captions) {
       expect(caption).toHaveClass('sr-only')
       expect((caption.textContent ?? '').length).toBeGreaterThan(0)

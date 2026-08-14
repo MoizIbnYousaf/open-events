@@ -214,19 +214,17 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
   }, [isDirty])
 
   const groups = useMemo(() => {
-    const order: TaxonomyKind[] = []
     const byKind = new Map<TaxonomyKind, number[]>()
+    for (const kind of TAXONOMY_KINDS) byKind.set(kind, [])
     fields.forEach((field, index) => {
-      const existing = byKind.get(field.kind)
-      if (existing === undefined) {
-        byKind.set(field.kind, [index])
-        order.push(field.kind)
-      } else {
-        existing.push(index)
-      }
+      byKind.get(field.kind)?.push(index)
     })
-    return order.map((kind) => ({ kind, indices: byKind.get(kind) ?? [] }))
+    return TAXONOMY_KINDS.map((kind) => ({ kind, indices: byKind.get(kind) ?? [] }))
   }, [fields])
+
+  const addKind = (kind: TaxonomyKind) => {
+    append({ kind, key: '', label: '' })
+  }
 
   const onSubmit = () => {
     setSavedMessage(null)
@@ -307,13 +305,18 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
           title="Add your first taxonomy item"
           description="Formats, tracks and levels are what a speaker picks from and what an organizer files a proposal under."
         >
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => append({ kind: 'format', key: '', label: '' })}
-          >
-            Add item
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {TAXONOMY_KINDS.map((kind) => (
+              <Button
+                key={kind}
+                type="button"
+                variant="outline"
+                onClick={() => append({ kind, key: '', label: '' })}
+              >
+                {`Add ${kind}`}
+              </Button>
+            ))}
+          </div>
         </EmptyState>
       </div>
     )
@@ -350,13 +353,6 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
           <StatusLive aria-live="polite" className="text-xs">
             {save.isPending ? 'Saving the taxonomies…' : savedMessage}
           </StatusLive>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => append({ kind: 'format', key: '', label: '' })}
-          >
-            Add item
-          </Button>
           <Button type="submit" pending={save.isPending}>
             {save.isPending ? 'Saving…' : 'Save'}
           </Button>
@@ -365,8 +361,11 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
       {summaryMessage !== null ? <AlertLive>{summaryMessage}</AlertLive> : null}
       {groups.map((group) => (
         <Card key={group.kind}>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
             <SectionTitle>{capitalize(group.kind)}</SectionTitle>
+            <Button type="button" variant="outline" size="sm" onClick={() => addKind(group.kind)}>
+              {`Add ${group.kind}`}
+            </Button>
           </CardHeader>
           <CardContent>
             {/* Rows divide on a hairline and share the card's gutters, so a

@@ -147,8 +147,8 @@ function draftKey(submissionId: string): string {
 /**
  * Session-scoped hold for in-progress work.
  *
- * A submitter session is short (30 minutes by default), and an evaluator
- * reading a full proposal will routinely outlive it. When the POST that would
+ * A submitter session lasts a working day by default, but an evaluator
+ * who steps away can still outlive it. When the POST that would
  * have stored their rating comes back 401 the component is replaced by the
  * expired-session surface, so the typed rating and justification would
  * otherwise die with it. Stashing them here — and rehydrating on the next

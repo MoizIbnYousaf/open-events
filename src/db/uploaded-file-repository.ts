@@ -86,5 +86,120 @@ export function createUploadedFileRepository(db: D1Database): UploadedFileReposi
       ])
       return previous === null ? null : mapRow(previous)
     },
+    async listByEvent(eventId) {
+      const result = await db
+        .prepare(
+          `${SELECT_OWN.replace(
+            'WHERE event_id = ? AND owner_contact_id = ? AND kind = ?',
+            'WHERE event_id = ?',
+          )} ORDER BY updated_at DESC, id`,
+        )
+        .bind(eventId)
+        .all<RawUploadedFileRow>()
+      return result.results.map(mapRow)
+    },
+    async listVersions(eventId, ownerContactId, kind) {
+      const result = await db
+        .prepare(
+          `SELECT id, event_id, owner_contact_id, kind, version, storage_key, content_type,
+                  size_bytes, file_name, created_at
+             FROM uploaded_file_versions
+            WHERE event_id = ? AND owner_contact_id = ? AND kind = ?
+            ORDER BY version ASC`,
+        )
+        .bind(eventId, ownerContactId, kind)
+        .all<{
+          id: string
+          event_id: string
+          owner_contact_id: string
+          kind: UploadedFileKind
+          version: number
+          storage_key: string
+          content_type: string
+          size_bytes: number
+          file_name: string | null
+          created_at: string
+        }>()
+      return result.results.map((row) => ({
+        id: row.id,
+        eventId: row.event_id,
+        ownerContactId: row.owner_contact_id,
+        kind: row.kind,
+        version: row.version,
+        storageKey: row.storage_key,
+        contentType: row.content_type,
+        sizeBytes: row.size_bytes,
+        fileName: row.file_name,
+        createdAt: row.created_at,
+      }))
+    },
+    async recordVersion(record) {
+      await db
+        .prepare(
+          `INSERT INTO uploaded_file_versions
+             (id, event_id, owner_contact_id, kind, version, storage_key, content_type,
+              size_bytes, file_name, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          record.id,
+          record.eventId,
+          record.ownerContactId,
+          record.kind,
+          record.version,
+          record.storageKey,
+          record.contentType,
+          record.sizeBytes,
+          record.fileName,
+          record.createdAt,
+        )
+        .run()
+    },
+    async listComments(eventId, ownerContactId, kind) {
+      const result = await db
+        .prepare(
+          `SELECT id, event_id, owner_contact_id, kind, author_name, body, created_at
+             FROM uploaded_file_comments
+            WHERE event_id = ? AND owner_contact_id = ? AND kind = ?
+            ORDER BY created_at ASC, id`,
+        )
+        .bind(eventId, ownerContactId, kind)
+        .all<{
+          id: string
+          event_id: string
+          owner_contact_id: string
+          kind: UploadedFileKind
+          author_name: string
+          body: string
+          created_at: string
+        }>()
+      return result.results.map((row) => ({
+        id: row.id,
+        eventId: row.event_id,
+        ownerContactId: row.owner_contact_id,
+        kind: row.kind,
+        authorName: row.author_name,
+        body: row.body,
+        createdAt: row.created_at,
+      }))
+    },
+    async addComment(record) {
+      await db
+        .prepare(
+          `INSERT INTO uploaded_file_comments
+             (id, event_id, owner_contact_id, kind, author_name, body, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          record.id,
+          record.eventId,
+          record.ownerContactId,
+          record.kind,
+          record.authorName,
+          record.body,
+          record.createdAt,
+        )
+        .run()
+    },
   }
 }

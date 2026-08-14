@@ -285,15 +285,68 @@ export class AgendaService {
         speakerIds: session.speakerIds,
       }))
 
-    const proposals = proposeAgendaPlacements(
-      buildAgendaGrid(event.dates),
-      event.id,
-      rooms,
-      placed,
-      unplaced,
-    )
-    const now = this.#clock.now()
+    let roomIds = rooms
+    if (roomIds.length === 0) {
+      const nextPosition = items.reduce((max, item) => Math.max(max, item.position), -1) + 1
+      const fallback: TaxonomyItem = {
+        id: crypto.randomUUID(),
+        eventId: event.id,
+        kind: 'room',
+        key: 'main-room',
+        label: 'Main room',
+        position: nextPosition,
+      }
+      await this.#taxonomies.replaceForEvent(event.id, [...items, fallback])
+      roomIds = [fallback.id]
+    }
+    const proposals = [
+      ...proposeAgendaPlacements(buildAgendaGrid(event.dates), event.id, roomIds, placed, unplaced),
+    ]
+    const proposedIds = new Set(proposals.map((proposal) => proposal.submissionId))
+    const leftover = unplaced.filter((session) => !proposedIds.has(session.submissionId))
     const byId = new Map(sessions.map((session) => [session.submissionId, session]))
+    const taken: AgendaPlacement[] = [...placed]
+    for (const proposal of proposals) {
+      taken.push({
+        submissionId: proposal.submissionId,
+        eventId: event.id,
+        trackId: byId.get(proposal.submissionId)?.trackId ?? '',
+        roomId: proposal.roomId,
+        day: proposal.day,
+        start: proposal.start,
+        end: proposal.end,
+        position: 0,
+        speakerIds: byId.get(proposal.submissionId)?.speakerIds ?? [],
+      })
+    }
+    for (const waiting of leftover) {
+      const session = byId.get(waiting.submissionId)
+      if (session === undefined) continue
+      for (const roomId of roomIds) {
+        const candidate: AgendaPlacement = {
+          submissionId: session.submissionId,
+          eventId: event.id,
+          trackId: session.trackId ?? '',
+          roomId,
+          day: session.day,
+          start: session.start,
+          end: session.end,
+          position: session.position ?? 0,
+          speakerIds: session.speakerIds,
+        }
+        if (findAgendaConflicts([...taken, candidate]).length > 0) continue
+        taken.push(candidate)
+        proposals.push({
+          submissionId: session.submissionId,
+          day: session.day,
+          start: session.start,
+          end: session.end,
+          roomId,
+        })
+        break
+      }
+    }
+    const now = this.#clock.now()
     for (const proposal of proposals) {
       const session = byId.get(proposal.submissionId)
       if (session === undefined) continue

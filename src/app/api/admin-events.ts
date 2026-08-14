@@ -57,6 +57,14 @@ export function adminLogin(secret: string): Promise<{ readonly expiresAt: string
   return requestJson('/api/admin/session', { method: 'POST', body: JSON.stringify({ secret }) })
 }
 
+/** POST /api/admin/session/clerk: exchanges a Clerk session JWT for the organizer cookie. */
+export function adminClerkLogin(token: string): Promise<{ readonly expiresAt: string }> {
+  return requestJson('/api/admin/session/clerk', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  })
+}
+
 /** GET /api/admin/events/:slug */
 export function getEventConfig(slug: EventSlug): Promise<AdminEventConfigDto> {
   return requestJson(`/api/admin/events/${encodeURIComponent(slug)}`)

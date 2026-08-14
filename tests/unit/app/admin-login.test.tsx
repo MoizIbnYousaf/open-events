@@ -90,6 +90,7 @@ describe('admin login screen', () => {
     const secret = screen.getByLabelText('Organizer secret')
     await waitFor(() => expect(secret).toHaveFocus())
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Continue with Google or email' })).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

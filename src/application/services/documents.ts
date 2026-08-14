@@ -149,17 +149,32 @@ export class DocumentService {
       fileName,
     }
     await this.#storage.put(storageKey, input.bytes, input.contentType)
-    let previous: UploadedFileRecord | null
     try {
-      previous = await this.#files.upsert(record)
+      if (existing !== null) {
+        const versions = await this.#files.listVersions(
+          actor.eventId,
+          actor.contactId,
+          DOCUMENT_KIND,
+        )
+        await this.#files.recordVersion({
+          id: existing.id,
+          eventId: existing.eventId,
+          ownerContactId: existing.ownerContactId,
+          kind: existing.kind,
+          version: versions.length + 1,
+          storageKey: existing.storageKey,
+          contentType: existing.contentType,
+          sizeBytes: existing.sizeBytes,
+          fileName: existing.fileName ?? fileName,
+          createdAt: existing.updatedAt,
+        })
+      }
+      await this.#files.upsert(record)
     } catch (error) {
       await this.#storage.delete(storageKey)
       throw error instanceof ApplicationError
         ? error
         : new ApplicationError('internal', 'Document metadata write failed')
-    }
-    if (previous !== null && previous.storageKey !== storageKey) {
-      await this.#storage.delete(previous.storageKey)
     }
     return toDocumentDto(record)
   }

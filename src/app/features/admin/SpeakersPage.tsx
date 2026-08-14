@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
+import { Button } from '../../../components/ui/button'
+import { ButtonGroup } from '../../../components/ui/button-group'
+import { Checkbox } from '../../../components/ui/checkbox'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from '../../../components/ui/input-group'
+import { NativeSelect } from '../../../components/ui/native-select'
+import { Separator } from '../../../components/ui/separator'
+import { Textarea } from '../../../components/ui/textarea'
 import {
   PageHeader,
   PageHeaderContent,
@@ -13,9 +26,14 @@ import {
 } from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
-import { useSpeakerRoster } from '../../queries/admin-speakers'
+import { requestJson } from '../../api/admin-events'
+import { speakerQueryKeys, useSpeakerRoster } from '../../queries/admin-speakers'
 import type { EventSlug } from '../../../domain'
 import type { SpeakerRosterEntryDto } from '../../../application'
+
+async function loadCsvText(file: File): Promise<string> {
+  return file.text()
+}
 
 /**
  * Who is on the programme, and what each of them still owes.
@@ -27,7 +45,41 @@ import type { SpeakerRosterEntryDto } from '../../../application'
  */
 export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventSlug }) {
   const roster = useSpeakerRoster(eventSlug)
+  const client = useQueryClient()
   const [term, setTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [taskFilter, setTaskFilter] = useState('all')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [bio, setBio] = useState('')
+  const [csv, setCsv] = useState('')
+  const onCsvChosen = async (file: File | undefined) => {
+    if (file === undefined) return
+    setCsv(await loadCsvText(file))
+  }
+  const add = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${eventSlug}/speakers`, {
+        method: 'POST',
+        body: JSON.stringify({ name, email, bio }),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: speakerQueryKeys.roster(eventSlug) })
+      setName('')
+      setEmail('')
+      setBio('')
+    },
+  })
+  const importCsv = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${eventSlug}/speakers/import`, {
+        method: 'POST',
+        body: JSON.stringify({ csv }),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: speakerQueryKeys.roster(eventSlug) })
+    },
+  })
 
   useEffect(() => {
     document.title = 'Speakers — Open Events'
@@ -38,14 +90,16 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
   const people = useMemo(() => roster.data ?? [], [roster.data])
   const matches = useMemo(() => {
     const needle = term.trim().toLowerCase()
-    if (needle === '') return people
-    // Name AND email, because an organizer looking for someone has whichever
-    // of the two they were given.
-    return people.filter(
-      (person) =>
-        person.name.toLowerCase().includes(needle) || person.email.toLowerCase().includes(needle),
-    )
-  }, [people, term])
+    return people.filter((person) => {
+      if (statusFilter !== 'all' && person.workflowStatus !== statusFilter) return false
+      if (taskFilter === 'complete' && person.outstandingTaskCount > 0) return false
+      if (taskFilter === 'incomplete' && person.outstandingTaskCount === 0) return false
+      if (needle === '') return true
+      return (
+        person.name.toLowerCase().includes(needle) || person.email.toLowerCase().includes(needle)
+      )
+    })
+  }, [people, term, statusFilter, taskFilter])
 
   return (
     <div className="grid gap-4">
@@ -60,6 +114,86 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
 
       {roster.isError ? <AlertLive>The speaker list is unavailable right now.</AlertLive> : null}
 
+      <form
+        className="grid max-w-md gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          add.mutate()
+        }}
+      >
+        <Field>
+          <FieldLabel htmlFor="add-speaker-name">Add speaker name</FieldLabel>
+          <Input
+            id="add-speaker-name"
+            value={name}
+            onChange={(change) => setName(change.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="add-speaker-email">Email</FieldLabel>
+          <Input
+            id="add-speaker-email"
+            value={email}
+            onChange={(change) => setEmail(change.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="add-speaker-bio">Bio</FieldLabel>
+          <Input
+            id="add-speaker-bio"
+            value={bio}
+            onChange={(change) => setBio(change.target.value)}
+          />
+        </Field>
+        <Button type="submit" className="self-start" pending={add.isPending}>
+          Add speaker
+        </Button>
+      </form>
+      <Separator />
+      <Field>
+        <FieldLabel htmlFor="speaker-csv-file">Import speakers CSV file</FieldLabel>
+        <InputGroup>
+          <InputGroupAddon>
+            <label
+              htmlFor="speaker-csv-file"
+              className="cursor-pointer font-medium text-foreground"
+            >
+              Choose CSV
+            </label>
+          </InputGroupAddon>
+          <input
+            id="speaker-csv-file"
+            type="file"
+            accept=".csv,text/csv"
+            className="sr-only"
+            onChange={(change) => {
+              void onCsvChosen(change.target.files?.[0])
+            }}
+          />
+          <InputGroupText>{csv.length > 0 ? 'CSV loaded' : 'No file chosen'}</InputGroupText>
+        </InputGroup>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="speaker-csv">Import CSV</FieldLabel>
+        <Textarea
+          id="speaker-csv"
+          className="font-mono text-sm md:text-sm"
+          value={csv}
+          onChange={(change) => setCsv(change.target.value)}
+        />
+      </Field>
+      <Button
+        type="button"
+        variant="outline"
+        className="self-start"
+        pending={importCsv.isPending}
+        onClick={() => importCsv.mutate()}
+      >
+        Import speakers
+      </Button>
+      <AssignmentForm eventSlug={eventSlug} people={people} />
+      <SpeakerMailForm eventSlug={eventSlug} people={people} />
+
       {roster.isPending ? (
         <div aria-busy="true" className="grid gap-2">
           <StatusLive>Loading the speakers…</StatusLive>
@@ -73,16 +207,49 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
         />
       ) : (
         <>
-          <Field className="max-w-sm">
-            <FieldLabel htmlFor="speaker-search">Search speakers</FieldLabel>
-            <Input
-              id="speaker-search"
-              type="search"
-              value={term}
-              placeholder="Name or email"
-              onChange={(event) => setTerm(event.target.value)}
-            />
-          </Field>
+          <div className="flex flex-wrap items-end gap-3">
+            <Field className="max-w-sm">
+              <FieldLabel htmlFor="speaker-search">Search speakers</FieldLabel>
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>Find</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="speaker-search"
+                  type="search"
+                  value={term}
+                  placeholder="Name or email"
+                  onChange={(event) => setTerm(event.target.value)}
+                />
+              </InputGroup>
+            </Field>
+            <Field className="max-w-xs">
+              <FieldLabel htmlFor="speaker-status-filter">Filter by status</FieldLabel>
+              <NativeSelect
+                id="speaker-status-filter"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="invited">Invited</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="accepted">Accepted</option>
+                <option value="declined">Declined</option>
+              </NativeSelect>
+            </Field>
+            <Field className="max-w-xs">
+              <FieldLabel htmlFor="speaker-task-filter">Filter by task completion</FieldLabel>
+              <NativeSelect
+                id="speaker-task-filter"
+                value={taskFilter}
+                onChange={(event) => setTaskFilter(event.target.value)}
+              >
+                <option value="all">All task progress</option>
+                <option value="complete">Tasks complete</option>
+                <option value="incomplete">Outstanding tasks</option>
+              </NativeSelect>
+            </Field>
+          </div>
 
           {/* The count is announced, so filtering is legible to someone who
               cannot see the list shrink. */}
@@ -98,7 +265,7 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
           ) : (
             <ul className="grid gap-2" aria-label="Speakers">
               {matches.map((person) => (
-                <SpeakerRow key={person.contactId} person={person} />
+                <SpeakerRow key={person.contactId} person={person} eventSlug={eventSlug} />
               ))}
             </ul>
           )}
@@ -108,29 +275,464 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
   )
 }
 
-function SpeakerRow({ person }: { readonly person: SpeakerRosterEntryDto }) {
+function SpeakerRow({
+  person,
+  eventSlug,
+}: {
+  readonly person: SpeakerRosterEntryDto
+  readonly eventSlug: EventSlug
+}) {
+  const client = useQueryClient()
+  const status = useMutation({
+    mutationFn: (workflowStatus: string) =>
+      requestJson(`/api/admin/events/${eventSlug}/speakers/${person.contactId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ workflowStatus }),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: speakerQueryKeys.roster(eventSlug) })
+    },
+  })
+  const invite = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${eventSlug}/speakers/${person.contactId}/invite`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: speakerQueryKeys.roster(eventSlug) })
+    },
+  })
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
-      <span className="grid min-w-0">
-        <span className="truncate text-sm font-medium">{person.name || person.email}</span>
-        <span className="truncate text-xs text-muted-foreground">{person.email}</span>
-      </span>
-      <span className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">{`${person.proposalCount} proposal(s)`}</Badge>
-        {person.sessionCount > 0 ? (
-          <Badge variant="outline">{`${person.sessionCount} session(s)`}</Badge>
-        ) : null}
-        {person.taskCount > 0 ? (
-          <Badge variant="outline">
-            {`${person.taskCompletedCount} of ${person.taskCount} tasks done`}
+    <li className="grid gap-2 rounded-md border border-border px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="grid min-w-0">
+          <span className="truncate text-sm font-medium">{person.name || person.email}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {person.email}
+            {person.jobTitle !== '' ? ` · ${person.jobTitle}` : ''}
+            {person.company !== '' ? ` · ${person.company}` : ''}
+          </span>
+        </span>
+        <span className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{`${person.proposalCount} proposal(s)`}</Badge>
+          {person.sessionCount > 0 ? (
+            <Badge variant="outline">{`${person.sessionCount} session(s)`}</Badge>
+          ) : null}
+          {person.taskCount > 0 ? (
+            <Badge variant="outline">
+              {`${person.taskCompletedCount} of ${person.taskCount} tasks done`}
+            </Badge>
+          ) : null}
+          <Badge dot variant={person.profileComplete ? 'secondary' : 'outline'}>
+            {person.profileComplete ? 'Profile complete' : 'Profile incomplete'}
           </Badge>
-        ) : null}
-        {/* A profile is complete only with both halves. Chasing one without the
-            other is how somebody gets asked twice for what they already sent. */}
-        <Badge dot variant={person.profileComplete ? 'secondary' : 'outline'}>
-          {person.profileComplete ? 'Profile complete' : 'Profile incomplete'}
-        </Badge>
-      </span>
+          <label className="flex items-center gap-1 text-xs">
+            Status
+            <NativeSelect
+              aria-label={`Status for ${person.name || person.email}`}
+              className="h-7 w-auto min-w-28"
+              value={person.workflowStatus}
+              onChange={(event) => status.mutate(event.target.value)}
+            >
+              <option value="invited">Invited</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="accepted">Accepted</option>
+              <option value="declined">Declined</option>
+            </NativeSelect>
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            pending={invite.isPending}
+            onClick={() => invite.mutate()}
+          >
+            {invite.isSuccess ? 'Invite sent' : 'Send invite'}
+          </Button>
+        </span>
+      </div>
+      <SpeakerProfileEditor eventSlug={eventSlug} person={person} />
     </li>
+  )
+}
+
+function SpeakerProfileEditor({
+  eventSlug,
+  person,
+}: {
+  readonly eventSlug: EventSlug
+  readonly person: SpeakerRosterEntryDto
+}) {
+  const client = useQueryClient()
+  const [bio, setBio] = useState<string | null>(null)
+  const [jobTitle, setJobTitle] = useState<string | null>(null)
+  const [company, setCompany] = useState<string | null>(null)
+  const [travelNotes, setTravelNotes] = useState<string | null>(null)
+  const bioValue = bio ?? person.bio ?? ''
+  const jobTitleValue = jobTitle ?? person.jobTitle
+  const companyValue = company ?? person.company
+  const travelNotesValue = travelNotes ?? person.travelNotes
+  const save = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${eventSlug}/speakers/${person.contactId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          bio: bioValue,
+          jobTitle: jobTitleValue,
+          company: companyValue,
+          travelNotes: travelNotesValue,
+        }),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: speakerQueryKeys.roster(eventSlug) })
+    },
+  })
+  const headshot = useMutation({
+    mutationFn: async (file: File) => {
+      const response = await fetch(
+        `/api/admin/events/${eventSlug}/speakers/${person.contactId}/headshot`,
+        {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'content-type': file.type || 'image/png' },
+          body: file,
+        },
+      )
+      if (!response.ok) throw new Error('headshot upload failed')
+      return response.json()
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: speakerQueryKeys.roster(eventSlug) })
+    },
+  })
+  return (
+    <form
+      className="grid gap-2 md:grid-cols-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        save.mutate()
+      }}
+    >
+      <Field>
+        <FieldLabel htmlFor={`bio-${person.contactId}`}>Bio</FieldLabel>
+        <Input
+          id={`bio-${person.contactId}`}
+          value={bioValue}
+          onChange={(change) => setBio(change.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`title-${person.contactId}`}>Job title</FieldLabel>
+        <Input
+          id={`title-${person.contactId}`}
+          value={jobTitleValue}
+          onChange={(change) => setJobTitle(change.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`company-${person.contactId}`}>Company</FieldLabel>
+        <Input
+          id={`company-${person.contactId}`}
+          value={companyValue}
+          onChange={(change) => setCompany(change.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`travel-${person.contactId}`}>Travel / logistics</FieldLabel>
+        <Input
+          id={`travel-${person.contactId}`}
+          value={travelNotesValue}
+          onChange={(change) => setTravelNotes(change.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`headshot-${person.contactId}`}>Headshot</FieldLabel>
+        <input
+          id={`headshot-${person.contactId}`}
+          type="file"
+          aria-label="Headshot"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file !== undefined) headshot.mutate(file)
+          }}
+        />
+      </Field>
+      <div className="flex items-end">
+        <Button type="submit" size="sm" pending={save.isPending}>
+          {save.isSuccess ? 'Profile saved' : 'Save profile'}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function AssignmentForm({
+  eventSlug,
+  people,
+}: {
+  readonly eventSlug: EventSlug
+  readonly people: readonly SpeakerRosterEntryDto[]
+}) {
+  const [title, setTitle] = useState('')
+  const [dueAt, setDueAt] = useState('')
+  const [kind, setKind] = useState('general')
+  const [instructions, setInstructions] = useState('')
+  const [assigneeOverride, setAssigneeOverride] = useState<readonly string[] | null>(null)
+  const assignees = assigneeOverride ?? people.map((person) => person.contactId)
+  const tasks = useQuery({
+    queryKey: ['admin', 'assignments', eventSlug],
+    queryFn: () =>
+      requestJson<
+        readonly {
+          id: string
+          title: string
+          dueAt: string | null
+          kind: string
+          instructions: string
+          assignees: readonly { contactId: string; status: string }[]
+        }[]
+      >(`/api/admin/events/${eventSlug}/assignments`),
+  })
+  const create = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${eventSlug}/assignments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          dueAt: dueAt === '' ? null : dueAt,
+          kind,
+          instructions,
+          contactIds: assignees,
+        }),
+      }),
+    onSuccess: () => {
+      void tasks.refetch()
+    },
+  })
+  return (
+    <section className="grid max-w-md gap-2" aria-labelledby="assignment-heading">
+      <h2 id="assignment-heading" className="text-lg font-medium">
+        Assigned tasks
+      </h2>
+      <ul aria-label="Assigned tasks" className="grid gap-1 text-sm">
+        {(tasks.data ?? []).map((task) => (
+          <li key={task.id}>
+            {task.title} · due {task.dueAt ?? 'none'} · {task.kind} · {task.assignees.length}{' '}
+            assignee(s)
+            {task.instructions !== '' ? ` · ${task.instructions}` : ''}
+          </li>
+        ))}
+      </ul>
+      <form
+        className="grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          create.mutate()
+        }}
+      >
+        <Field>
+          <FieldLabel htmlFor="assignment-title">Assign a task</FieldLabel>
+          <Input
+            id="assignment-title"
+            value={title}
+            onChange={(change) => setTitle(change.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="assignment-instructions">Instructions</FieldLabel>
+          <Input
+            id="assignment-instructions"
+            value={instructions}
+            onChange={(change) => setInstructions(change.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="assignment-due">Due date</FieldLabel>
+          <Input
+            id="assignment-due"
+            type="date"
+            value={dueAt}
+            onChange={(change) => setDueAt(change.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="assignment-kind">Task type</FieldLabel>
+          <NativeSelect
+            id="assignment-kind"
+            value={kind}
+            onChange={(change) => setKind(change.target.value)}
+          >
+            <option value="general">General</option>
+            <option value="file_request">File request</option>
+          </NativeSelect>
+        </Field>
+        <fieldset className="grid gap-1">
+          <legend className="text-sm font-medium">Assign to speakers</legend>
+          {people.map((person) => (
+            <label key={person.contactId} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={assignees.includes(person.contactId)}
+                onChange={(event) => {
+                  setAssigneeOverride(
+                    event.target.checked
+                      ? [...assignees, person.contactId]
+                      : assignees.filter((id) => id !== person.contactId),
+                  )
+                }}
+              />
+              {person.name || person.email}
+            </label>
+          ))}
+        </fieldset>
+        <Button type="submit" className="self-start" pending={create.isPending}>
+          {create.isSuccess ? 'Task assigned' : 'Assign task'}
+        </Button>
+      </form>
+    </section>
+  )
+}
+
+function SpeakerMailForm({
+  eventSlug,
+  people,
+}: {
+  readonly eventSlug: EventSlug
+  readonly people: readonly SpeakerRosterEntryDto[]
+}) {
+  const templates = useQuery({
+    queryKey: ['admin', 'speaker-templates', eventSlug],
+    queryFn: () =>
+      requestJson<readonly { id: string; name: string; subject: string; body: string }[]>(
+        `/api/admin/events/${eventSlug}/speakers/templates`,
+      ),
+  })
+  const history = useQuery({
+    queryKey: ['admin', 'messages', eventSlug],
+    queryFn: () =>
+      requestJson<readonly { toEmail: string; subject: string; createdAt: string }[]>(
+        `/api/admin/events/${eventSlug}/messages`,
+      ),
+  })
+  const first = templates.data?.[0]
+  const [subject, setSubject] = useState(first?.subject ?? 'Welcome to {{eventName}} speakers')
+  const [body, setBody] = useState(first?.body ?? 'Hi {{name}},\n\nWelcome to {{eventName}}.')
+  const [selectedOverride, setSelectedOverride] = useState<readonly string[] | null>(null)
+  const selected = selectedOverride ?? people.map((person) => person.contactId)
+  const preview = useMutation({
+    mutationFn: () =>
+      requestJson<{ subject: string; body: string; recipientCount: number }>(
+        `/api/admin/events/${eventSlug}/speakers/broadcast`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ subject, body, contactIds: selected, preview: true }),
+        },
+      ),
+  })
+  const send = useMutation({
+    mutationFn: (contactIds: readonly string[]) =>
+      requestJson(`/api/admin/events/${eventSlug}/speakers/broadcast`, {
+        method: 'POST',
+        body: JSON.stringify({ subject, body, contactIds }),
+      }),
+    onSuccess: () => {
+      void history.refetch()
+    },
+  })
+  const outstandingIds = people
+    .filter((person) => person.outstandingTaskCount > 0)
+    .map((person) => person.contactId)
+  return (
+    <section className="grid max-w-xl gap-2" aria-labelledby="speaker-mail-heading">
+      <h2 id="speaker-mail-heading" className="text-lg font-medium">
+        Bulk email
+      </h2>
+      <Field>
+        <FieldLabel htmlFor="mail-template">Template</FieldLabel>
+        <NativeSelect
+          id="mail-template"
+          onChange={(event) => {
+            const template = templates.data?.find((row) => row.id === event.target.value)
+            if (template === undefined) return
+            setSubject(template.subject)
+            setBody(template.body)
+          }}
+        >
+          {(templates.data ?? []).map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="mail-subject">Subject</FieldLabel>
+        <Input
+          id="mail-subject"
+          value={subject}
+          onChange={(change) => setSubject(change.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="mail-body">Body</FieldLabel>
+        <Textarea id="mail-body" value={body} onChange={(change) => setBody(change.target.value)} />
+      </Field>
+      <fieldset className="grid gap-1">
+        <legend className="text-sm font-medium">Recipients</legend>
+        {people.map((person) => (
+          <label key={person.contactId} className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={selected.includes(person.contactId)}
+              onChange={(event) => {
+                setSelectedOverride(
+                  event.target.checked
+                    ? [...selected, person.contactId]
+                    : selected.filter((id) => id !== person.contactId),
+                )
+              }}
+            />
+            {person.name || person.email}
+          </label>
+        ))}
+      </fieldset>
+      <ButtonGroup className="flex-wrap">
+        <Button
+          type="button"
+          variant="outline"
+          pending={preview.isPending}
+          onClick={() => preview.mutate()}
+        >
+          Preview
+        </Button>
+        <Button type="button" pending={send.isPending} onClick={() => send.mutate(selected)}>
+          {send.isSuccess ? 'Email sent' : 'Send to selected speakers'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          pending={send.isPending}
+          onClick={() => {
+            setSelectedOverride(outstandingIds)
+            send.mutate(outstandingIds)
+          }}
+        >
+          Send reminder to speakers with outstanding tasks
+        </Button>
+      </ButtonGroup>
+      {preview.data !== undefined ? (
+        <pre className="overflow-auto rounded-md border border-border p-2 text-xs">
+          {`${preview.data.subject}\n\n${preview.data.body}`}
+        </pre>
+      ) : null}
+      <h3 className="text-sm font-medium">Communications history</h3>
+      <ul aria-label="Communications history" className="grid gap-1 text-sm">
+        {(history.data ?? []).map((row) => (
+          <li key={`${row.toEmail}-${row.createdAt}`}>
+            {row.createdAt} · {row.toEmail} · {row.subject}
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

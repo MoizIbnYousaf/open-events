@@ -143,13 +143,30 @@ describe('public schedule API', () => {
       submissionId: 'submission-1',
       title: 'My talk',
       speakers: ['Speaker A'],
+      speakerCards: [{ name: 'Speaker A', jobTitle: '', company: '' }],
       track: 'AI Engineering',
       room: 'Main hall',
       day: '2026-05-13',
       start: '2026-05-13T09:00:00.000Z',
       end: '2026-05-13T10:00:00.000Z',
       position: 0,
+      format: 'talk',
+      description: '',
     })
+    const speakers = await app.request(
+      '/api/public/events/demo-conf-2026/speakers',
+      undefined,
+      bindings(),
+    )
+    expect(speakers.status).toBe(200)
+    const directory = (await speakers.json()) as {
+      speakers: Array<{ name: string; photoUrl: string | null; hasHeadshot: boolean }>
+    }
+    expect(directory.speakers.some((person) => person.name === 'Speaker A')).toBe(true)
+    const speakerA = directory.speakers.find((person) => person.name === 'Speaker A')
+    expect(speakerA?.hasHeadshot).toBe(false)
+    expect(speakerA?.photoUrl).toBeNull()
+
     for (const session of body.sessions) {
       expect(session).not.toHaveProperty('email')
       expect(session).not.toHaveProperty('contactId')

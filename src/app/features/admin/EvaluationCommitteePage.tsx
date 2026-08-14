@@ -787,9 +787,12 @@ function RoundEditor({
   const pool = useRoundPool(slug, round.id)
   const savePool = usePutRoundPool(slug, round.id)
 
-  const [name, setName] = useState(round.name)
-  const [opensAt, setOpensAt] = useState(toLocalInput(round.opensAt))
-  const [closesAt, setClosesAt] = useState(toLocalInput(round.closesAt))
+  const [name, setName] = useState<string | null>(null)
+  const [opensAt, setOpensAt] = useState<string | null>(null)
+  const [closesAt, setClosesAt] = useState<string | null>(null)
+  const nameValue = name ?? round.name
+  const opensAtValue = opensAt ?? toLocalInput(round.opensAt)
+  const closesAtValue = closesAt ?? toLocalInput(round.closesAt)
   const [anonymize, setAnonymize] = useState(round.anonymize === true)
 
   const [draft, setDraft] = useState<RoundCriterionInput[]>([])
@@ -844,7 +847,7 @@ function RoundEditor({
             <FieldLabel htmlFor={`round-${round.id}-name`}>Round name</FieldLabel>
             <Input
               id={`round-${round.id}-name`}
-              value={name}
+              value={nameValue}
               onChange={(event) => setName(event.target.value)}
             />
           </Field>
@@ -856,7 +859,7 @@ function RoundEditor({
             <Input
               id={`round-${round.id}-opens`}
               type="datetime-local"
-              value={opensAt}
+              value={opensAtValue}
               onChange={(event) => setOpensAt(event.target.value)}
             />
           </Field>
@@ -865,7 +868,7 @@ function RoundEditor({
             <Input
               id={`round-${round.id}-closes`}
               type="datetime-local"
-              value={closesAt}
+              value={closesAtValue}
               onChange={(event) => setClosesAt(event.target.value)}
             />
           </Field>
@@ -894,9 +897,9 @@ function RoundEditor({
                 setSaved(null)
                 configure.mutate(
                   {
-                    name,
-                    opensAt: toInstant(opensAt),
-                    closesAt: toInstant(closesAt),
+                    name: nameValue,
+                    opensAt: toInstant(opensAtValue),
+                    closesAt: toInstant(closesAtValue),
                     anonymize,
                   },
                   { onSuccess: () => setSaved('Round saved.') },
@@ -932,7 +935,7 @@ function RoundEditor({
             <ul className="grid gap-1" aria-label="Scorecard questions">
               {questions.map((question, index) => (
                 <li
-                  key={`${question.label}-${index}`}
+                  key={`${question.kind}-${question.label}-${question.weight ?? 1}`}
                   className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
                 >
                   <span>{question.label}</span>

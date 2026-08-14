@@ -71,6 +71,15 @@ export class SessionService {
     if (!(await constantTimeSecretEqual(secret, expectedSecret))) {
       throw new ApplicationError('unauthorized', 'Invalid organizer secret')
     }
+    return this.issueOrganizerSession(ttlMs)
+  }
+
+  /**
+   * Issues an organizer session after an identity check that already happened
+   * elsewhere (local secret, or a verified Clerk JWT). Callers must not skip
+   * that check.
+   */
+  async issueOrganizerSession(ttlMs: number): Promise<OrganizerSessionDto> {
     const issued = await this.#buildOrganizerSession(this.#clock.now(), ttlMs)
     await this.#sessions.save(issued.session)
     return { token: issued.token, expiresAt: issued.expiresAt }

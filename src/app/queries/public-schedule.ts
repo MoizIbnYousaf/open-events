@@ -3,16 +3,25 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiClientError, requestJson } from '../api/admin-events'
 
 /** One public schedule row: labels only, never emails/contact ids/speaker ids. */
+export interface PublicSpeakerCard {
+  readonly name: string
+  readonly jobTitle: string
+  readonly company: string
+}
+
 export interface PublicScheduleSession {
   readonly submissionId: string
   readonly title: string
   readonly speakers: readonly string[]
+  readonly speakerCards?: readonly PublicSpeakerCard[]
   readonly track: string
   readonly room: string
   readonly day: string
   readonly start: string
   readonly end: string
   readonly position: number | null
+  readonly format?: string
+  readonly description?: string
 }
 
 export interface PublicScheduleEnvelope {

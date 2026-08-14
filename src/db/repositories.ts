@@ -131,6 +131,10 @@ export function createEventRepository(db: D1Database): EventRepository {
       const row = rows[0]
       return row === undefined ? null : toEvent(row)
     },
+    async list(): Promise<readonly Event[]> {
+      const rows = await database.select().from(events).orderBy(events.name)
+      return rows.map(toEvent)
+    },
   }
 }
 
@@ -147,6 +151,10 @@ export function createEventConfigRepository(db: D1Database): EventConfigReposito
       const rows = await database.select().from(events).where(eq(events.slug, slug)).limit(1)
       const row = rows[0]
       return row === undefined ? null : toEvent(row)
+    },
+    async list(): Promise<readonly Event[]> {
+      const rows = await database.select().from(events).orderBy(events.name)
+      return rows.map(toEvent)
     },
     async save(event: Event): Promise<void> {
       const values = eventInsertValues(event)
@@ -202,14 +210,25 @@ export function createContactRepository(db: D1Database): ContactRepository {
                       AND t.status = 'completed') AS task_done_count,
                   (SELECT COUNT(*) FROM uploaded_files f
                     WHERE f.event_id = ? AND f.owner_contact_id = c.id
-                      AND f.kind = 'headshot') AS headshot_count
-             FROM submission_contributors sc
-             JOIN contacts c ON c.id = sc.contact_id
-            WHERE sc.event_id = ?
+                      AND f.kind = 'headshot') AS headshot_count,
+                  COALESCE(p.job_title, '') AS job_title,
+                  COALESCE(p.company, '') AS company,
+                  COALESCE(p.travel_notes, '') AS travel_notes,
+                  COALESCE(p.workflow_status, 'invited') AS workflow_status
+             FROM (
+               SELECT contact_id FROM submission_contributors WHERE event_id = ?
+               UNION
+               SELECT contact_id FROM speaker_profiles WHERE event_id = ?
+             ) members
+             JOIN contacts c ON c.id = members.contact_id
+             LEFT JOIN speaker_profiles p
+               ON p.event_id = ? AND p.contact_id = c.id
+             LEFT JOIN submission_contributors sc
+               ON sc.event_id = ? AND sc.contact_id = c.id
             GROUP BY c.id
             ORDER BY LOWER(COALESCE(c.name, '')), LOWER(c.email)`,
         )
-        .bind(eventId, eventId, eventId, eventId, eventId)
+        .bind(eventId, eventId, eventId, eventId, eventId, eventId, eventId, eventId)
         .all<{
           contact_id: string
           email: string
@@ -220,6 +239,10 @@ export function createContactRepository(db: D1Database): ContactRepository {
           task_count: number
           task_done_count: number
           headshot_count: number
+          job_title: string
+          company: string
+          travel_notes: string
+          workflow_status: string
         }>()
       return result.results.map((row) => ({
         contactId: row.contact_id,
@@ -231,6 +254,10 @@ export function createContactRepository(db: D1Database): ContactRepository {
         taskCount: row.task_count,
         taskCompletedCount: row.task_done_count,
         hasHeadshot: row.headshot_count > 0,
+        jobTitle: row.job_title,
+        company: row.company,
+        travelNotes: row.travel_notes,
+        workflowStatus: row.workflow_status,
       }))
     },
 
@@ -249,6 +276,31 @@ export function createContactRepository(db: D1Database): ContactRepository {
         .update(contacts)
         .set({ name: fields.name, bio: fields.bio })
         .where(eq(contacts.id, id))
+    },
+    async upsertSpeakerProfile(input) {
+      await db
+        .prepare(
+          `INSERT INTO speaker_profiles
+             (event_id, contact_id, job_title, company, travel_notes, workflow_status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(event_id, contact_id) DO UPDATE SET
+             job_title = excluded.job_title,
+             company = excluded.company,
+             travel_notes = excluded.travel_notes,
+             workflow_status = excluded.workflow_status,
+             updated_at = excluded.updated_at`,
+        )
+        .bind(
+          input.eventId,
+          input.contactId,
+          input.jobTitle,
+          input.company,
+          input.travelNotes,
+          input.workflowStatus,
+          input.createdAt,
+          input.updatedAt,
+        )
+        .run()
     },
     async ensureByEmail(input) {
       // Insert-if-absent on the email key, then read the row that actually
@@ -532,6 +584,18 @@ export function createSubmissionRepository(db: D1Database): SubmissionRepository
             eq(proposalSubmissions.eventId, input.eventId),
             eq(proposalSubmissions.id, input.submissionId),
             eq(proposalSubmissions.ownerContactId, input.ownerContactId),
+          ),
+        )
+      return (result.meta?.changes ?? 0) > 0 ? 'updated' : 'not-found'
+    },
+    async updateContent(input) {
+      const result = await database
+        .update(proposalSubmissions)
+        .set({ title: input.title, answersJson: JSON.stringify(input.answers) })
+        .where(
+          and(
+            eq(proposalSubmissions.eventId, input.eventId),
+            eq(proposalSubmissions.id, input.submissionId),
           ),
         )
       return (result.meta?.changes ?? 0) > 0 ? 'updated' : 'not-found'

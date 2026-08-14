@@ -6,7 +6,7 @@ import { InMemoryEventRepository } from '../helpers/in-memory-repositories'
 
 function buildHarness() {
   const events = new InMemoryEventRepository([eventFixture])
-  const service = new EventConfigService(events)
+  const service = new EventConfigService(events, { now: () => '2026-08-14T12:00:00.000Z' })
   return { service }
 }
 

@@ -134,6 +134,28 @@ describe('taxonomy editor screen', () => {
     expect(screen.getAllByDisplayValue('Workshop')).toHaveLength(2)
     expect(screen.getAllByDisplayValue('Talk')).toHaveLength(2)
     expect(screen.getAllByLabelText('Key')).toHaveLength(4)
+    expect(screen.getByRole('button', { name: 'Add room' })).toBeInTheDocument()
+  })
+
+  it('adds a room row under Room instead of Format', async () => {
+    const user = userEvent.setup()
+    await mountTaxonomy()
+    await screen.findByText('Format')
+    await user.click(screen.getByRole('button', { name: 'Add room' }))
+    const keys = screen.getAllByLabelText('Key')
+    expect(keys).toHaveLength(5)
+    await user.type(keys[keys.length - 1]!, 'room-2a')
+    const labels = screen.getAllByLabelText('Label')
+    await user.type(labels[labels.length - 1]!, 'Room 2A')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      const put = fetchCall('/api/admin/events/demo-conf-2026/taxonomies', 'PUT')
+      expect(put).toBeDefined()
+      const body = JSON.parse(String(put?.body)) as {
+        items: Array<{ kind: string; key: string; label: string }>
+      }
+      expect(body.items.some((item) => item.kind === 'room' && item.key === 'room-2a')).toBe(true)
+    })
   })
 
   it('shows the add-first-item empty state when the event has no taxonomy items', async () => {
@@ -150,7 +172,8 @@ describe('taxonomy editor screen', () => {
     // a sentence saying what the items are for, and the action beside it.
     expect(await screen.findByText(/add your first taxonomy item/i)).toBeInTheDocument()
     expect(screen.getByText(/formats, tracks and levels/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add format' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add room' })).toBeInTheDocument()
   })
 
   it('rejects an empty key with an alert and focuses the first invalid row before any PUT', async () => {

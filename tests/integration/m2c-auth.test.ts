@@ -94,6 +94,48 @@ describe('organizer login', () => {
   })
 })
 
+describe('organizer Clerk login', () => {
+  it('rejects when Clerk is not configured or the token is missing', async () => {
+    const unconfigured = await app.request(
+      '/api/admin/session/clerk',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: 'sess_whatever' }),
+      },
+      bindings(),
+    )
+    expect(unconfigured.status).toBe(401)
+    expect(unconfigured.headers.get('set-cookie')).toBeNull()
+
+    const missing = await app.request(
+      '/api/admin/session/clerk',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      },
+      bindings({ CLERK_PUBLISHABLE_KEY: 'pk_test_not-a-real-host' }),
+    )
+    expect(missing.status).toBe(401)
+  })
+
+  it('rejects a garbage token without leaking it', async () => {
+    const response = await app.request(
+      '/api/admin/session/clerk',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: 'not-a-jwt' }),
+      },
+      bindings({ CLERK_PUBLISHABLE_KEY: 'pk_test_not-a-real-host' }),
+    )
+    expect(response.status).toBe(401)
+    expect(JSON.stringify(await response.json())).not.toContain('not-a-jwt')
+    expect(response.headers.get('set-cookie')).toBeNull()
+  })
+})
+
 describe('generic public start', () => {
   it('returns 202 with no token or link in the body', async () => {
     const response = await app.request(

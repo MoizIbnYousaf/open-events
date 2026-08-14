@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
@@ -19,7 +20,7 @@ import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { Textarea } from '../../../components/ui/textarea'
 import type { SubmissionDetailDto } from '../../../application'
-import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
+import { getApiErrorCode, getApiErrorMessage, requestJson } from '../../api/admin-events'
 import { ForbiddenState } from '../admin/AdminStates'
 import {
   resolveDecision,
@@ -142,7 +143,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
                   <span className="truncate text-sm font-medium">{submission.title}</span>
                   <InviteLink submission={submission} />
                 </div>
-                <ProposalDisclosure submission={submission} />
+                <ProposalDisclosure submission={submission} onUnauthenticated={onUnauthenticated} />
                 {/* Where a proposal stands is a lifecycle state, so the chip
                     carries the marker that says so — the one channel that
                     still separates a state from a plain value once colour has
@@ -154,6 +155,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
         </Card>
       )}
       <TasksPanel />
+      <AssignmentsPanel />
       <ProfileEditor />
       <HeadshotUploader />
       <DocumentUploader />
@@ -164,7 +166,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
 /** The page heading, identical in every state so the page never loses its h1. */
 function Header() {
   return (
-    <PageHeader>
+    <PageHeader surface="wash">
       <PageHeaderContent>
         <PageHeaderTitle>{HEADING}</PageHeaderTitle>
         <PageHeaderDescription>{SUBHEADING}</PageHeaderDescription>
@@ -186,10 +188,21 @@ function Header() {
  * definition supplies the labels, and long answers get a textarea because an
  * abstract typed into a single-line input is a punishment.
  */
-function ProposalDisclosure({ submission }: { readonly submission: PortalSubmission }) {
+function ProposalDisclosure({
+  submission,
+  onUnauthenticated,
+}: {
+  readonly submission: PortalSubmission
+  readonly onUnauthenticated: () => void
+}) {
   const [open, setOpen] = useState(false)
   const detailQuery = useOwnSubmission(open ? submission.id : null)
   const detail = detailQuery.data
+  const expired = detailQuery.isError && getApiErrorCode(detailQuery.error) === 'unauthorized'
+
+  useEffect(() => {
+    if (expired) onUnauthenticated()
+  }, [expired, onUnauthenticated])
 
   return (
     <>
@@ -204,7 +217,9 @@ function ProposalDisclosure({ submission }: { readonly submission: PortalSubmiss
       </Button>
       {open ? (
         <div id={`proposal-${submission.id}`} className="w-full">
-          {detailQuery.isError ? (
+          {expired ? (
+            <AlertLive>Your session expired. Sign in again to view this proposal.</AlertLive>
+          ) : detailQuery.isError ? (
             <AlertLive>Unable to load this proposal right now.</AlertLive>
           ) : detail === undefined ? (
             <StatusLive aria-live="polite">Loading your proposal…</StatusLive>
@@ -400,5 +415,91 @@ function DecisionBadge({ decision }: { readonly decision: SubmissionOutcome }) {
     <Badge dot variant="outline">
       Pending review
     </Badge>
+  )
+}
+
+function AssignmentsPanel() {
+  const client = useQueryClient()
+  const query = useQuery({
+    queryKey: ['public', 'assignments'],
+    queryFn: () =>
+      requestJson<
+        readonly {
+          id: string
+          title: string
+          dueAt: string | null
+          kind: string
+          status: string
+          instructions: string
+        }[]
+      >('/api/public/assignments'),
+  })
+  const complete = useMutation({
+    mutationFn: (id: string) =>
+      requestJson(`/api/public/assignments/${id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['public', 'assignments'] })
+    },
+  })
+  const upload = useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const response = await fetch('/api/public/profile/document', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'content-type': file.type, 'x-file-name': file.name },
+        body: await file.arrayBuffer(),
+      })
+      if (!response.ok) throw new Error('upload failed')
+      await requestJson(`/api/public/assignments/${id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      })
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['public', 'assignments'] })
+      void client.invalidateQueries({ queryKey: ['public', 'document'] })
+    },
+  })
+  const items = query.data ?? []
+  if (items.length === 0) return null
+  return (
+    <section className="grid gap-2">
+      <h2 className="text-sm font-medium">Assigned tasks</h2>
+      <ul className="grid gap-2">
+        {items.map((item) => (
+          <li key={item.id} className="grid gap-1">
+            <span>
+              {item.title}
+              {item.dueAt !== null ? ` · due ${item.dueAt}` : ''} · {item.status}
+              {item.kind === 'file_request' ? ' · file request' : ''}
+            </span>
+            {item.instructions !== '' ? (
+              <span className="text-xs text-muted-foreground">{item.instructions}</span>
+            ) : null}
+            {item.status === 'pending' && item.kind === 'file_request' ? (
+              <label className="text-sm">
+                Upload against this task
+                <input
+                  type="file"
+                  accept="application/pdf,text/plain"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file !== undefined) upload.mutate({ id: item.id, file })
+                  }}
+                />
+              </label>
+            ) : null}
+            {item.status === 'pending' && item.kind !== 'file_request' ? (
+              <Button type="button" variant="outline" onClick={() => complete.mutate(item.id)}>
+                Mark complete
+              </Button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

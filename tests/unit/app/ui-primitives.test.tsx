@@ -837,6 +837,19 @@ describe('PageHeader', () => {
     )
   })
 
+  it('keeps the public wash header transparent so the shader is not punched out', () => {
+    const { container } = render(
+      <PageHeader surface="wash">
+        <PageHeaderContent>
+          <PageHeaderTitle>Speakers</PageHeaderTitle>
+        </PageHeaderContent>
+      </PageHeader>,
+    )
+    const root = container.querySelector('[data-slot="page-header"]')
+    expect(root).toHaveClass('lg:bg-transparent')
+    expect(root).not.toHaveClass('lg:bg-background')
+  })
+
   it('lets a long title shrink instead of pushing the page sideways', () => {
     const { container } = render(
       <PageHeader>

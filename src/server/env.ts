@@ -10,7 +10,9 @@ import type { Session } from '../domain'
 
 /** Committed TTL defaults; mirror `wrangler.jsonc` `vars`. */
 export const DEFAULT_ORGANIZER_SESSION_TTL_MS = 2 * 60 * 60 * 1000
-export const DEFAULT_SUBMITTER_SESSION_TTL_MS = 30 * 60 * 1000
+/** Speaker magic-link sessions last a working day: a CFP draft, submit, and
+ *  portal edit is routinely longer than half an hour. */
+export const DEFAULT_SUBMITTER_SESSION_TTL_MS = 8 * 60 * 60 * 1000
 export const DEFAULT_SUBMITTER_TOKEN_TTL_MS = 24 * 60 * 60 * 1000
 
 /**
@@ -34,6 +36,10 @@ export type ServerBindings = Pick<
   readonly RESEND_API_KEY?: string
   /** The From address deliveries are sent as; required alongside the key. */
   readonly EMAIL_FROM?: string
+  /** Clerk publishable key; public, used to locate the instance JWKS. */
+  readonly CLERK_PUBLISHABLE_KEY?: string
+  /** Clerk secret key; verifies session JWTs when the publishable key is absent. */
+  readonly CLERK_SECRET_KEY?: string
 }
 
 /** Per-request context values set by the session/actor middleware. */
@@ -102,6 +108,16 @@ export function getTtlConfig(context: ServerContext): TtlConfig {
 /** Local admin credential from the environment; empty means login can never succeed. */
 export function localAdminToken(context: ServerContext): string {
   return context.env.LOCAL_ADMIN_TOKEN ?? ''
+}
+
+/** Clerk publishable key from the Worker environment; empty means JWKS host is unknown. */
+export function clerkPublishableKey(context: ServerContext): string {
+  return context.env.CLERK_PUBLISHABLE_KEY ?? ''
+}
+
+/** Clerk secret key from the Worker environment; empty means Backend JWKS is unused. */
+export function clerkSecretKey(context: ServerContext): string {
+  return context.env.CLERK_SECRET_KEY ?? ''
 }
 
 /** Explicit local/test mode flag. */

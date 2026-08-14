@@ -571,7 +571,7 @@ export default function CfpWizard({ form }: CfpWizardProps) {
     <div className="mx-auto grid w-full max-w-[47rem] gap-5">
       {confirmationActive ? null : (
         <>
-          <PageHeader>
+          <PageHeader surface="wash">
             <PageHeaderContent>
               <PageHeaderTitle>Call for papers</PageHeaderTitle>
               <PageHeaderDescription>

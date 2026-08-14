@@ -28,6 +28,7 @@ export default function CfpSubmit({ onSubmitted, onDenied }: CfpSubmitProps) {
   const queryClient = useQueryClient()
   const submit = useSubmitCfp()
   const [submitted, setSubmitted] = useState(false)
+  const [submittedTitle, setSubmittedTitle] = useState<string | null>(null)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
 
   useEffect(() => {
@@ -68,6 +69,9 @@ export default function CfpSubmit({ onSubmitted, onDenied }: CfpSubmitProps) {
               (it is the confirmation's programmatic signal, and the focused h1
               is what announces the outcome); what it carries is now the
               explanation rather than an echo of the title. */}
+          {submittedTitle !== null && submittedTitle !== '' ? (
+            <p className="max-w-sm text-sm">{submittedTitle}</p>
+          ) : null}
           <StatusLive aria-live="polite" className="max-w-sm">
             Your proposal is with the organizers. Thank you for sending it.
           </StatusLive>
@@ -116,7 +120,8 @@ export default function CfpSubmit({ onSubmitted, onDenied }: CfpSubmitProps) {
           aria-describedby={unsaved ? 'cfp-submit-reason' : undefined}
           onClick={() =>
             submit.mutate(undefined, {
-              onSuccess: () => {
+              onSuccess: (detail) => {
+                setSubmittedTitle(detail.title)
                 setSubmitted(true)
                 onSubmitted?.()
               },

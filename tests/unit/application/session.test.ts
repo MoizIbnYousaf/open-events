@@ -137,6 +137,19 @@ describe('SessionService.organizerLogin', () => {
     expect(issued.expiresAt).toBe('2026-05-20T09:01:00.000Z')
     expect(sessions.list()).toHaveLength(1)
   })
+
+  it('issues an organizer session after an external identity check', async () => {
+    const { service, sessions } = buildHarness()
+
+    const issued = await service.issueOrganizerSession(60_000)
+
+    expect(issued.token.length).toBeGreaterThan(0)
+    expect(issued.expiresAt).toBe('2026-05-20T09:01:00.000Z')
+    const stored = sessions.list()[0]
+    expect(stored?.kind).toBe('organizer')
+    expect(stored).not.toHaveProperty('token')
+    expect(stored?.tokenHash).not.toBe(issued.token)
+  })
 })
 
 describe('SessionService.startSubmitter', () => {

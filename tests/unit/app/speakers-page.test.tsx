@@ -26,6 +26,10 @@ const ROSTER = [
     outstandingTaskCount: 0,
     hasHeadshot: true,
     profileComplete: true,
+    jobTitle: 'Staff Engineer',
+    company: 'Latticework',
+    travelNotes: '',
+    workflowStatus: 'confirmed',
   },
   {
     contactId: 'c-2',
@@ -39,6 +43,10 @@ const ROSTER = [
     outstandingTaskCount: 2,
     hasHeadshot: false,
     profileComplete: false,
+    jobTitle: '',
+    company: '',
+    travelNotes: '',
+    workflowStatus: 'invited',
   },
 ]
 
@@ -127,5 +135,64 @@ describe('the organizer speaker roster', () => {
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent('Speakers')
+  })
+
+  it('filters the roster by workflow status', async () => {
+    const user = userEvent.setup()
+    mount()
+    await screen.findByRole('list', { name: /speakers/i })
+
+    await user.selectOptions(screen.getByLabelText(/filter by status/i), 'confirmed')
+
+    await waitFor(() => {
+      const rows = within(screen.getByRole('list', { name: /speakers/i })).getAllByRole('listitem')
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toHaveTextContent('Ada Okafor')
+    })
+  })
+
+  it('filters the roster to speakers with outstanding tasks', async () => {
+    const user = userEvent.setup()
+    mount()
+    await screen.findByRole('list', { name: /speakers/i })
+
+    await user.selectOptions(screen.getByLabelText(/filter by task completion/i), 'incomplete')
+
+    await waitFor(() => {
+      const rows = within(screen.getByRole('list', { name: /speakers/i })).getAllByRole('listitem')
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toHaveTextContent('Marcus Raman')
+    })
+  })
+
+  it('exposes a CSV file input and an outstanding-task reminder', async () => {
+    mount()
+    await screen.findByRole('list', { name: /speakers/i })
+    expect(screen.getByLabelText(/import speakers csv file/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /send reminder to speakers with outstanding tasks/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('saves an organizer bio edit through the speaker profile form', async () => {
+    const user = userEvent.setup()
+    const calls: string[] = []
+    fetchHandler = (url) => {
+      calls.push(url)
+      if (url === SPEAKERS_URL) return jsonResponse(ROSTER)
+      if (url === `${SPEAKERS_URL}/c-1` || url.endsWith('/speakers/c-1')) {
+        return jsonResponse({ ...ROSTER[0], bio: 'SBEK-ORG-EDIT-01' })
+      }
+      return jsonResponse([])
+    }
+    mount()
+    const bio = await screen.findByLabelText('Bio', { selector: '#bio-c-1' })
+    await user.clear(bio)
+    await user.type(bio, 'SBEK-ORG-EDIT-01')
+    await user.click(screen.getAllByRole('button', { name: /save profile/i })[0]!)
+
+    await waitFor(() => {
+      expect(calls.some((url) => url.includes('/speakers/c-1'))).toBe(true)
+    })
   })
 })

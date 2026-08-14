@@ -278,6 +278,23 @@ describe('speaker portal', () => {
     expect(screen.getByText(/Priya Raman/).parentElement).toHaveTextContent(/primary/i)
   })
 
+  it('sends the speaker back to sign-in when View proposal gets a 401', async () => {
+    const user = userEvent.setup()
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === PORTAL_URL) return jsonResponse(SUBMISSIONS_ENVELOPE)
+      if (method === 'GET' && url.startsWith('/api/public/submission/')) {
+        return jsonResponse({ error: { code: 'unauthorized', message: 'Unauthorized' } }, 401)
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    const { onUnauthenticated } = renderPage()
+    const list = await screen.findByRole('list', { name: /your submissions/i })
+    await user.click(within(list).getAllByRole('button', { name: /view proposal/i })[0]!)
+    expect(await screen.findByText(/session expired/i)).toBeInTheDocument()
+    await waitFor(() => expect(onUnauthenticated).toHaveBeenCalled())
+  })
+
   it('offers the calendar invite only for an accepted submission', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'

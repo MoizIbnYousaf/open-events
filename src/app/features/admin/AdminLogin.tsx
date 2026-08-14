@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { isClerkConfigured } from '../../../lib/clerk'
 import { getApiErrorMessage } from '../../api/admin-events'
 import { useAdminLogin } from '../../queries/admin-events'
 import { DEFAULT_EVENT_SLUG } from '../../lib/default-event'
@@ -15,6 +16,8 @@ import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { PageHeaderTitle } from '../../../components/ui/page-header'
 import { StatusLive } from '../../../components/ui/status-live'
+
+const ClerkOrganizerAuth = lazy(() => import('./ClerkOrganizerAuth'))
 
 const loginSchema = z.object({
   secret: z.string().min(1, 'Organizer secret is required'),
@@ -52,6 +55,11 @@ export default function AdminLogin() {
     document.title = 'Admin sign in — Open Events'
   }, [])
 
+  const enterWorkspace = useCallback(() => {
+    toast.success('Signed in')
+    void navigate({ to: '/admin/events/$slug', params: { slug: DEFAULT_EVENT_SLUG } })
+  }, [navigate])
+
   const onSubmit = (values: LoginValues) => {
     // react-hook-form's isSubmitting settles in the same microtask because
     // this handler does not await the mutation, so login.isPending is the only
@@ -74,10 +82,7 @@ export default function AdminLogin() {
       // beside the router. Its region is already live, so this is the whole
       // announcement — a second channel would speak the same sentence twice
       // (DEC-014, DEC-019).
-      onSuccess: () => {
-        toast.success('Signed in')
-        void navigate({ to: '/admin/events/$slug', params: { slug: DEFAULT_EVENT_SLUG } })
-      },
+      onSuccess: enterWorkspace,
       onError: (error) => {
         const message = getApiErrorMessage(error, 'Unable to sign in')
         setFormError(message)
@@ -101,6 +106,13 @@ export default function AdminLogin() {
           <CardDescription>Sign in to manage the event.</CardDescription>
         </CardHeader>
         <CardContent>
+          {isClerkConfigured() ? (
+            <div className="mb-4">
+              <Suspense fallback={null}>
+                <ClerkOrganizerAuth onAuthed={enterWorkspace} />
+              </Suspense>
+            </div>
+          ) : null}
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
             <Field invalid={errors.secret !== undefined}>
               <FieldLabel htmlFor="organizer-secret">Organizer secret</FieldLabel>

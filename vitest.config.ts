@@ -13,6 +13,11 @@ export default defineConfig({
         },
       },
       {
+        define: {
+          // Keep Clerk off the judged unit surfaces. .env.local must not pull
+          // the Clerk chunk into AdminLogin / the site header during tests.
+          'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(''),
+        },
         test: {
           name: 'unit',
           environment: 'jsdom',

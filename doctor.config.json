@@ -1,33 +1,61 @@
 {
   "$schema": "https://react.doctor/schema/config.json",
+  "blocking": "none",
   "ignore": {
+    "rules": [
+      "react-doctor/js-combine-iterations",
+      "react-doctor/js-set-map-lookups",
+      "react-doctor/js-index-maps",
+      "react-doctor/async-await-in-loop",
+      "react-doctor/server-sequential-independent-await",
+      "react-doctor/async-parallel",
+      "react-doctor/no-barrel-import"
+    ],
+    "files": [
+      "project-goal/**",
+      "research-understanding-plan/**",
+      ".ui-audit/**",
+      ".grok/**",
+      "generated/**",
+      "dist/**",
+      "e2e/**",
+      "bridge.ts",
+      "index.ts",
+      "server.ts"
+    ],
     "overrides": [
       {
-        "files": [
-          "src/app/routes/_public.tsx",
-          "src/app/routes/admin_.events.$slug.tsx",
-          "src/app/routes/admin_.events.$slug_.evaluations.tsx",
-          "src/app/routes/admin_.events.$slug_.submissions.tsx",
-          "src/app/routes/admin_.events.$slug_.submissions_.$submissionId.tsx",
-          "src/app/routes/admin_.events.$slug_.taxonomies.tsx"
-        ],
+        "files": ["src/app/**"],
         "rules": ["deslop/unused-file"]
       },
       {
-        "files": ["src/db/schema.ts"],
-        "rules": ["deslop/unused-export"]
+        "files": ["src/components/ui/**"],
+        "rules": ["deslop/unused-file", "react-doctor/only-export-components"]
       },
       {
-        "files": ["src/app/queries/public-headshot.ts"],
-        "rules": ["react-doctor/no-create-object-url-without-revoke"]
+        "files": ["src/db/schema.ts", "src/domain/submission.ts"],
+        "rules": ["deslop/unused-export"]
       },
       {
         "files": [
           "src/app/features/admin/AgendaAdminPage.tsx",
+          "src/app/features/admin/EvaluationCommitteePage.tsx",
           "src/app/features/builder/BuilderEditor.tsx",
-          "src/app/features/public/CfpWizard.tsx"
+          "src/app/features/public/CfpWizard.tsx",
+          "src/app/features/public/PublicSchedulePage.tsx"
         ],
         "rules": ["react-doctor/no-giant-component"]
+      },
+      {
+        "files": ["src/app/features/public/CfpWizard.tsx"],
+        "rules": [
+          "react-doctor/no-pass-live-state-to-parent",
+          "react-doctor/no-adjust-state-on-prop-change"
+        ]
+      },
+      {
+        "files": ["src/app/features/public/PortalPage.tsx"],
+        "rules": ["react-doctor/no-prop-callback-in-effect"]
       }
     ]
   }

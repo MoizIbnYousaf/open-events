@@ -446,7 +446,7 @@ export function selectQueueAssignments(
     // record, which is what a single-round queue has always shown.
     const shown =
       open.length > 0
-        ? [...open].sort((left, right) => numberOf(left) - numberOf(right))
+        ? open.toSorted((left, right) => numberOf(left) - numberOf(right))
         : held.reduce<EvaluationAssignment[]>(
             (latest, assignment) =>
               latest.length === 0 || numberOf(assignment) > numberOf(latest[0]!)

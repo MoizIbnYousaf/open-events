@@ -216,7 +216,7 @@ export default function LandingEventState() {
     return (
       <FrontFrame>
         <div className="grid max-w-[880px] gap-4 px-5 pt-12 pb-7 sm:px-10">
-          <PageHeader>
+          <PageHeader surface="wash">
             <PageHeaderContent>
               <PageHeaderTitle className="text-clip text-balance">
                 Could not load DemoConf 2026
@@ -240,7 +240,7 @@ export default function LandingEventState() {
     return (
       <FrontFrame>
         <div className="grid max-w-[880px] gap-4 px-5 pt-12 pb-7 sm:px-10">
-          <PageHeader>
+          <PageHeader surface="wash">
             <PageHeaderContent>
               <PageHeaderTitle className="text-clip text-balance">Event not found</PageHeaderTitle>
             </PageHeaderContent>

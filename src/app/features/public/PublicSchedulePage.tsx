@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useParams } from '@tanstack/react-router'
 
 import {
@@ -39,6 +39,13 @@ import {
   type PublicScheduleSession,
 } from '../../queries/public-schedule'
 import { DeniedState } from '../admin/AdminStates'
+import {
+  buildPublicAgenda,
+  cellKey,
+  readPersonalSchedule,
+  sessionsOnDay,
+  writePersonalSchedule,
+} from './schedule-agenda'
 
 interface PublicSchedulePageProps {
   readonly eventSlug?: string
@@ -63,7 +70,7 @@ function SchedulePage({ children }: { readonly children: ReactNode }) {
 
 function ScheduleHeading({ description }: { readonly description?: string }) {
   return (
-    <PageHeader>
+    <PageHeader surface="wash">
       <PageHeaderContent>
         <PageHeaderTitle>Schedule</PageHeaderTitle>
         {description !== undefined && <PageHeaderDescription>{description}</PageHeaderDescription>}
@@ -141,13 +148,21 @@ function ScheduleScreen({ eventSlug }: { readonly eventSlug: string | undefined 
       </SchedulePage>
     )
   }
-  return <ScheduleViews timezone={query.data.timezone} sessions={query.data.sessions} />
+  return (
+    <ScheduleViews
+      eventSlug={eventSlug ?? ''}
+      timezone={query.data.timezone}
+      sessions={query.data.sessions}
+    />
+  )
 }
 
 function ScheduleViews({
+  eventSlug,
   timezone,
   sessions,
 }: {
+  readonly eventSlug: string
   readonly timezone: string
   readonly sessions: readonly PublicScheduleSession[]
 }) {
@@ -192,12 +207,176 @@ function ScheduleViews({
     })
 
   const sessionCount = sessions.length
+  const agenda = useMemo(() => buildPublicAgenda(sessions, timezone), [sessions, timezone])
+  const [dayOverride, setDayOverride] = useState<string | null>(null)
+  const day = dayOverride ?? agenda.days[0] ?? ''
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [starred, setStarred] = useState<readonly string[]>(() =>
+    eventSlug === '' ? [] : readPersonalSchedule(eventSlug),
+  )
+  const selected = selectedId === null ? undefined : byId.get(selectedId)
+  const itinerary = sessionsOnDay(sessions, timezone, day)
+  const personal = sessions
+    .filter((session) => starred.includes(session.submissionId))
+    .sort((left, right) => left.start.localeCompare(right.start))
+
+  const toggleStar = (submissionId: string) => {
+    const next = starred.includes(submissionId)
+      ? starred.filter((id) => id !== submissionId)
+      : [...starred, submissionId]
+    setStarred(next)
+    if (eventSlug !== '') writePersonalSchedule(eventSlug, next)
+  }
 
   return (
     <div className="grid min-w-0 gap-6" data-tour="schedule-page">
       <ScheduleHeading
         description={`${String(sessionCount)} ${sessionCount === 1 ? 'session' : 'sessions'} · times shown in ${timezone}`}
       />
+      {agenda.days.length > 0 ? (
+        <section className="grid min-w-0 gap-3">
+          <SectionHeading>Agenda</SectionHeading>
+          <nav aria-label="Schedule days">
+            <ul className="flex flex-wrap gap-2">
+              {agenda.days.map((item) => (
+                <li key={item}>
+                  <Button
+                    type="button"
+                    variant={item === day ? 'default' : 'outline'}
+                    aria-current={item === day ? 'date' : undefined}
+                    onClick={() => setDayOverride(item)}
+                  >
+                    {item}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <Table bordered className="caption-top">
+            <TableCaption className="sr-only">Room by time for {day}.</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Time</TableHead>
+                {agenda.rooms.map((room) => (
+                  <TableHead key={room} scope="col">
+                    {room}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {agenda.slots.map((slot) => (
+                <TableRow key={slot}>
+                  <TableHead scope="row" className="tabular-nums">
+                    {slot}
+                  </TableHead>
+                  {agenda.rooms.map((room) => {
+                    const cell = agenda.cells.get(cellKey(day, room, slot)) ?? []
+                    return (
+                      <TableCell key={room}>
+                        {cell.map((session) => (
+                          <button
+                            key={session.submissionId}
+                            type="button"
+                            className="block text-left"
+                            onClick={() => setSelectedId(session.submissionId)}
+                          >
+                            <span className="font-medium">{session.title}</span>
+                            {session.track !== '' ? (
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                {session.track}
+                              </span>
+                            ) : null}
+                          </button>
+                        ))}
+                      </TableCell>
+                    )
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {selected !== undefined ? (
+            <Card>
+              <CardContent className="grid gap-2">
+                <h2 className="text-base font-medium">{selected.title}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {formatTime(selected.start)} – {formatTime(selected.end)} · {selected.room}
+                </p>
+                <p className="text-sm">{selected.description}</p>
+                <p className="text-sm text-muted-foreground">
+                  {selected.format} · {selected.track}
+                </p>
+                <Button type="button" variant="outline" onClick={() => setSelectedId(null)}>
+                  Close
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+        </section>
+      ) : null}
+      <section className="grid min-w-0 gap-3">
+        <SectionHeading>Itinerary</SectionHeading>
+        {itinerary.map((session) => (
+          <Card key={session.submissionId}>
+            <CardContent className="grid gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  {session.track !== '' ? (
+                    <Badge variant="outline">Track {session.track}</Badge>
+                  ) : null}
+                  {session.format ? <Badge variant="outline">Format {session.format}</Badge> : null}
+                  <p className="font-medium">{session.title}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatTime(session.start)} – {formatTime(session.end)} · {session.room}
+                  </p>
+                  {session.description !== undefined && session.description !== '' ? (
+                    <ItineraryDescription text={session.description} />
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    {(
+                      session.speakerCards ??
+                      session.speakers.map((name) => ({ name, jobTitle: '', company: '' }))
+                    )
+                      .map((card) =>
+                        [card.name, card.jobTitle, card.company]
+                          .filter((part) => part !== '')
+                          .join(', '),
+                      )
+                      .join(' · ')}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => toggleStar(session.submissionId)}
+                >
+                  {starred.includes(session.submissionId)
+                    ? 'Remove from my schedule'
+                    : 'Add to my schedule'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+      <section className="grid min-w-0 gap-3">
+        <SectionHeading>My schedule</SectionHeading>
+        <p className="text-sm text-muted-foreground">
+          {personal.length} {personal.length === 1 ? 'session' : 'sessions'} saved on this device.
+        </p>
+        {personal.map((session) => (
+          <p key={session.submissionId} className="text-sm">
+            {session.title} · {formatTime(session.start)}
+          </p>
+        ))}
+        <a
+          className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm"
+          href={`/api/public/events/${encodeURIComponent(eventSlug)}/schedule.ics`}
+        >
+          Add to calendar
+        </a>
+      </section>
       <ScheduleTable
         name="List"
         caption="Every published session, in start order."
@@ -294,9 +473,16 @@ function SessionTitle({ session }: { readonly session: PublicScheduleSession }) 
     <TitleCell>
       <div className="grid gap-0.5">
         <span>{session.title}</span>
-        {session.speakers.length > 0 ? (
+        {session.speakers.length > 0 || (session.speakerCards ?? []).length > 0 ? (
           <span className="text-xs font-normal text-muted-foreground">
-            {session.speakers.join(' · ')}
+            {(
+              session.speakerCards ??
+              session.speakers.map((name) => ({ name, jobTitle: '', company: '' }))
+            )
+              .map((card) =>
+                [card.name, card.jobTitle, card.company].filter((part) => part !== '').join(', '),
+              )
+              .join(' · ')}
           </span>
         ) : null}
       </div>
@@ -388,6 +574,27 @@ function ScheduleTable({
         <TableBody>{children}</TableBody>
       </Table>
     </section>
+  )
+}
+
+function ItineraryDescription({ text }: { readonly text: string }) {
+  const [open, setOpen] = useState(false)
+  const long = text.length > 140
+  return (
+    <div>
+      <p className="text-sm">{open || !long ? text : text.slice(0, 140)}</p>
+      {long ? (
+        <Button
+          type="button"
+          variant="link"
+          className="h-auto px-0"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {open ? 'Show less' : 'Show more'}
+        </Button>
+      ) : null}
+    </div>
   )
 }
 

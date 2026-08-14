@@ -367,6 +367,7 @@ describe('public CFP submit and confirmation', () => {
         'href',
         '/portal',
       )
+      expect(screen.getByText('My talk')).toBeInTheDocument()
     })
 
     it('replaces the wizard with one expired-session page when the submit is refused 401', async () => {

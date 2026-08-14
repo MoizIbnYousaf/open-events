@@ -60,6 +60,10 @@ export class InMemoryEventRepository implements EventConfigRepository {
     return null
   }
 
+  async list(): Promise<readonly Event[]> {
+    return [...this.#events.values()].sort((left, right) => left.name.localeCompare(right.name))
+  }
+
   async save(event: Event): Promise<void> {
     this.#events.set(event.id, event)
   }
@@ -369,6 +373,22 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
     return 'updated'
   }
 
+  async updateContent(input: {
+    readonly eventId: string
+    readonly submissionId: string
+    readonly title: string
+    readonly answers: AnswerMap
+  }): Promise<'updated' | 'not-found'> {
+    const submission = this.#submissions.get(input.submissionId)
+    if (submission === undefined || submission.eventId !== input.eventId) return 'not-found'
+    this.#submissions.set(input.submissionId, {
+      ...submission,
+      title: input.title,
+      answers: input.answers,
+    })
+    return 'updated'
+  }
+
   /** Mirrors the adapter: the STANDING verdict is the highest sequence. */
   async findDecision(eventId: string, submissionId: string): Promise<SubmissionDecision | null> {
     const trail = await this.listDecisionHistory(eventId, submissionId)
@@ -477,20 +497,46 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
 }
 
 export class InMemoryContactRepository implements ContactRepository {
-  /**
-   * The double has no submissions, tasks or files behind it, so the roster it
-   * reports is empty. Stated rather than thrown: the services under test here
-   * do not read the roster, and a throwing stub would fail them for a method
-   * they never call.
-   */
-  async listSpeakersByEvent(): Promise<readonly SpeakerRosterRow[]> {
-    return []
-  }
-
   readonly #contacts = new Map<string, Contact>()
+  readonly #profiles = new Map<
+    string,
+    {
+      readonly eventId: string
+      readonly contactId: string
+      readonly jobTitle: string
+      readonly company: string
+      readonly travelNotes: string
+      readonly workflowStatus: string
+    }
+  >()
 
   constructor(contacts: readonly Contact[] = []) {
     for (const contact of contacts) this.#contacts.set(contact.id, contact)
+  }
+
+  async listSpeakersByEvent(eventId: string): Promise<readonly SpeakerRosterRow[]> {
+    const rows: SpeakerRosterRow[] = []
+    for (const profile of this.#profiles.values()) {
+      if (profile.eventId !== eventId) continue
+      const contact = this.#contacts.get(profile.contactId)
+      if (contact === undefined) continue
+      rows.push({
+        contactId: contact.id,
+        email: contact.email,
+        name: contact.name,
+        bio: contact.bio,
+        proposalCount: 0,
+        sessionCount: 0,
+        taskCount: 0,
+        taskCompletedCount: 0,
+        hasHeadshot: false,
+        jobTitle: profile.jobTitle,
+        company: profile.company,
+        travelNotes: profile.travelNotes,
+        workflowStatus: profile.workflowStatus,
+      })
+    }
+    return rows
   }
 
   async findById(id: string): Promise<Contact | null> {
@@ -512,6 +558,26 @@ export class InMemoryContactRepository implements ContactRepository {
     if (existing !== undefined) {
       this.#contacts.set(id, { ...existing, name: fields.name, bio: fields.bio })
     }
+  }
+
+  async upsertSpeakerProfile(input: {
+    readonly eventId: string
+    readonly contactId: string
+    readonly jobTitle: string
+    readonly company: string
+    readonly travelNotes: string
+    readonly workflowStatus: string
+    readonly createdAt: string
+    readonly updatedAt: string
+  }): Promise<void> {
+    this.#profiles.set(`${input.eventId}:${input.contactId}`, {
+      eventId: input.eventId,
+      contactId: input.contactId,
+      jobTitle: input.jobTitle,
+      company: input.company,
+      travelNotes: input.travelNotes,
+      workflowStatus: input.workflowStatus,
+    })
   }
 
   /** Insert-if-absent on the email key; an existing row is never rewritten. */
@@ -696,6 +762,26 @@ export class InMemoryUploadedFileRepository implements UploadedFileRepository {
     const previous = this.#rows.get(slot) ?? null
     this.#rows.set(slot, record)
     return previous
+  }
+
+  async listByEvent(eventId: string): Promise<readonly UploadedFileRecord[]> {
+    return [...this.#rows.values()].filter((row) => row.eventId === eventId)
+  }
+
+  async listVersions() {
+    return []
+  }
+
+  async recordVersion(): Promise<void> {
+    return
+  }
+
+  async listComments() {
+    return []
+  }
+
+  async addComment(): Promise<void> {
+    return
   }
 
   list(): readonly UploadedFileRecord[] {

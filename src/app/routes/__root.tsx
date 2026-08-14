@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Link, createRootRoute, Outlet } from '@tanstack/react-router'
 
 import { Button } from '../../components/ui/button'
@@ -6,11 +6,14 @@ import { Kbd } from '../../components/ui/kbd'
 import { linkVariants } from '../../components/ui/link-variants'
 import { LiveAnnouncer } from '../../components/ui/live-announcer'
 import { ThemeToggle } from '../../components/ui/theme-toggle'
+import { isClerkConfigured } from '../../lib/clerk'
 import {
   COMMAND_MENU_OPEN_EVENT,
   PALETTE_TRIGGER_TOUR_TARGET,
 } from '../features/command/CommandMenu'
 import { TOUR_TOGGLE_EVENT } from '../features/tour/ProductTour'
+
+const ClerkNavControls = lazy(() => import('../features/nav/ClerkNavControls'))
 
 export const Route = createRootRoute({
   component: Root,
@@ -153,6 +156,11 @@ function Root() {
             {/* After the site nav so the visible navigation is what a
                   first-time visitor meets first; the palette accelerates it. */}
             <ThemeToggle />
+            {isClerkConfigured() ? (
+              <Suspense fallback={null}>
+                <ClerkNavControls />
+              </Suspense>
+            ) : null}
           </div>
         </div>
       </header>

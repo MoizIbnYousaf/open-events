@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
 
 import type { AnswerValue } from '../../../domain'
-import { getApiErrorCode } from '../../api/admin-events'
+import { getApiErrorCode, requestJson } from '../../api/admin-events'
 import { readDecision, useAcceptancePreview } from '../../queries/admin-communications'
 import { useFormVersionDetail } from '../../queries/admin-forms'
 import { useSubmissionDetail } from '../../queries/admin-submissions'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
+import { ButtonGroup } from '../../../components/ui/button-group'
 import { Card, CardContent } from '../../../components/ui/card'
+import { Field, FieldLabel } from '../../../components/ui/field'
+import { Input } from '../../../components/ui/input'
+import { NativeSelect } from '../../../components/ui/native-select'
+import { Textarea } from '../../../components/ui/textarea'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { InboxIcon } from '../../../components/ui/icons'
 import {
@@ -207,6 +213,12 @@ export default function SubmissionDetail() {
             <Badge variant="ghost">Version {detail.version}</Badge>
           </PageHeaderActions>
         </PageHeader>
+        <SessionContentEditor
+          slug={slug ?? ''}
+          submissionId={detail.id}
+          title={detail.title}
+          abstract={answerText(detail.answers.abstract ?? '')}
+        />
         {/* The proposal is the page; decisions and evaluation are the rail
             beside it, so a reviewer never loses the text they are judging.
             The rail holds an email preview and a committee roster, so 26rem is
@@ -277,5 +289,132 @@ export default function SubmissionDetail() {
         </div>
       </div>
     </AppShell>
+  )
+}
+
+function SessionContentEditor({
+  slug,
+  submissionId,
+  title,
+  abstract,
+}: {
+  readonly slug: string
+  readonly submissionId: string
+  readonly title: string
+  readonly abstract: string
+}) {
+  const client = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [nextTitle, setNextTitle] = useState<string | null>(null)
+  const [nextAbstract, setNextAbstract] = useState<string | null>(null)
+  const titleValue = nextTitle ?? title
+  const abstractValue = nextAbstract ?? abstract
+  const [status, setStatus] = useState('approved')
+  const revisions = useQuery({
+    queryKey: ['admin', 'revisions', slug, submissionId],
+    queryFn: () =>
+      requestJson<readonly { id: string; editorName: string; title: string; createdAt: string }[]>(
+        `/api/admin/events/${slug}/submissions/${submissionId}/revisions`,
+      ),
+    enabled: open,
+  })
+  const save = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${slug}/submissions/${submissionId}/content`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: titleValue,
+          abstract: abstractValue,
+          editorName: 'Jordan Alvarez',
+        }),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries()
+    },
+  })
+  const restore = useMutation({
+    mutationFn: (revisionId: string) =>
+      requestJson(`/api/admin/events/${slug}/revisions/${revisionId}/restore`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries()
+    },
+  })
+  const approve = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${slug}/submissions/${submissionId}/content-status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries()
+    },
+  })
+  if (!open) {
+    return (
+      <Button type="button" variant="outline" className="self-start" onClick={() => setOpen(true)}>
+        Edit session content
+      </Button>
+    )
+  }
+  return (
+    <Card>
+      <CardContent className="grid gap-2">
+        <Field>
+          <FieldLabel htmlFor="session-title">Session title</FieldLabel>
+          <Input
+            id="session-title"
+            value={titleValue}
+            onChange={(event) => setNextTitle(event.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="session-abstract">Abstract</FieldLabel>
+          <Textarea
+            id="session-abstract"
+            value={abstractValue}
+            onChange={(event) => setNextAbstract(event.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="session-content-status">Content status</FieldLabel>
+          <NativeSelect
+            id="session-content-status"
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+          >
+            <option value="approved">Approved</option>
+            <option value="draft">Draft</option>
+          </NativeSelect>
+        </Field>
+        <ButtonGroup>
+          <Button type="button" onClick={() => save.mutate()} pending={save.isPending}>
+            Save session content
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => approve.mutate()}
+            pending={approve.isPending}
+          >
+            Save content status
+          </Button>
+        </ButtonGroup>
+        <ul className="grid gap-1 text-sm">
+          {(revisions.data ?? []).map((revision) => (
+            <li key={revision.id} className="flex items-center justify-between gap-2">
+              <span>
+                {revision.createdAt} · {revision.editorName} · {revision.title}
+              </span>
+              <Button type="button" variant="outline" onClick={() => restore.mutate(revision.id)}>
+                Restore
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   )
 }

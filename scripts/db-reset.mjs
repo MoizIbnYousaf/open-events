@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+// Local-only D1 reset: wipe .wrangler/state, apply migrations --local, seed --local.
+import { rmSync, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
+
+const root = resolve(import.meta.dirname, '..')
+const stateDir = resolve(root, '.wrangler', 'state')
+// OPT-IN. The base seed is the minimal fixture a great many tests assert
+// exactly, and the golden journeys assert ABSOLUTE row totals that a seeded
+// proposal would silently inflate — so the demo programme is never the default.
+const withProgramme = process.argv.includes('--programme')
+
+const run = (args) => {
+  const result = spawnSync('pnpm', ['exec', ...args], { cwd: root, stdio: 'inherit' })
+  if (result.status !== 0) process.exit(result.status ?? 1)
+}
+
+if (existsSync(stateDir)) {
+  rmSync(stateDir, { recursive: true, force: true })
+  console.log('db:reset — local D1 state wiped')
+} else {
+  console.log('db:reset — no local state to wipe')
+}
+
+run(['wrangler', 'd1', 'migrations', 'apply', 'open-events-production', '--local'])
+run(['wrangler', 'd1', 'execute', 'open-events-production', '--local', '--file', 'src/db/seed.sql'])
+if (withProgramme) {
+  run([
+    'wrangler',
+    'd1',
+    'execute',
+    'open-events-production',
+    '--local',
+    '--file',
+    'src/db/seed-programme.sql',
+  ])
+}
+console.log(
+  withProgramme
+    ? 'db:reset — migrations, DemoConf 2026 seed and the demo programme executed (local only)'
+    : 'db:reset — migrations applied and DemoConf 2026 seed executed (local only)',
+)

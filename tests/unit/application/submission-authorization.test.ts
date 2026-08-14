@@ -164,4 +164,22 @@ describe('submission detail authorization', () => {
     ])
     expect(await service.listByEvent(organizerActor, 'event-other')).toEqual([])
   })
+
+  it('prints the standing decision on the organizer list after a verdict is recorded', async () => {
+    const { service, submissions } = buildHarness()
+    const other = await seedForeignSubmission({ service, submissions })
+
+    expect((await service.listByEvent(organizerActor, EVENT_ID))[0]?.decision).toBe('pending')
+    expect(
+      await submissions.recordDecision({
+        id: 'decision-1',
+        eventId: EVENT_ID,
+        submissionId: other.id,
+        outcome: 'accepted',
+        decidedBy: 'organizer',
+        decidedAt: FIXED_NOW,
+      }),
+    ).toBe('recorded')
+    expect((await service.listByEvent(organizerActor, EVENT_ID))[0]?.decision).toBe('accepted')
+  })
 })

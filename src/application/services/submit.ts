@@ -10,7 +10,7 @@ import { isValidEmailAddress, normalizeEmail } from '../../domain/invariants/ema
 import { isSubmissionEditable } from '../../domain/invariants/cfp'
 import { validateAnswersAgainstVersion } from '../../domain/invariants/submission'
 import { applyRoutingRules } from '../../domain/rules'
-import type { ProposalSubmission, SubmissionId } from '../../domain/submission'
+import type { ProposalSubmission, SubmissionId, SubmissionOutcome } from '../../domain/submission'
 import type {
   ContributorDto,
   SubmissionDetailDto,
@@ -192,14 +192,28 @@ export class SubmitService {
     _actor: OrganizerActor,
     eventId: EventId,
   ): Promise<readonly SubmissionListItemDto[]> {
-    const submissions = await this.#submissions.listByEvent(eventId)
-    return Promise.all(submissions.map((submission) => this.#listItem(submission)))
+    const [submissions, standing] = await Promise.all([
+      this.#submissions.listByEvent(eventId),
+      this.#standingDecisions(eventId),
+    ])
+    return Promise.all(
+      submissions.map((submission) =>
+        this.#listItem(submission, standing.get(submission.id) ?? 'pending'),
+      ),
+    )
   }
 
   /** Submitter-owned list: the actor's own submissions, newest first, no answers. */
   async listOwn(actor: SubmitterActor): Promise<readonly SubmissionListItemDto[]> {
-    const submissions = await this.#submissions.listByOwner(actor.eventId, actor.contactId)
-    return Promise.all(submissions.map((submission) => this.#listItem(submission)))
+    const [submissions, standing] = await Promise.all([
+      this.#submissions.listByOwner(actor.eventId, actor.contactId),
+      this.#standingDecisions(actor.eventId),
+    ])
+    return Promise.all(
+      submissions.map((submission) =>
+        this.#listItem(submission, standing.get(submission.id) ?? 'pending'),
+      ),
+    )
   }
 
   /** Organizer/event-scoped retrieval: mismatched event returns null (safe 404). */
@@ -314,9 +328,33 @@ export class SubmitService {
     return toSubmissionDetailDto(submission, form, version, contributors, this.#clock.now())
   }
 
-  async #listItem(submission: ProposalSubmission): Promise<SubmissionListItemDto> {
+  async #standingDecisions(
+    eventId: EventId,
+  ): Promise<ReadonlyMap<SubmissionId, SubmissionOutcome>> {
+    const trail = await this.#submissions.listDecisionsByEvent(eventId)
+    const latest = new Map<
+      SubmissionId,
+      { readonly sequence: number; readonly outcome: SubmissionOutcome }
+    >()
+    for (const row of trail) {
+      const standing = latest.get(row.submissionId)
+      if (standing === undefined || row.sequence > standing.sequence) {
+        latest.set(row.submissionId, { sequence: row.sequence, outcome: row.outcome })
+      }
+    }
+    const outcomes = new Map<SubmissionId, SubmissionOutcome>()
+    for (const [id, value] of latest) {
+      outcomes.set(id, value.outcome)
+    }
+    return outcomes
+  }
+
+  async #listItem(
+    submission: ProposalSubmission,
+    decision: SubmissionOutcome,
+  ): Promise<SubmissionListItemDto> {
     const { form, version, contributors } = await this.#context(submission)
-    return toSubmissionListItemDto(submission, form, version, contributors)
+    return toSubmissionListItemDto(submission, form, version, contributors, decision)
   }
 
   async #context(submission: ProposalSubmission): Promise<{

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { getApiErrorCode } from '../../api/admin-events'
 import { useSubmissionList } from '../../queries/admin-submissions'
 import { AlertLive } from '../../../components/ui/alert-live'
+import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { InboxIcon } from '../../../components/ui/icons'
@@ -30,21 +31,12 @@ import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
 
 /*
- * The persisted submission status is pinned to 'pending' for the whole life of
- * a proposal (migration 0002), because the acceptance record — not a status
- * column — IS the accepted state.
- *
- * It is not a visible column: a column that can only ever print one word was
- * read as the acceptance decision, so the list said "Pending" about a proposal
- * the detail page had already recorded as accepted and emailed. The list makes
- * exactly one read and that read cannot see acceptances, so the decision is
- * reported where it is known — on the proposal itself.
- *
- * It is not in the row link's accessible name either, which is where it hid
- * after the column went. A row's accessible name is its IDENTITY — which
- * proposal is this — and a token the list cannot keep true is not identity, it
- * is the same lie spoken to a screen-reader user instead of a sighted one. The
- * name is now title + primary speaker: two facts the list actually holds.
+ * The persisted submission `status` is pinned to 'pending' for the whole life
+ * of a proposal (migration 0002). The list therefore never prints that field.
+ * The standing verdict lives on `decision` (accepted / rejected / pending) and
+ * is the column this table may show. The row link's accessible name stays
+ * identity only — title + primary speaker — so a verdict change does not
+ * rename the proposal.
  */
 
 /**
@@ -64,6 +56,28 @@ const submittedFormatter = new Intl.DateTimeFormat('en-US', {
 function formatSubmitted(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : submittedFormatter.format(date)
+}
+
+function DecisionChip({
+  decision,
+}: {
+  readonly decision: 'pending' | 'accepted' | 'rejected' | undefined
+}) {
+  if (decision === 'accepted') {
+    return (
+      <Badge dot variant="secondary">
+        Accepted
+      </Badge>
+    )
+  }
+  if (decision === 'rejected') {
+    return (
+      <Badge dot variant="outline">
+        Rejected
+      </Badge>
+    )
+  }
+  return <span className="text-muted-foreground">Pending review</span>
 }
 
 /**
@@ -242,6 +256,7 @@ export default function SubmissionList() {
                 {/* Named for what the cell holds: the routing rule's action
                     target, not a track-and-tags list. */}
                 <TableHead scope="col">Routing</TableHead>
+                <TableHead scope="col">Decision</TableHead>
                 <TableHead scope="col">Submitted</TableHead>
               </TableRow>
             </TableHeader>
@@ -267,6 +282,9 @@ export default function SubmissionList() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {row.routing?.actionTarget ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    <DecisionChip decision={row.decision} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     <time dateTime={row.submittedAt}>{formatSubmitted(row.submittedAt)}</time>

@@ -19,13 +19,13 @@ const DARK_SRC: Record<ShaderWashKind, string> = {
 }
 
 const HEIGHT: Record<ShaderWashKind, string> = {
-  mesh: 'h-[560px]',
+  mesh: 'h-[520px]',
   grain: 'h-[280px]',
   'grain-hint': 'h-[140px]',
 }
 
 const OPACITY: Record<ShaderWashKind, string> = {
-  mesh: 'opacity-70 dark:opacity-80',
+  mesh: 'opacity-55 dark:opacity-80',
   grain: 'opacity-30 dark:opacity-[0.32]',
   'grain-hint': 'opacity-[0.26] dark:opacity-[0.28]',
 }

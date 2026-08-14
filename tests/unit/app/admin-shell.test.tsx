@@ -71,6 +71,7 @@ const SUBMISSION_LIST_ITEM = {
     position: 0,
   },
   coSpeakerCount: 0,
+  decision: 'pending',
   createdAt: '2026-08-08T12:00:00.000Z',
   submittedAt: '2026-08-08T12:00:00.000Z',
 }
@@ -293,7 +294,7 @@ describe('admin shell', () => {
   })
 
   it.each([
-    ['/', 'DemoConf 2026'],
+    ['/', 'Run the whole programme in one place.'],
     ['/admin', 'Admin sign in'],
     [`/admin/events/${EVENT_SLUG}`, 'Event settings'],
     [`/admin/events/${EVENT_SLUG}/taxonomies`, 'Taxonomies'],
@@ -343,13 +344,17 @@ describe('admin shell', () => {
     await mountHome('ready')
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'DemoConf 2026' }),
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Run the whole programme in one place.',
+      }),
     ).toBeInTheDocument()
     const h1s = screen.getAllByRole('heading', { level: 1 })
     expect(h1s).toHaveLength(1)
     expect(screen.getAllByRole('heading')[0]?.tagName).toBe('H1')
-    expect(h1s[0]).toHaveTextContent('DemoConf 2026')
+    expect(h1s[0]).toHaveTextContent('Run the whole programme in one place.')
     expect(h1s[0]).not.toHaveTextContent('Open Events')
+    expect(document.body.textContent ?? '').toMatch(/DemoConf 2026/i)
   })
 
   it('keeps the home loading state heading-free (zero h1s, aria-busy skeleton)', async () => {

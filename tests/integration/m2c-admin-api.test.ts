@@ -332,7 +332,9 @@ describe('organizer submissions views', () => {
       tokenValue,
     )
     expect(list.status).toBe(200)
-    expect(await list.json()).toHaveLength(1)
+    const rows = (await list.json()) as Array<{ id: string; decision: string }>
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: detail.id, decision: 'pending' })
 
     const one = await authedRequest(
       'GET',

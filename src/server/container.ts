@@ -25,6 +25,7 @@ import { SubmitService } from '../application/services/submit'
 import { TaxonomyService } from '../application/services/taxonomy'
 import type { AgendaRepository } from '../application/ports/agenda-repository'
 import type { Clock } from '../application/ports/clock'
+import type { ContactRepository } from '../application/ports/contact-repository'
 import type { EventRepository } from '../application/ports/event-repository'
 import type { FormRepository } from '../application/ports/form-repository'
 import type { SubmissionRepository } from '../application/ports/submission-repository'
@@ -62,6 +63,7 @@ export interface ServerDeps {
   readonly events: EventRepository
   readonly forms: FormRepository
   readonly getEvent: GetEvent
+  readonly contacts: ContactRepository
   readonly agenda: AgendaRepository
   readonly agendaBoard: AgendaService
   readonly submissions: SubmissionRepository
@@ -135,6 +137,7 @@ export function buildServerDeps(
     events,
     forms,
     getEvent: new GetEvent(events),
+    contacts,
     agenda,
     agendaBoard: new AgendaService(
       events,

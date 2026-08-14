@@ -21,6 +21,7 @@ const ENVELOPE = {
     {
       submissionId: 'submission-1',
       title: 'My talk',
+      speakers: ['Speaker A'],
       track: 'Talk',
       room: 'Main hall',
       day: '2026-05-13',
@@ -31,6 +32,7 @@ const ENVELOPE = {
     {
       submissionId: 'submission-2',
       title: 'Hallway session',
+      speakers: [],
       track: '',
       room: 'Main hall',
       day: '2026-05-13',

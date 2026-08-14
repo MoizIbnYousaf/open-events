@@ -41,6 +41,7 @@ const SUBMISSION_LIST_ITEM: SubmissionListItemDto = {
     position: 0,
   },
   coSpeakerCount: 0,
+  decision: 'pending',
   createdAt: '2026-08-08T12:00:00.000Z',
   submittedAt: '2026-08-08T12:00:00.000Z',
 }
@@ -317,6 +318,7 @@ describe('organizer submissions', () => {
       // R2-1.11: the cell renders the routing rule's action target, and the
       // header now says so instead of promising tracks and tags.
       'Routing',
+      'Decision',
       'Submitted',
     ]) {
       const header = screen.getByRole('columnheader', { name })
@@ -325,8 +327,7 @@ describe('organizer submissions', () => {
     expect(screen.queryByRole('columnheader', { name: 'Track/Tags' })).not.toBeInTheDocument()
 
     // Identity, not status: the row link names the proposal and who is giving
-    // it (F-R3-7 — the list cannot see acceptances, so it cannot keep a status
-    // token in this name true).
+    // it. The standing verdict lives in the Decision column.
     const rowLink = await screen.findByRole('link', {
       name: /^My talk.*Speaker A$/i,
     })
@@ -337,23 +338,32 @@ describe('organizer submissions', () => {
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
   })
 
-  // F-R3-7: the persisted status is pinned to 'pending' for the life of a
-  // submission, so a Status column could only ever print "Pending" — including
-  // for a proposal the detail page had already recorded as accepted and
-  // emailed. The list makes one read and that read cannot see acceptances.
-  it('does not print a decision the list cannot know', async () => {
+  it('prints the standing decision in its own column, not in the row name', async () => {
     await mountList()
     await screen.findByRole('table')
 
+    expect(screen.getByRole('columnheader', { name: 'Decision' })).toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument()
-    const table = screen.getByRole('table')
-    expect(within(table).queryByText('Pending')).not.toBeInTheDocument()
-    // Not in the row's accessible name either. That is where the token hid
-    // after the column went, and a screen-reader user heard the same stale
-    // verdict a sighted one no longer saw. The name is identity — which
-    // proposal is this — and identity is the title and who is giving it.
+    expect(screen.getByText('Pending review')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'My talk — Speaker A' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Pending/ })).not.toBeInTheDocument()
+  })
+
+  it('shows Accepted and Rejected chips from the list payload', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === listUrl()) {
+        return jsonResponse([
+          { ...SUBMISSION_LIST_ITEM, id: 's-acc', title: 'Yes talk', decision: 'accepted' },
+          { ...SUBMISSION_LIST_ITEM, id: 's-rej', title: 'No talk', decision: 'rejected' },
+        ])
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountList()
+    await screen.findByRole('table')
+    expect(screen.getByText('Accepted')).toBeInTheDocument()
+    expect(screen.getByText('Rejected')).toBeInTheDocument()
   })
 
   // R1-M10 + R1-M11 / F-R5-4: the whole row lights up on hover but only the

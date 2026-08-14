@@ -26,6 +26,7 @@ const SCHEDULE_ENVELOPE = {
     {
       submissionId: 'submission-1',
       title: 'My talk',
+      speakers: ['Speaker A'],
       track: 'Talk',
       room: 'Main hall',
       day: '2026-05-13',
@@ -36,6 +37,7 @@ const SCHEDULE_ENVELOPE = {
     {
       submissionId: 'submission-2',
       title: 'Hands-on workshop',
+      speakers: ['Speaker B'],
       track: 'Workshop',
       room: 'Workshop A',
       day: '2026-05-20',
@@ -213,6 +215,7 @@ describe('public schedule', () => {
       expect(rendered).toContain(view)
     }
     expect(rendered).toContain('My talk')
+    expect(rendered).toContain('Speaker A')
     expect(rendered).toContain('Hands-on workshop')
     expect(rendered).toContain('Talk')
     expect(rendered).toContain('Main hall')

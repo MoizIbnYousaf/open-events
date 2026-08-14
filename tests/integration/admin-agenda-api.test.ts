@@ -634,17 +634,17 @@ describe('placement and publish reach the public schedule', () => {
       timezone: string
       sessions: ReadonlyArray<Record<string, unknown>>
     }
-    expect(body.sessions).toEqual([
-      {
-        submissionId,
-        title: 'Workshop proposal',
-        track: 'AI Engineering',
-        room: 'Workshop A',
-        day: DAY,
-        start: START,
-        end: END,
-        position: 0,
-      },
-    ])
+    expect(body.sessions).toHaveLength(1)
+    expect(body.sessions[0]).toMatchObject({
+      submissionId,
+      title: 'Workshop proposal',
+      track: 'AI Engineering',
+      room: 'Workshop A',
+      day: DAY,
+      start: START,
+      end: END,
+      position: 0,
+    })
+    expect(body.sessions[0]?.speakers).toEqual([])
   })
 })

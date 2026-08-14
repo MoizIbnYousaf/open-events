@@ -63,6 +63,12 @@ export interface SubmissionListItemDto {
   readonly coSpeakerCount: number
   readonly createdAt: UtcInstant
   readonly submittedAt: UtcInstant
+  /**
+   * Standing programme verdict. `status` stays `pending` for the life of the
+   * row (migration 0002); this is the only field the list may print as
+   * Accepted / Rejected / Pending review.
+   */
+  readonly decision: SubmissionOutcome
 }
 
 /**
@@ -169,6 +175,7 @@ export function toSubmissionListItemDto(
   form: CfpForm,
   version: FormVersion,
   contributors: readonly ContributorDto[],
+  decision: SubmissionOutcome = 'pending',
 ): SubmissionListItemDto {
   const primarySpeaker =
     contributors.find(
@@ -186,6 +193,7 @@ export function toSubmissionListItemDto(
     coSpeakerCount: contributors.filter((contributor) => contributor.role === 'co-speaker').length,
     createdAt: submission.createdAt,
     submittedAt: submission.submittedAt,
+    decision,
   }
 }
 

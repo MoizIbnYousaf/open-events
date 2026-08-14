@@ -46,9 +46,26 @@ export async function handleGetPublicSchedule(context: ServerContext): Promise<R
   const items = await deps.taxonomies.listByEvent(event.id)
   const labelByTaxonomyId = new Map(items.map((item) => [item.id, item.label]))
 
+  const speakerIds = new Set<string>()
+  for (const session of sessions) {
+    for (const speakerId of session.speakerIds) speakerIds.add(speakerId)
+  }
+  const nameBySpeakerId = new Map<string, string>()
+  for (const speakerId of speakerIds) {
+    const contact = await deps.contacts.findById(speakerId)
+    const name = contact?.name.trim() ?? ''
+    // A contact created from a magic-link email often stores the address as
+    // its name. The public programme may print a name, never an email.
+    if (name !== '' && !name.includes('@')) nameBySpeakerId.set(speakerId, name)
+  }
+
   const publicSessions = sessions.map((session) => ({
     submissionId: session.submissionId,
     title: titleBySubmissionId.get(session.submissionId) ?? '',
+    speakers: session.speakerIds.flatMap((speakerId) => {
+      const name = nameBySpeakerId.get(speakerId)
+      return name === undefined ? [] : [name]
+    }),
     track: session.trackId === null ? '' : (labelByTaxonomyId.get(session.trackId) ?? ''),
     room: session.roomId === null ? '' : (labelByTaxonomyId.get(session.roomId) ?? ''),
     day: session.day,

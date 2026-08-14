@@ -206,7 +206,7 @@ function ScheduleViews({
         {sessionRows(views.list).map(({ session, time }) => (
           <TableRow key={session.submissionId}>
             <TimeCell>{time}</TimeCell>
-            <TitleCell>{session.title}</TitleCell>
+            <SessionTitle session={session} />
             <TrackCell track={session.track} />
             <TableCell className="text-muted-foreground">{session.room}</TableCell>
           </TableRow>
@@ -221,7 +221,7 @@ function ScheduleViews({
           sessionRows(submissionIds).map(({ session }) => (
             <TableRow key={`${day}-${session.submissionId}`}>
               <KeyCell>{day}</KeyCell>
-              <TitleCell>{session.title}</TitleCell>
+              <SessionTitle session={session} />
               <TrackCell track={session.track} />
               <TableCell className="text-muted-foreground">{session.room}</TableCell>
             </TableRow>
@@ -237,7 +237,7 @@ function ScheduleViews({
           sessionRows(submissionIds).map(({ session }) => (
             <TableRow key={`${week}-${session.submissionId}`}>
               <KeyCell>{week}</KeyCell>
-              <TitleCell>{session.title}</TitleCell>
+              <SessionTitle session={session} />
               <TrackCell track={session.track} />
               <TableCell className="text-muted-foreground">{session.room}</TableCell>
             </TableRow>
@@ -255,7 +255,7 @@ function ScheduleViews({
               {/* The untracked group is keyed by the track it has not got, so
                   the cell that names the group has to say so in words. */}
               <KeyCell>{trackGroupLabel(track)}</KeyCell>
-              <TitleCell>{session.title}</TitleCell>
+              <SessionTitle session={session} />
               <TableCell className="text-muted-foreground">{session.room}</TableCell>
               <KeyCell>{session.day}</KeyCell>
               <TimeCell>{time}</TimeCell>
@@ -272,7 +272,7 @@ function ScheduleViews({
           sessionRows(submissionIds).map(({ session, time }) => (
             <TableRow key={`${room}-${session.submissionId}`}>
               <KeyCell>{room}</KeyCell>
-              <TitleCell>{session.title}</TitleCell>
+              <SessionTitle session={session} />
               <TrackCell track={session.track} />
               <KeyCell>{session.day}</KeyCell>
               <TimeCell>{time}</TimeCell>
@@ -287,6 +287,21 @@ function ScheduleViews({
 /** The session title is the row's subject, so it is the only cell at full ink. */
 function TitleCell({ children }: { readonly children: ReactNode }) {
   return <TableCell className="font-medium text-foreground">{children}</TableCell>
+}
+
+function SessionTitle({ session }: { readonly session: PublicScheduleSession }) {
+  return (
+    <TitleCell>
+      <div className="grid gap-0.5">
+        <span>{session.title}</span>
+        {session.speakers.length > 0 ? (
+          <span className="text-xs font-normal text-muted-foreground">
+            {session.speakers.join(' · ')}
+          </span>
+        ) : null}
+      </div>
+    </TitleCell>
+  )
 }
 
 /** Times line up as a column of digits, not as prose. */

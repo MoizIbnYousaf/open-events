@@ -6,6 +6,7 @@ import { ApiClientError, requestJson } from '../api/admin-events'
 export interface PublicScheduleSession {
   readonly submissionId: string
   readonly title: string
+  readonly speakers: readonly string[]
   readonly track: string
   readonly room: string
   readonly day: string

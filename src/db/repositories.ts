@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 
+import { ApplicationError } from '../application/errors'
 import type { FormElement } from '../domain/form-version'
 import type { CapturedMessageRepository } from '../application/ports/captured-message-repository'
 import type { ConfirmationRepository } from '../application/ports/confirmation-repository'
@@ -805,19 +806,43 @@ export function createTaxonomyRepository(db: D1Database): TaxonomyRepository {
       return rows.map(toTaxonomyItem)
     },
     async replaceForEvent(eventId, items) {
+      const existing = await this.listByEvent(eventId)
+      const keep = new Set(items.map((item) => item.id))
       const statements = [
-        db.prepare('DELETE FROM taxonomy_items WHERE event_id = ?').bind(eventId),
+        ...existing
+          .filter((item) => !keep.has(item.id))
+          .map((item) =>
+            db
+              .prepare('DELETE FROM taxonomy_items WHERE event_id = ? AND id = ?')
+              .bind(eventId, item.id),
+          ),
         ...items.map((item) =>
           db
             .prepare(
               `INSERT INTO taxonomy_items (event_id, id, kind, key, label, position)
                VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(event_id, id) DO NOTHING`,
+               ON CONFLICT(event_id, id) DO UPDATE SET
+                 kind = excluded.kind,
+                 key = excluded.key,
+                 label = excluded.label,
+                 position = excluded.position`,
             )
             .bind(item.eventId, item.id, item.kind, item.key, item.label, item.position),
         ),
       ]
-      await db.batch(statements)
+      if (statements.length === 0) return
+      try {
+        await db.batch(statements)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (/FOREIGN KEY|constraint/i.test(message)) {
+          throw new ApplicationError(
+            'conflict',
+            'A taxonomy item is still referenced by the programme',
+          )
+        }
+        throw error
+      }
     },
   }
 }

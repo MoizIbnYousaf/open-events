@@ -33,14 +33,19 @@ export class TaxonomyService {
     if (event === null) {
       throw new ApplicationError('not_found', `Event '${slug}' not found`)
     }
-    const items: TaxonomyItem[] = input.items.map((item) => ({
-      id: crypto.randomUUID(),
-      eventId: event.id,
-      kind: item.kind,
-      key: item.key,
-      label: item.label,
-      position: item.position,
-    }))
+    const existing = await this.#taxonomies.listByEvent(event.id)
+    const existingByPair = new Map(existing.map((item) => [`${item.kind}:${item.key}`, item]))
+    const items: TaxonomyItem[] = input.items.map((item) => {
+      const prior = existingByPair.get(`${item.kind}:${item.key}`)
+      return {
+        id: prior?.id ?? crypto.randomUUID(),
+        eventId: event.id,
+        kind: item.kind,
+        key: item.key,
+        label: item.label,
+        position: item.position,
+      }
+    })
     const issues = validateTaxonomyItems(items)
     if (issues.length > 0) {
       throw new ValidationFailedError(`Invalid taxonomy items for event '${slug}'`, issues)

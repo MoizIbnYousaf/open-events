@@ -75,6 +75,34 @@ describe('an organizer extends the event vocabulary', () => {
     { kind: 'room', key: 'workshop-a', label: 'Workshop A', position: 1 },
   ]
 
+  it('keeps existing taxonomy ids when the organizer adds a row', async () => {
+    const organizer = await organizerCookie()
+    const before = (await (
+      await app.request(
+        '/api/admin/events/demo-conf-2026/taxonomies',
+        {
+          headers: { cookie: cookieHeader(organizer), origin: ALLOWED_ORIGIN },
+        },
+        bindings(),
+      )
+    ).json()) as { items: readonly { id: string; key: string; kind: string }[] }
+    const talkId = before.items.find((item) => item.kind === 'format' && item.key === 'talk')?.id
+    expect(talkId).toEqual(expect.any(String))
+
+    const response = await putTaxonomies(organizer, [
+      ...SEEDED_ITEMS,
+      { kind: 'format', key: 'keynote', label: 'Keynote (45 min)', position: 3 },
+    ])
+    expect(response.status).toBe(200)
+    const after = (await response.json()) as {
+      items: readonly { id: string; key: string; kind: string }[]
+    }
+    expect(after.items.find((item) => item.kind === 'format' && item.key === 'talk')?.id).toBe(
+      talkId,
+    )
+    expect(after.items.some((item) => item.key === 'keynote')).toBe(true)
+  })
+
   it('offers a newly added format on the published public form', async () => {
     const organizer = await organizerCookie()
     expect(await publicFormats()).toEqual(['Talk', 'Workshop', 'Lightning talk'])

@@ -26,7 +26,15 @@ if (existsSync(stateDir)) {
 run(['wrangler', 'd1', 'migrations', 'apply', 'open-events-production', '--local'])
 run(['wrangler', 'd1', 'execute', 'open-events-production', '--local', '--file', 'src/db/seed.sql'])
 if (withProgramme) {
-  run(['wrangler', 'd1', 'execute', 'open-events-production', '--local', '--file', 'src/db/seed-programme.sql'])
+  run([
+    'wrangler',
+    'd1',
+    'execute',
+    'open-events-production',
+    '--local',
+    '--file',
+    'src/db/seed-programme.sql',
+  ])
 }
 console.log(
   withProgramme

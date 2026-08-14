@@ -61,7 +61,6 @@ interface AssignmentBody {
   readonly createdAt: string
 }
 
-
 // The row's OWN type, not a copy that resembles it. A local shape keeps
 // compiling after the server adds or drops a field, so real drift shows up as
 // a passing test — which is how the blind redaction once shipped unproven.

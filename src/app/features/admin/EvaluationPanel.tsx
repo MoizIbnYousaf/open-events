@@ -428,7 +428,9 @@ function RoundReviews({
           {/* A reviewer provisioned by email may have no name yet; their
               address is the identifying fact we actually hold, and it is
               better than an empty line where a person should be. */}
-          <span className="text-sm font-medium">{review.evaluatorName ?? review.evaluatorEmail}</span>
+          <span className="text-sm font-medium">
+            {review.evaluatorName ?? review.evaluatorEmail}
+          </span>
           <span className="text-xs text-muted-foreground">{review.evaluatorEmail}</span>
           <span className="text-xs text-muted-foreground">
             {review.rating === null ? 'No rating recorded yet' : `Rated ${review.rating} of 5`}

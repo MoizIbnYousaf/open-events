@@ -7,7 +7,6 @@ import { ExpiredSessionState } from '../features/admin/AdminStates'
 import { getApiErrorCode } from '../api/admin-events'
 import { useMessageLog } from '../queries/admin-messages'
 
-
 import type {} from '../routeTree.gen'
 
 function MessagesRoutePage() {

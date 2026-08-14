@@ -198,7 +198,11 @@ export default function SubmissionDetail() {
                 Colour alone used to carry that difference, and colour is the
                 one channel a reader may not have. */}
             <Badge variant={decision === 'pending' ? 'outline' : 'secondary'} dot>
-              {decision === 'pending' ? 'Pending' : decision === 'accepted' ? 'Accepted' : 'Rejected'}
+              {decision === 'pending'
+                ? 'Pending'
+                : decision === 'accepted'
+                  ? 'Accepted'
+                  : 'Rejected'}
             </Badge>
             <Badge variant="ghost">Version {detail.version}</Badge>
           </PageHeaderActions>

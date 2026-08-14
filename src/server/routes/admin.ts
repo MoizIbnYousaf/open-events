@@ -934,7 +934,6 @@ export async function handlePutRoundPool(context: ServerContext): Promise<Respon
   )
 }
 
-
 /**
  * POST .../evaluations/committee/remind: nudge the reviewers who still owe
  * reviews. An empty or absent list means everyone who is behind.

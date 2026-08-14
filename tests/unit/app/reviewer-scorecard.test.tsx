@@ -28,9 +28,33 @@ interface RowCriterion {
 }
 
 const CRITERIA: RowCriterion[] = [
-  { id: 'c-rating', label: 'Relevance', kind: 'rating', weight: 3, scale: { min: 1, max: 5 }, options: null, value: null },
-  { id: 'c-select', label: 'Suggested track', kind: 'select', weight: null, scale: null, options: ['Platform & Infra', 'AI Engineering'], value: null },
-  { id: 'c-text', label: 'Notes for the speaker', kind: 'text', weight: null, scale: null, options: null, value: null },
+  {
+    id: 'c-rating',
+    label: 'Relevance',
+    kind: 'rating',
+    weight: 3,
+    scale: { min: 1, max: 5 },
+    options: null,
+    value: null,
+  },
+  {
+    id: 'c-select',
+    label: 'Suggested track',
+    kind: 'select',
+    weight: null,
+    scale: null,
+    options: ['Platform & Infra', 'AI Engineering'],
+    value: null,
+  },
+  {
+    id: 'c-text',
+    label: 'Notes for the speaker',
+    kind: 'text',
+    weight: null,
+    scale: null,
+    options: null,
+    value: null,
+  },
 ]
 
 function typedRow(overrides: Partial<Record<string, unknown>> = {}) {
@@ -70,7 +94,9 @@ function postedBody(): Record<string, unknown> | null {
     .reverse()
     .find(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
   const init = call?.[1] as RequestInit | undefined
-  return init?.body === undefined ? null : (JSON.parse(String(init.body)) as Record<string, unknown>)
+  return init?.body === undefined
+    ? null
+    : (JSON.parse(String(init.body)) as Record<string, unknown>)
 }
 
 function defaultHandler(url: string, init?: RequestInit): Response {

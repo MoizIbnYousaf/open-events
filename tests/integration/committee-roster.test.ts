@@ -160,9 +160,9 @@ describe('an organizer reads their review committee', () => {
   it('answers a safe 404 for an event that does not exist', async () => {
     const organizer = await organizerCookie()
 
-    expect((await listRoster(organizer, '/api/admin/events/no-such/evaluations/committee')).status).toBe(
-      404,
-    )
+    expect(
+      (await listRoster(organizer, '/api/admin/events/no-such/evaluations/committee')).status,
+    ).toBe(404)
   })
 
   it('is organizer-only', async () => {

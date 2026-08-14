@@ -380,9 +380,7 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
     submissionId: string,
   ): Promise<readonly SubmissionDecision[]> {
     return this.#decisions
-      .filter(
-        (decision) => decision.eventId === eventId && decision.submissionId === submissionId,
-      )
+      .filter((decision) => decision.eventId === eventId && decision.submissionId === submissionId)
       .sort((left, right) => left.sequence - right.sequence)
   }
 

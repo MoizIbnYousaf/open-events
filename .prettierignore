@@ -11,3 +11,8 @@ AGENTS.md
 BRIEF.md
 M1_PLAN.md
 M1_APPROVAL.md
+
+# Untracked local harness leftovers
+/bridge.ts
+/index.ts
+/server.ts

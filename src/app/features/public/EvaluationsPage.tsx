@@ -116,9 +116,7 @@ function RecuseControl({ row }: { readonly row: EvaluationRow }) {
       <Button type="button" variant="outline" onClick={() => setAsking(true)}>
         Declare a conflict of interest
       </Button>
-      {recuse.error != null ? (
-        <AlertLive>That conflict could not be recorded.</AlertLive>
-      ) : null}
+      {recuse.error != null ? <AlertLive>That conflict could not be recorded.</AlertLive> : null}
       <ConfirmDialog
         open={asking}
         onOpenChange={setAsking}
@@ -300,9 +298,7 @@ function SummaryRow({ label, value }: { readonly label: string; readonly value: 
  */
 function SpeakerLine({ row }: { readonly row: EvaluationRow }) {
   if (row.anonymized === true) {
-    return (
-      <CardDescription>Blind review — the speaker is not shown in this round.</CardDescription>
-    )
+    return <CardDescription>Blind review — the speaker is not shown in this round.</CardDescription>
   }
   const named = typeof row.speakerName === 'string' && row.speakerName !== ''
   const others = row.coSpeakers ?? []
@@ -419,8 +415,7 @@ function TypedEvaluationCard({
                   onChange={(event) =>
                     setValues((current) => ({
                       ...current,
-                      [criterion.id]:
-                        event.target.value === '' ? null : Number(event.target.value),
+                      [criterion.id]: event.target.value === '' ? null : Number(event.target.value),
                     }))
                   }
                 >

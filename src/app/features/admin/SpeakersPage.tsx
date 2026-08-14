@@ -43,8 +43,7 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
     // of the two they were given.
     return people.filter(
       (person) =>
-        person.name.toLowerCase().includes(needle) ||
-        person.email.toLowerCase().includes(needle),
+        person.name.toLowerCase().includes(needle) || person.email.toLowerCase().includes(needle),
     )
   }, [people, term])
 

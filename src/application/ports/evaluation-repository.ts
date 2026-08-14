@@ -99,7 +99,10 @@ export interface EvaluationRepository {
   /** Insert-if-absent keyed on (eventId, contactId); a repeat seat is a no-op. */
   saveCommitteeMember(member: EvaluationCommitteeMember): Promise<EvaluationCommitteeMember>
   /** One round's scorecard, in the order the organizer arranged it. */
-  listRoundCriteria(eventId: EventId, roundId: EvaluationRoundId): Promise<readonly RoundCriterion[]>
+  listRoundCriteria(
+    eventId: EventId,
+    roundId: EvaluationRoundId,
+  ): Promise<readonly RoundCriterion[]>
   /**
    * Replaces a round's scorecard wholesale.
    *

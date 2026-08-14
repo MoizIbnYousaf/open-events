@@ -7,7 +7,6 @@ import { ExpiredSessionState } from '../features/admin/AdminStates'
 import { getApiErrorCode } from '../api/admin-events'
 import { useSpeakerRoster } from '../queries/admin-speakers'
 
-
 import type {} from '../routeTree.gen'
 
 function SpeakersRoutePage() {

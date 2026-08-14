@@ -452,8 +452,24 @@ describe('the round editor answers back', () => {
   it('lets a question be taken off the scorecard again', async () => {
     const user = userEvent.setup()
     scorecard = [
-      { id: 'c-1', label: 'Originality', kind: 'rating', weight: 2, position: 0, scale: { min: 1, max: 5 }, options: null },
-      { id: 'c-2', label: 'Relevance', kind: 'rating', weight: 1, position: 1, scale: { min: 1, max: 5 }, options: null },
+      {
+        id: 'c-1',
+        label: 'Originality',
+        kind: 'rating',
+        weight: 2,
+        position: 0,
+        scale: { min: 1, max: 5 },
+        options: null,
+      },
+      {
+        id: 'c-2',
+        label: 'Relevance',
+        kind: 'rating',
+        weight: 1,
+        position: 1,
+        scale: { min: 1, max: 5 },
+        options: null,
+      },
     ]
     mountCommittee()
 

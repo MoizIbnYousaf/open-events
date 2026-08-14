@@ -1,11 +1,7 @@
 import type { CapturedMessage } from '../../domain/confirmation'
 import type { Event, EventId } from '../../domain/event'
 import { buildCalendarInvite } from '../../domain/invite'
-import type {
-  ProposalSubmission,
-  SubmissionId,
-  SubmissionOutcome,
-} from '../../domain/submission'
+import type { ProposalSubmission, SubmissionId, SubmissionOutcome } from '../../domain/submission'
 import type { OrganizerActor, SubmitterActor } from '../actors'
 import type {
   AcceptancePreviewDto,

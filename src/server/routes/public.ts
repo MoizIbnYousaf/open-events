@@ -403,8 +403,7 @@ export async function handleSubmitEvaluation(context: ServerContext): Promise<Re
   if (
     hasAnswers &&
     !answers.every(
-      (answer) =>
-        isRecord(answer) && typeof answer.criterionId === 'string' && 'value' in answer,
+      (answer) => isRecord(answer) && typeof answer.criterionId === 'string' && 'value' in answer,
     )
   ) {
     return validationFailedResponse(context)

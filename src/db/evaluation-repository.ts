@@ -157,8 +157,7 @@ interface RawRoundScoreRow {
   readonly updated_at: string
 }
 
-const ROUND_CRITERION_COLUMNS =
-  'event_id, id, round_id, position, label, kind, weight, config_json'
+const ROUND_CRITERION_COLUMNS = 'event_id, id, round_id, position, label, kind, weight, config_json'
 const ROUND_SCORE_COLUMNS = `event_id, id, assignment_id, criterion_id, value_number,
                 value_text, created_at, updated_at`
 
@@ -724,9 +723,7 @@ export function createEvaluationRepository(db: D1Database): EvaluationRepository
       // event's slug in the path removes nothing rather than reaching across.
       // Nothing else is touched: the contact row and every recorded score stay.
       await db
-        .prepare(
-          `DELETE FROM evaluation_committee_members WHERE event_id = ? AND contact_id = ?`,
-        )
+        .prepare(`DELETE FROM evaluation_committee_members WHERE event_id = ? AND contact_id = ?`)
         .bind(eventId, contactId)
         .run()
     },

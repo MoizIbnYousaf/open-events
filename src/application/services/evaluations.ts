@@ -530,10 +530,7 @@ export class EvaluationService {
     }
     const readers = input.readersPerSubmission ?? 1
     if (!Number.isInteger(readers) || readers < 1) {
-      throw new ApplicationError(
-        'validation_failed',
-        'Each proposal needs at least one reviewer',
-      )
+      throw new ApplicationError('validation_failed', 'Each proposal needs at least one reviewer')
     }
 
     const [pool, roster] = await Promise.all([

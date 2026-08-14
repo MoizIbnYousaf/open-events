@@ -953,9 +953,7 @@ function RoundEditor({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        setDraft(questions.filter((_, other) => other !== index))
-                      }
+                      onClick={() => setDraft(questions.filter((_, other) => other !== index))}
                     >
                       <span aria-hidden="true">Remove</span>
                       <span className="sr-only">{`Remove ${question.label}`}</span>
@@ -1193,8 +1191,8 @@ function ShareOutCard({
         <CardTitle level={3}>Share the reading out</CardTitle>
         <CardDescription>
           Gives every proposal the number of reviewers you ask for, spread evenly across the
-          reviewers in this round. Nobody is given the same proposal twice, so running it again
-          only fills what is still short.
+          reviewers in this round. Nobody is given the same proposal twice, so running it again only
+          fills what is still short.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">

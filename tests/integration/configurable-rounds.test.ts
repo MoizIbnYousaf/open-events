@@ -1032,7 +1032,13 @@ describe('a round has its own reviewer pool', () => {
 describe('a reviewer holding two rounds', () => {
   const FIRST = [
     { label: 'Originality', kind: 'rating', weight: 3, position: 0, scale: { min: 1, max: 5 } },
-    { label: 'Recommendation', kind: 'select', weight: null, position: 1, options: ['Accept', 'Reject'] },
+    {
+      label: 'Recommendation',
+      kind: 'select',
+      weight: null,
+      position: 1,
+      options: ['Accept', 'Reject'],
+    },
   ]
   const SECOND = [
     { label: 'Final score', kind: 'rating', weight: 1, position: 0, scale: { min: 1, max: 5 } },
@@ -1085,7 +1091,10 @@ describe('a reviewer holding two rounds', () => {
 
     const secondRoundId = await openSecondRound(organizer)
     await putScorecard(organizer, secondRoundId, SECOND)
-    expect((await assignTo(organizer, submissionId, 'round.reviewer@example.test', secondRoundId)).status).toBe(200)
+    expect(
+      (await assignTo(organizer, submissionId, 'round.reviewer@example.test', secondRoundId))
+        .status,
+    ).toBe(200)
 
     return { organizer, reviewer, submissionId, firstRoundId, secondRoundId }
   }
@@ -1165,7 +1174,11 @@ describe('a reviewer holding two rounds', () => {
     )
 
     const roster = (await (
-      await app.request(COMMITTEE_PATH, { headers: { cookie: cookieHeader(organizer) } }, bindings())
+      await app.request(
+        COMMITTEE_PATH,
+        { headers: { cookie: cookieHeader(organizer) } },
+        bindings(),
+      )
     ).json()) as readonly { email: string; assignedCount: number; completedCount: number }[]
     const seat = roster.find((member) => member.email === 'round.reviewer@example.test')
 
@@ -1322,9 +1335,10 @@ describe('an organizer shares a round out among its reviewers', () => {
 
     // One reviewer, cap 1, and that reviewer already holds nothing: the seeded
     // proposal's own evaluator is a second seat, so the cap binds on the pool.
-    const result = (await (
-      await distribute(organizer, roundId, { perReviewerCap: 1 })
-    ).json()) as { assigned: number; unassigned: number }
+    const result = (await (await distribute(organizer, roundId, { perReviewerCap: 1 })).json()) as {
+      assigned: number
+      unassigned: number
+    }
 
     expect(result.assigned).toBeLessThanOrEqual(2)
     expect(result.unassigned).toBe(0)

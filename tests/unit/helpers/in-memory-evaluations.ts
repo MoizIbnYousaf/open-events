@@ -279,8 +279,7 @@ export class InMemoryEvaluationRepository implements EvaluationRepository {
       .map((member) => {
         const assignments = [...this.#assignments.values()].filter(
           (assignment) =>
-            assignment.eventId === eventId &&
-            assignment.evaluatorContactId === member.contactId,
+            assignment.eventId === eventId && assignment.evaluatorContactId === member.contactId,
         )
         const scored = assignments.filter((assignment) =>
           [...this.#scores.values()].some(
@@ -319,11 +318,7 @@ export class InMemoryEvaluationRepository implements EvaluationRepository {
     return assignment
   }
 
-  async recuseAssignment(
-    eventId: string,
-    assignmentId: string,
-    recusedAt: string,
-  ): Promise<void> {
+  async recuseAssignment(eventId: string, assignmentId: string, recusedAt: string): Promise<void> {
     const held = this.#assignments.get(assignmentId)
     if (held === undefined || held.eventId !== eventId) return
     // First declaration stands, exactly as the SQL COALESCE does.

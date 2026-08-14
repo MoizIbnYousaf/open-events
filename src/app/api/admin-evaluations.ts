@@ -235,10 +235,10 @@ export interface RemindReviewersResult {
 
 /** POST .../evaluations/committee/remind — nudge whoever is behind. */
 export function remindReviewers(slug: EventSlug): Promise<RemindReviewersResult> {
-  return requestJson(
-    `/api/admin/events/${encodeURIComponent(slug)}/evaluations/committee/remind`,
-    { method: 'POST', body: JSON.stringify({}) },
-  )
+  return requestJson(`/api/admin/events/${encodeURIComponent(slug)}/evaluations/committee/remind`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
 }
 
 /** What a share-out did, in the terms the organizer asked in. */

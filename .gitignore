@@ -44,6 +44,10 @@ test-results/
 /docs-local/
 /reports/
 
+# Local-only private working context — never publish
+/project-goal/
+/research-understanding-plan/
+
 # Credentials
 *.pem
 *.key

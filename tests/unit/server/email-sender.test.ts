@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { capturingEmailSender, createResendEmailSender, selectEmailSender } from '../../../src/server/email'
+import {
+  capturingEmailSender,
+  createResendEmailSender,
+  selectEmailSender,
+} from '../../../src/server/email'
 
 /**
  * Delivery is a second, failable act on top of the captured-message log.
@@ -50,7 +54,10 @@ describe('outbound email', () => {
   })
 
   it('never throws when the provider refuses or the network fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 422 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('nope', { status: 422 })),
+    )
     const refused = createResendEmailSender({ apiKey: 'k', from: 'cfp@example.test' })
     // A speaker has submitted their proposal whether or not the confirmation
     // was delivered, so this must not be able to fail the request behind it.
@@ -58,9 +65,12 @@ describe('outbound email', () => {
       refused.send({ to: 'a@example.test', subject: 's', body: 'b' }),
     ).resolves.toBeUndefined()
 
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('network down')
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network down')
+      }),
+    )
     const broken = createResendEmailSender({ apiKey: 'k', from: 'cfp@example.test' })
     await expect(
       broken.send({ to: 'a@example.test', subject: 's', body: 'b' }),

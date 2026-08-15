@@ -626,9 +626,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
       mimeType: 'application/pdf',
       buffer: Buffer.from('%PDF-1.4 lifecycle outline'),
     })
-    await expect(
-      speakerPage.getByText('lifecycle-outline.pdf', { exact: true }),
-    ).toBeVisible()
+    await expect(speakerPage.getByText('lifecycle-outline.pdf', { exact: true })).toBeVisible()
 
     // Evidence-gated completions on the FEATURED submission's checklist; the
     // bio task is completed by keyboard as the portal's focus evidence.
@@ -748,6 +746,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     await attendeePage.goto(`/schedule/${EVENT_SLUG}`)
     await expect(attendeePage.getByRole('heading', { level: 1, name: 'Schedule' })).toBeVisible()
     for (const view of ['List', 'Day', 'Week', 'Track', 'Room']) {
+      await attendeePage.getByRole('button', { name: view, exact: true }).click()
       await expect(attendeePage.getByRole('region', { name: view })).toContainText(TITLE)
     }
     // The page itself never scrolls horizontally on a phone; wide tables do.

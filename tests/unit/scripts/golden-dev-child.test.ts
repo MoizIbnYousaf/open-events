@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+// prettier-ignore
 // @ts-expect-error — scripts/golden-dev-child.mjs is plain ESM (narrow documented boundary).
 import { devServerCommand, e2eServerEnv, terminateChild } from '../../../scripts/golden-dev-child.mjs'
 

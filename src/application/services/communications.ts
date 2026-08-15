@@ -17,10 +17,7 @@ import type { EventRepository } from '../ports/event-repository'
 import type { SpeakerTaskRepository } from '../ports/speaker-task-repository'
 import type { SubmissionRepository } from '../ports/submission-repository'
 import type { ProgrammeRepository } from '../ports/programme-repository'
-import {
-  CONFIRMATION_BODY_TEMPLATE,
-  CONFIRMATION_SUBJECT_TEMPLATE,
-} from './confirmation-email'
+import { CONFIRMATION_BODY_TEMPLATE, CONFIRMATION_SUBJECT_TEMPLATE } from './confirmation-email'
 import { SPEAKER_PORTAL_PATH } from '../public-path'
 
 /** Built-in P0 acceptance template; no per-event template storage yet. */

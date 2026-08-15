@@ -518,9 +518,7 @@ export function createEvaluationRepository(db: D1Database): EvaluationRepository
       const deleteSql =
         incomingIds.length === 0
           ? db
-              .prepare(
-                'DELETE FROM evaluation_round_criteria WHERE event_id = ? AND round_id = ?',
-              )
+              .prepare('DELETE FROM evaluation_round_criteria WHERE event_id = ? AND round_id = ?')
               .bind(eventId, roundId)
           : db
               .prepare(

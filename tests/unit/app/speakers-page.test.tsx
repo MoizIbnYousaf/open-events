@@ -143,7 +143,9 @@ describe('the organizer speaker roster', () => {
 
   it('offers a published-form assignment control', async () => {
     mount()
-    expect(await screen.findByRole('heading', { name: /assign a published form/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /assign a published form/i }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^assign form$/i })).toBeDisabled()
   })
 
@@ -197,7 +199,10 @@ describe('the organizer speaker roster', () => {
     }
     mount()
     await screen.findByRole('list', { name: /speakers/i })
-    await user.type(screen.getByLabelText(/^import csv$/i), 'name,email\nGrace Hopper,grace@example.test')
+    await user.type(
+      screen.getByLabelText(/^import csv$/i),
+      'name,email\nGrace Hopper,grace@example.test',
+    )
     await user.click(screen.getByRole('button', { name: /import speakers/i }))
     await waitFor(() => expect(posts).toHaveLength(1))
     expect(posts[0]).toContain('Grace Hopper')

@@ -21,9 +21,13 @@ export async function sendReviewerInvite(
   const form = forms.find((item) => item.publishedVersionId !== null) ?? forms[0]
   if (form === undefined) return { invitePath: null, inviteSent: false }
   const ttlMs = getTtlConfig(context).submitterTokenMs
-  await deps.session.startSubmitter({ email, eventSlug: slug, formSlug: form.slug }, ttlMs, (token) => {
-    return `/api/public/session?token=${encodeURIComponent(token)}`
-  })
+  await deps.session.startSubmitter(
+    { email, eventSlug: slug, formSlug: form.slug },
+    ttlMs,
+    (token) => {
+      return `/api/public/session?token=${encodeURIComponent(token)}`
+    },
+  )
   const messages = await deps.capturedMessages.listByEmail(email)
   const body = messages.at(-1)?.body ?? ''
   const match = body.match(/\/api\/public\/session\?token=[^\s]+/)

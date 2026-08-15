@@ -2,11 +2,7 @@ import type { AnswerMap } from '../../domain/answers'
 import type { ContactId } from '../../domain/contact'
 import type { EventId } from '../../domain/event'
 import type { FormId } from '../../domain/form'
-import {
-  SPEAKER_TASK_KINDS,
-  type SpeakerTask,
-  type SpeakerTaskId,
-} from '../../domain/speaker-task'
+import { SPEAKER_TASK_KINDS, type SpeakerTask, type SpeakerTaskId } from '../../domain/speaker-task'
 import type {
   ProposalSubmission,
   SubmissionDecision,

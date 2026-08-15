@@ -77,9 +77,7 @@ function defaultHandler(url: string, init?: RequestInit): Response {
     return jsonResponse({
       ...ACCEPTANCE_PREVIEW,
       alreadySent: AUDIENCE.every((recipient) =>
-        history.some(
-          (row) => row.kind === 'acceptance' && row.toEmail === recipient.email,
-        ),
+        history.some((row) => row.kind === 'acceptance' && row.toEmail === recipient.email),
       ),
     })
   }

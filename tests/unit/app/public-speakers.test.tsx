@@ -49,11 +49,12 @@ function mount() {
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () =>
-      new Response(JSON.stringify(PEOPLE), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify(PEOPLE), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     ),
   )
 })
@@ -67,10 +68,7 @@ describe('public speakers widget', () => {
   it('renders the stored headshot instead of initials when a photo URL exists', async () => {
     mount()
     const photo = await screen.findByRole('img', { name: 'Priya Raman' })
-    expect(photo).toHaveAttribute(
-      'src',
-      '/api/public/events/demo-conf-2026/speakers/c-1/headshot',
-    )
+    expect(photo).toHaveAttribute('src', '/api/public/events/demo-conf-2026/speakers/c-1/headshot')
     expect(screen.getByText('Priya Raman')).toBeInTheDocument()
     expect(screen.getByText(/Staff Engineer/)).toBeInTheDocument()
     expect(screen.getByText(/Northwind/)).toBeInTheDocument()

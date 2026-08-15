@@ -19,7 +19,11 @@ const withProgramme = process.argv.includes('--programme')
  */
 export function wranglerCommand(repoRoot) {
   const require = createRequire(resolve(repoRoot, 'package.json'))
-  const wranglerBin = resolve(dirname(require.resolve('wrangler/package.json')), 'bin', 'wrangler.js')
+  const wranglerBin = resolve(
+    dirname(require.resolve('wrangler/package.json')),
+    'bin',
+    'wrangler.js',
+  )
   return { command: process.execPath, wranglerBin }
 }
 

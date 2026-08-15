@@ -9,9 +9,9 @@ describe('e2e console noise filter', () => {
         'Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits',
       ),
     ).toBe(true)
-    expect(isConsoleNoise("[vite] connecting...")).toBe(true)
-    expect(isConsoleNoise("Can't perform a React state update on a component that hasn't mounted yet.")).toBe(
-      false,
-    )
+    expect(isConsoleNoise('[vite] connecting...')).toBe(true)
+    expect(
+      isConsoleNoise("Can't perform a React state update on a component that hasn't mounted yet."),
+    ).toBe(false)
   })
 })

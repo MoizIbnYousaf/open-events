@@ -148,10 +148,7 @@ export class HeadshotService {
     return (await this.#files.findOwn(eventId, ownerContactId, HEADSHOT_KIND)) !== null
   }
 
-  async getForOwner(
-    eventId: EventId,
-    ownerContactId: ContactId,
-  ): Promise<HeadshotContent | null> {
+  async getForOwner(eventId: EventId, ownerContactId: ContactId): Promise<HeadshotContent | null> {
     const record = await this.#files.findOwn(eventId, ownerContactId, HEADSHOT_KIND)
     if (record === null) return null
     const object = await this.#storage.get(record.storageKey)

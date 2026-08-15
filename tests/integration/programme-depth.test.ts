@@ -318,9 +318,11 @@ describe('multi-event, speakers, embeds, and auto-place', () => {
       bindings(),
     )
     const tasks = (await listed.json()) as Array<{ title: string; kind: string; dueAt: string }>
-    expect(tasks.some((row) => row.title === 'Upload Session Presentation' && row.kind === 'file_request')).toBe(
-      true,
-    )
+    expect(
+      tasks.some(
+        (row) => row.title === 'Upload Session Presentation' && row.kind === 'file_request',
+      ),
+    ).toBe(true)
 
     const mine = await app.request(
       '/api/public/assignments',
@@ -328,10 +330,14 @@ describe('multi-event, speakers, embeds, and auto-place', () => {
       bindings(),
     )
     expect(mine.status).toBe(200)
-    const own = (await mine.json()) as Array<{ title: string; status: string; dueAt: string | null }>
-    expect(own.some((row) => row.title === 'Upload Session Presentation' && row.status === 'pending')).toBe(
-      true,
-    )
+    const own = (await mine.json()) as Array<{
+      title: string
+      status: string
+      dueAt: string | null
+    }>
+    expect(
+      own.some((row) => row.title === 'Upload Session Presentation' && row.status === 'pending'),
+    ).toBe(true)
 
     const upload = await app.request(
       '/api/public/profile/document',

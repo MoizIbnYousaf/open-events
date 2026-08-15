@@ -831,7 +831,12 @@ export class InMemoryProgrammeRepository implements ProgrammeRepository {
   readonly assignees = new Map<string, SpeakerAssignmentAssigneeRecord[]>()
   readonly profiles = new Map<
     string,
-    { jobTitle: string; company: string; travelNotes: string; workflowStatus: SpeakerWorkflowStatus }
+    {
+      jobTitle: string
+      company: string
+      travelNotes: string
+      workflowStatus: SpeakerWorkflowStatus
+    }
   >()
   readonly emailTemplates = new Map<string, { subject: string; body: string }>()
 
@@ -888,7 +893,11 @@ export class InMemoryProgrammeRepository implements ProgrammeRepository {
       .flatMap((assignment) =>
         (this.assignees.get(assignment.id) ?? [])
           .filter((assignee) => assignee.contactId === contactId)
-          .map((assignee) => ({ ...assignment, status: assignee.status, completedAt: assignee.completedAt })),
+          .map((assignee) => ({
+            ...assignment,
+            status: assignee.status,
+            completedAt: assignee.completedAt,
+          })),
       )
   }
   async completeAssignee(assignmentId: string, contactId: string, completedAt: string) {

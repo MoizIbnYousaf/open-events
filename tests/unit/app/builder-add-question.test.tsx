@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { addQuestionToDraft, type BuilderDraft } from '../../../src/app/features/builder/builder-model'
+import {
+  addQuestionToDraft,
+  type BuilderDraft,
+} from '../../../src/app/features/builder/builder-model'
 
 const DRAFT: BuilderDraft = {
   meta: {

@@ -41,9 +41,9 @@ const PUBLISHED: AgendaSessionRecord = {
 
 describe('isPubliclyVisible', () => {
   it('keeps a published session public while a speaker edit is still draft', () => {
-    expect(isPubliclyVisible(PUBLISHED, new Set(), new Map([['s1', 'draft']]), new Set(['s1']))).toBe(
-      true,
-    )
+    expect(
+      isPubliclyVisible(PUBLISHED, new Set(), new Map([['s1', 'draft']]), new Set(['s1'])),
+    ).toBe(true)
     expect(isPubliclyVisible(PUBLISHED, new Set(), new Map([['s1', 'draft']]))).toBe(false)
   })
 })
@@ -73,9 +73,7 @@ describe('toPublicSpeakers', () => {
       'demo-conf-2026',
     )
     expect(listed).toHaveLength(1)
-    expect(listed[0]?.photoUrl).toBe(
-      '/api/public/events/demo-conf-2026/speakers/c-priya/headshot',
-    )
+    expect(listed[0]?.photoUrl).toBe('/api/public/events/demo-conf-2026/speakers/c-priya/headshot')
   })
 
   it('fills empty roster title and company from the published session cards', () => {

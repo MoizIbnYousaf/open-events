@@ -18,13 +18,12 @@ export function useProgrammeSpotlight(ids: readonly string[]): {
   const idKey = ids.join('\0')
   const orderedIds = useMemo(() => idKey.split('\0').filter((id) => id.length > 0), [idKey])
   const resolvedSpotlightId =
-    spotlightId !== null && orderedIds.includes(spotlightId)
-      ? spotlightId
-      : (orderedIds[0] ?? null)
+    spotlightId !== null && orderedIds.includes(spotlightId) ? spotlightId : (orderedIds[0] ?? null)
 
-  useEffect(() => {
-    if (spotlightId !== resolvedSpotlightId) setSpotlightId(resolvedSpotlightId)
-  }, [resolvedSpotlightId, spotlightId])
+  // React permits adjusting state during render when a changed input makes
+  // the stored selection invalid. This keeps the actual state normalized
+  // without adding a synchronization effect and its extra committed render.
+  if (spotlightId !== resolvedSpotlightId) setSpotlightId(resolvedSpotlightId)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -39,9 +38,7 @@ export function useProgrammeSpotlight(ids: readonly string[]): {
       if (shouldIgnoreSpotlightKey(event.target)) return
       if (event.key !== 'j' && event.key !== 'k') return
       event.preventDefault()
-      setSpotlightId(
-        nextSpotlightId(orderedIds, resolvedSpotlightId, event.key === 'j' ? 1 : -1),
-      )
+      setSpotlightId(nextSpotlightId(orderedIds, resolvedSpotlightId, event.key === 'j' ? 1 : -1))
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)

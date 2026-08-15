@@ -305,6 +305,7 @@ function ProposalCard({
       {editing ? (
         <CardContent id="session-content-editor" className="border-b">
           <SessionContentEditor
+            key={submissionId}
             slug={slug}
             submissionId={submissionId}
             title={title}
@@ -371,9 +372,6 @@ function SessionContentEditor({
   const titleValue = nextTitle ?? title
   const abstractValue = nextAbstract ?? abstract
   const [status, setStatus] = useState(contentStatus)
-  useEffect(() => {
-    setStatus(contentStatus)
-  }, [contentStatus])
   const revisions = useQuery({
     queryKey: ['admin', 'revisions', slug, submissionId],
     queryFn: () =>

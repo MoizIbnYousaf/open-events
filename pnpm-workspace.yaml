@@ -3,6 +3,8 @@ allowBuilds:
   esbuild: true
   workerd: true
 minimumReleaseAge: 10080
+overrides:
+  'nanoid@<3.3.18': 3.3.18
 minimumReleaseAgeExclude:
   - '@base-ui/react@1.7.0'
   - '@base-ui/utils@0.3.2'

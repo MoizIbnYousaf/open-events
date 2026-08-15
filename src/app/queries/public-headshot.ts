@@ -64,13 +64,14 @@ export function useOwnHeadshot() {
   const contentType = query.data?.contentType
   const [objectUrl, setObjectUrl] = useState<string | undefined>(undefined)
   useEffect(() => {
-    if (blob === undefined) {
-      setObjectUrl(undefined)
-      return
-    }
+    if (blob === undefined) return
     const url = URL.createObjectURL(blob)
-    setObjectUrl(url)
+    let committed = true
+    queueMicrotask(() => {
+      if (committed) setObjectUrl(url)
+    })
     return () => {
+      committed = false
       URL.revokeObjectURL(url)
     }
   }, [blob])

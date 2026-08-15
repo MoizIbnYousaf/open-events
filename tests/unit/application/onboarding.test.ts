@@ -324,7 +324,12 @@ describe('OnboardingService.readiness', () => {
       createdAt: now,
     })
     await programme.setAssignees('assign-1', [
-      { assignmentId: 'assign-1', contactId: OWNER_CONTACT_ID, status: 'pending', completedAt: null },
+      {
+        assignmentId: 'assign-1',
+        contactId: OWNER_CONTACT_ID,
+        status: 'pending',
+        completedAt: null,
+      },
     ])
     service = new OnboardingService(
       submissions,

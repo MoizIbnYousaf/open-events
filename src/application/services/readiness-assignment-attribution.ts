@@ -12,10 +12,7 @@ export interface AssignmentAssigneeGroup {
 
 export interface AssignmentReadinessAttribution {
   readonly event: { readonly total: number; readonly completed: number }
-  readonly bySubmission: ReadonlyMap<
-    string,
-    { readonly total: number; readonly completed: number }
-  >
+  readonly bySubmission: ReadonlyMap<string, { readonly total: number; readonly completed: number }>
 }
 
 /**

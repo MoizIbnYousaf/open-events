@@ -5,6 +5,8 @@
  * when other audience members had not been sent. The preview's `alreadySent`
  * is true only once every recipient has a stored row.
  */
-export function acceptanceSendComplete(preview: { readonly alreadySent?: boolean } | undefined): boolean {
+export function acceptanceSendComplete(
+  preview: { readonly alreadySent?: boolean } | undefined,
+): boolean {
   return preview?.alreadySent === true
 }

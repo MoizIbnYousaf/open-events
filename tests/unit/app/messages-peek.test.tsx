@@ -32,7 +32,9 @@ function mount() {
   render(
     <QueryClientProvider
       client={
-        new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+        new QueryClient({
+          defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        })
       }
     >
       <MessagesPage eventSlug={SLUG} />
@@ -43,11 +45,12 @@ function mount() {
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () =>
-      new Response(JSON.stringify(LOG), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify(LOG), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     ),
   )
 })

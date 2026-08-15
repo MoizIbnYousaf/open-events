@@ -43,6 +43,17 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   })
 }
 
+// jsdom exposes scrollTo but routes it to its noisy "not implemented"
+// logger. Layout and scrolling are covered by Playwright; unit tests only
+// need calls from router restoration and focus management not to throw.
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'scrollTo', {
+    writable: true,
+    configurable: true,
+    value: () => undefined,
+  })
+}
+
 /**
  * Pointer capture: jsdom fires pointer events but implements none of the
  * capture API, so a component that claims the pointer for a drag — the

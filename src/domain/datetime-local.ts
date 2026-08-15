@@ -2,8 +2,8 @@
  * Convert a `datetime-local` wall clock (YYYY-MM-DDTHH:mm) in an IANA zone
  * to the canonical UTC instant this product stores, and the reverse.
  *
- * Suffixing `Z` treats the organizer's typed clock as UTC. A conference in
- * America/Los_Angeles then opens or closes the review window eight hours off.
+ * Nonexistent spring-forward wall times are rejected. When a fall-back hour
+ * occurs twice, the earlier instant is chosen deterministically.
  */
 
 function part(
@@ -13,17 +13,21 @@ function part(
   return Number(parts.find((entry) => entry.type === type)?.value)
 }
 
-function offsetMs(timeZone: string, utcMs: number): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
+function formatter(timeZone: string, includeSeconds: boolean): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
+    ...(includeSeconds ? { second: '2-digit' as const } : {}),
     hourCycle: 'h23',
-  }).formatToParts(new Date(utcMs))
+  })
+}
+
+function offsetMs(timeZone: string, utcMs: number): number {
+  const parts = formatter(timeZone, true).formatToParts(new Date(utcMs))
   const asUtc = Date.UTC(
     part(parts, 'year'),
     part(parts, 'month') - 1,
@@ -35,7 +39,15 @@ function offsetMs(timeZone: string, utcMs: number): number {
   return asUtc - utcMs
 }
 
+function localValue(utcMs: number, timeZone: string): string {
+  const parts = formatter(timeZone, false).formatToParts(new Date(utcMs))
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((entry) => entry.type === type)?.value
+  return `${value('year')}-${value('month')}-${value('day')}T${value('hour')}:${value('minute')}`
+}
+
 const LOCAL_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
+const HOUR_MS = 60 * 60 * 1000
 
 /** A `datetime-local` value in `timeZone` as the canonical UTC instant. */
 export function datetimeLocalToUtcInstant(local: string, timeZone: string): string | null {
@@ -48,12 +60,31 @@ export function datetimeLocalToUtcInstant(local: string, timeZone: string): stri
   const hour = Number(match[4])
   const minute = Number(match[5])
   const naiveUtc = Date.UTC(year, month - 1, day, hour, minute, 0, 0)
-  let utc = naiveUtc - offsetMs(timeZone, naiveUtc)
-  const shifted = offsetMs(timeZone, utc)
-  if (shifted !== offsetMs(timeZone, naiveUtc)) {
-    utc = naiveUtc - shifted
+  const naive = new Date(naiveUtc)
+  if (
+    naive.getUTCFullYear() !== year ||
+    naive.getUTCMonth() !== month - 1 ||
+    naive.getUTCDate() !== day ||
+    naive.getUTCHours() !== hour ||
+    naive.getUTCMinutes() !== minute
+  ) {
+    return null
   }
-  return new Date(utc).toISOString()
+
+  try {
+    const offsets = new Set<number>()
+    for (let delta = -48 * HOUR_MS; delta <= 48 * HOUR_MS; delta += 6 * HOUR_MS) {
+      offsets.add(offsetMs(timeZone, naiveUtc + delta))
+    }
+    const candidates = [...offsets]
+      .map((offset) => naiveUtc - offset)
+      .filter((candidate) => localValue(candidate, timeZone) === local)
+      .sort((left, right) => left - right)
+    const chosen = candidates[0]
+    return chosen === undefined ? null : new Date(chosen).toISOString()
+  } catch {
+    return null
+  }
 }
 
 /** A stored UTC instant as a `datetime-local` value in `timeZone`. */
@@ -64,28 +95,9 @@ export function utcInstantToDatetimeLocal(
   if (typeof instant !== 'string' || instant === '') return ''
   const ms = Date.parse(instant)
   if (!Number.isFinite(ms)) return ''
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(ms))
-  const year = parts.find((entry) => entry.type === 'year')?.value
-  const month = parts.find((entry) => entry.type === 'month')?.value
-  const day = parts.find((entry) => entry.type === 'day')?.value
-  const hour = parts.find((entry) => entry.type === 'hour')?.value
-  const minute = parts.find((entry) => entry.type === 'minute')?.value
-  if (
-    year === undefined ||
-    month === undefined ||
-    day === undefined ||
-    hour === undefined ||
-    minute === undefined
-  ) {
+  try {
+    return localValue(ms, timeZone)
+  } catch {
     return ''
   }
-  return `${year}-${month}-${day}T${hour}:${minute}`
 }

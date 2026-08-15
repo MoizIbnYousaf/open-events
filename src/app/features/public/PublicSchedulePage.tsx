@@ -51,6 +51,9 @@ interface PublicSchedulePageProps {
   readonly eventSlug?: string
 }
 
+const SCHEDULE_VIEW_NAMES = ['List', 'Day', 'Week', 'Track', 'Room'] as const
+type ScheduleViewName = (typeof SCHEDULE_VIEW_NAMES)[number]
+
 export default function PublicSchedulePage({ eventSlug }: PublicSchedulePageProps) {
   if (eventSlug !== undefined) {
     return <ScheduleScreen eventSlug={eventSlug} />
@@ -211,6 +214,7 @@ function ScheduleViews({
   const [dayOverride, setDayOverride] = useState<string | null>(null)
   const day = dayOverride ?? agenda.days[0] ?? ''
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [activeView, setActiveView] = useState<ScheduleViewName>('List')
   const [starred, setStarred] = useState<readonly string[]>(() =>
     eventSlug === '' ? [] : readPersonalSchedule(eventSlug),
   )
@@ -377,8 +381,26 @@ function ScheduleViews({
           Add to calendar
         </a>
       </section>
+      <nav aria-label="Schedule views" className="-mx-1 overflow-x-auto px-1 sm:hidden">
+        <ul className="flex w-max gap-1 pb-1">
+          {SCHEDULE_VIEW_NAMES.map((name) => (
+            <li key={name}>
+              <Button
+                type="button"
+                size="sm"
+                variant={activeView === name ? 'secondary' : 'ghost'}
+                aria-pressed={activeView === name}
+                onClick={() => setActiveView(name)}
+              >
+                {name}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </nav>
       <ScheduleTable
         name="List"
+        active={activeView === 'List'}
         caption="Every published session, in start order."
         headers={['Time', 'Title', 'Track', 'Room']}
       >
@@ -393,6 +415,7 @@ function ScheduleViews({
       </ScheduleTable>
       <ScheduleTable
         name="Day"
+        active={activeView === 'Day'}
         caption="Published sessions grouped by day."
         headers={['Day', 'Title', 'Track', 'Room']}
       >
@@ -409,6 +432,7 @@ function ScheduleViews({
       </ScheduleTable>
       <ScheduleTable
         name="Week"
+        active={activeView === 'Week'}
         caption="Published sessions grouped by ISO week."
         headers={['Week', 'Title', 'Track', 'Room']}
       >
@@ -425,6 +449,7 @@ function ScheduleViews({
       </ScheduleTable>
       <ScheduleTable
         name="Track"
+        active={activeView === 'Track'}
         caption="Published sessions grouped by track."
         headers={['Track', 'Title', 'Room', 'Day', 'Time']}
       >
@@ -444,6 +469,7 @@ function ScheduleViews({
       </ScheduleTable>
       <ScheduleTable
         name="Room"
+        active={activeView === 'Room'}
         caption="Published sessions grouped by room."
         headers={['Room', 'Title', 'Track', 'Day', 'Time']}
       >
@@ -548,17 +574,19 @@ function TrackCell({ track }: { readonly track: string }) {
  */
 function ScheduleTable({
   name,
+  active,
   caption,
   headers,
   children,
 }: {
   readonly name: string
+  readonly active: boolean
   readonly caption: string
   readonly headers: readonly string[]
   readonly children: ReactNode
 }) {
   return (
-    <section aria-label={name} className="grid min-w-0 gap-2">
+    <section aria-label={name} className={`min-w-0 gap-2 sm:grid ${active ? 'grid' : 'hidden'}`}>
       <SectionHeading>{name}</SectionHeading>
       <Table bordered className="[&_td]:px-3 [&_th]:px-3">
         <TableCaption className="sr-only">{caption}</TableCaption>

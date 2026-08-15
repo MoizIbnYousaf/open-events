@@ -13,7 +13,7 @@ const LIGHT_SRC: Record<ShaderWashKind, string> = {
 }
 
 const DARK_SRC: Record<ShaderWashKind, string> = {
-  mesh: '/washes/mesh-dark.jpg',
+  mesh: '/washes/conference-hero-dark.jpg',
   grain: '/washes/grain-dark.jpg',
   'grain-hint': '/washes/grain-dark.jpg',
 }

@@ -71,7 +71,7 @@ export default function RoutingRuleEditor({
                     onValueChange={(actionKind) =>
                       onUpdateRule(rule.id, {
                         actionKind: actionKind as RoutingActionKind,
-                        actionTarget: actionKind === 'manual_review' ? null : rule.actionTarget,
+                        actionTarget: actionKind === rule.actionKind ? rule.actionTarget : null,
                       })
                     }
                   >
@@ -89,6 +89,7 @@ export default function RoutingRuleEditor({
                 </Field>
                 {needsTarget ? (
                   <TaxonomyPicker
+                    key={`${rule.id}-${rule.actionKind}`}
                     kind={rule.actionKind === 'assign_track' ? 'track' : 'tag'}
                     items={taxonomyItems}
                     value={rule.actionTarget}

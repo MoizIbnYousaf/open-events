@@ -3,9 +3,15 @@ import { useState } from 'react'
 import type { FormElement, QuestionType } from '../../../domain'
 import { choicesTextToOptions } from './builder-model'
 import { Checkbox } from '../../../components/ui/checkbox'
-import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
+import { Field, FieldError, FieldLabel, FieldTriggerLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
-import { NativeSelect } from '../../../components/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../components/ui/select'
 import { Textarea } from '../../../components/ui/textarea'
 
 const ANSWER_TYPES: readonly { readonly value: QuestionType; readonly label: string }[] = [
@@ -66,26 +72,30 @@ export default function ElementEditor({
         Required
       </label>
       <Field>
-        <FieldLabel htmlFor={`element-type-${element.id}`}>Answer type</FieldLabel>
-        <NativeSelect
-          id={`element-type-${element.id}`}
+        <FieldTriggerLabel id={`element-type-${element.id}`}>Answer type</FieldTriggerLabel>
+        <Select
           value={element.questionType ?? 'short_text'}
-          onChange={(event) => {
-            const next = event.target.value as QuestionType
-            const isChoice = next === 'single_choice' || next === 'multi_choice'
+          onValueChange={(next) => {
+            const questionType = next as QuestionType
+            const isChoice = questionType === 'single_choice' || questionType === 'multi_choice'
             onUpdate({
-              questionType: next,
+              questionType,
               options: isChoice && element.options.length === 0 ? ['Option 1'] : element.options,
-              maxLength: next === 'long_text' ? 4000 : 200,
+              maxLength: questionType === 'long_text' ? 4000 : 200,
             })
           }}
         >
-          {ANSWER_TYPES.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </NativeSelect>
+          <SelectTrigger aria-labelledby={`element-type-${element.id}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ANSWER_TYPES.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </Field>
       {element.questionType === 'single_choice' || element.questionType === 'multi_choice' ? (
         <Field className="sm:col-span-2">

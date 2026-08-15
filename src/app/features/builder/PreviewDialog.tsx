@@ -72,7 +72,7 @@ export default function PreviewDialog({ open, draft, taxonomyItems, onClose }: P
               </div>
             }
           >
-            <PreviewEngine content={draft.content} taxonomyItems={taxonomyItems} />
+            <PreviewEngine autoFocus content={draft.content} taxonomyItems={taxonomyItems} />
           </Suspense>
         </PreviewLoadBoundary>
         <div className="flex justify-end">

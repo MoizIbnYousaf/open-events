@@ -83,12 +83,12 @@ export default function CfpSaveBar({ onBack, onNext, onDenied, onSaveStart }: Cf
         onNext !== undefined && 'sticky bottom-0 z-10',
       )}
     >
-      {onBack !== undefined ? (
-        <Button type="button" variant="ghost" onClick={onBack}>
-          Back
-        </Button>
-      ) : null}
       <ButtonGroup>
+        {onBack !== undefined ? (
+          <Button type="button" variant="ghost" onClick={onBack}>
+            Back
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="outline"

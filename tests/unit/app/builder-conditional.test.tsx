@@ -276,10 +276,10 @@ describe('builder conditional visibility and routing rules', () => {
 
     const targetTrigger = screen.getByRole('combobox', { name: /target/i })
     await user.click(targetTrigger)
-    const trackOptions = await screen.findAllByRole('option')
-    expect(trackOptions.some((option) => option.textContent === 'Talk')).toBe(true)
-    expect(trackOptions.some((option) => option.textContent === 'Workshop')).toBe(true)
-    expect(trackOptions.some((option) => option.textContent === 'Beginner')).toBe(false)
+    const trackOptions = await screen.findByRole('listbox')
+    expect(await within(trackOptions).findByRole('option', { name: 'Talk' })).toBeInTheDocument()
+    expect(within(trackOptions).getByRole('option', { name: 'Workshop' })).toBeInTheDocument()
+    expect(within(trackOptions).queryByRole('option', { name: 'Beginner' })).not.toBeInTheDocument()
 
     await user.click(await screen.findByRole('option', { name: 'Talk' }))
     await user.click(actionTrigger)
@@ -289,9 +289,9 @@ describe('builder conditional visibility and routing rules', () => {
     await user.click(actionTrigger)
     await user.click(await screen.findByRole('option', { name: /assign_tag/i }))
     await user.click(screen.getByRole('combobox', { name: /target/i }))
-    const tagOptions = await screen.findAllByRole('option')
-    expect(tagOptions.some((option) => option.textContent === 'Beginner')).toBe(true)
-    expect(tagOptions.some((option) => option.textContent === 'Talk')).toBe(false)
+    const tagOptions = await screen.findByRole('listbox')
+    expect(await within(tagOptions).findByRole('option', { name: 'Beginner' })).toBeInTheDocument()
+    expect(within(tagOptions).queryByRole('option', { name: 'Talk' })).not.toBeInTheDocument()
   })
 
   // O3: the event slug is a mandatory path segment, so a slugless mount can no

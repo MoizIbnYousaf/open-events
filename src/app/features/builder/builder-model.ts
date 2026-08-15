@@ -294,7 +294,9 @@ export function addQuestionToDraft(
     index += 1
     fieldKey = `custom_question_${index}`
   }
-  const position = draft.content.elements.filter((element) => element.pageId === targetPageId).length
+  const position = draft.content.elements.filter(
+    (element) => element.pageId === targetPageId,
+  ).length
   const isChoice = questionType === 'single_choice' || questionType === 'multi_choice'
   const element: FormElement = {
     id: crypto.randomUUID(),

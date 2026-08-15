@@ -351,7 +351,9 @@ function BuilderEditorScreen({
   }
 
   const addQuestion = (pageId: string) => {
-    setDraft((current) => (current === null ? current : addQuestionToDraft(current, pageId, 'short_text')))
+    setDraft((current) =>
+      current === null ? current : addQuestionToDraft(current, pageId, 'short_text'),
+    )
     setDirty(true)
     dirtyRef.current = true
     setStatusMessage('Question added')
@@ -541,7 +543,10 @@ function BuilderEditorScreen({
 
   const closePreview = () => {
     setPreviewOpen(false)
-    previewButtonRef.current?.focus()
+    // Base UI completes its own focus cleanup as the controlled dialog
+    // closes. Restore the invoking control after that teardown, otherwise the
+    // preview's last focused input can win the same-frame race.
+    setTimeout(() => previewButtonRef.current?.focus(), 0)
   }
 
   if (draftQuery.isError && draft === null) {
@@ -681,91 +686,94 @@ function BuilderEditorScreen({
         </StatusLive>
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_26rem] xl:items-start">
           <div className="grid gap-4">
-          <PageList
-            pages={draft.content.pages}
-            elements={draft.content.elements}
-            invalidElementId={validationIssue?.kind === 'label' ? validationIssue.elementId : null}
-            onUpdateElement={updateElement}
-            onMoveElement={moveElement}
-            onAddQuestion={addQuestion}
-            registerLabelRef={registerLabelRef}
-          />
-          <ConditionRuleEditor
-            rules={draft.content.conditionRules}
-            elements={draft.content.elements}
-            invalidConditionKey={
-              validationIssue?.kind === 'condition-value'
-                ? conditionValueKey(
-                    validationIssue.ruleId,
-                    validationIssue.groupIndex,
-                    validationIssue.conditionIndex,
-                  )
-                : null
-            }
-            registerValueRef={registerValueRef}
-            onUpdateRule={updateConditionRule}
-          />
-          <RoutingRuleEditor
-            rules={draft.content.routingRules}
-            taxonomyItems={taxonomyItems}
-            taxonomyUnavailable={taxonomyUnavailable}
-            onUpdateRule={updateRoutingRule}
-          />
-          {taxonomyUnavailable ? (
-            <AlertLive>
-              Taxonomy unavailable — open the builder from an event page to choose routing targets.
-            </AlertLive>
-          ) : null}
-          {validationMessage !== null ? <AlertLive>{validationMessage}</AlertLive> : null}
-          {saveError !== null ? (
-            saveError.kind === 'forbidden' ? (
-              <AlertLive>Access forbidden.</AlertLive>
-            ) : saveError.kind === 'denied' ? (
-              <AlertLive>Not found.</AlertLive>
-            ) : saveError.kind === 'expired' ? (
-              <AlertLive>Your session has expired. Sign in again to continue.</AlertLive>
-            ) : (
-              <AlertLive>{saveError.message}</AlertLive>
-            )
-          ) : null}
-          {conflictScope !== null ? (
-            // A recovery card, not a red box: the three ways out are the
-            // point, so they get the room. Every one of them is offered
-            // because none of them is safe to pick for the operator.
-            <div className="grid gap-3 rounded-lg bg-destructive/5 p-3 ring-1 ring-destructive/40">
-              <AlertLive className="border-l-0 pl-0 font-medium">
-                The draft changed elsewhere — reload to see the latest
+            <PageList
+              pages={draft.content.pages}
+              elements={draft.content.elements}
+              invalidElementId={
+                validationIssue?.kind === 'label' ? validationIssue.elementId : null
+              }
+              onUpdateElement={updateElement}
+              onMoveElement={moveElement}
+              onAddQuestion={addQuestion}
+              registerLabelRef={registerLabelRef}
+            />
+            <ConditionRuleEditor
+              rules={draft.content.conditionRules}
+              elements={draft.content.elements}
+              invalidConditionKey={
+                validationIssue?.kind === 'condition-value'
+                  ? conditionValueKey(
+                      validationIssue.ruleId,
+                      validationIssue.groupIndex,
+                      validationIssue.conditionIndex,
+                    )
+                  : null
+              }
+              registerValueRef={registerValueRef}
+              onUpdateRule={updateConditionRule}
+            />
+            <RoutingRuleEditor
+              rules={draft.content.routingRules}
+              taxonomyItems={taxonomyItems}
+              taxonomyUnavailable={taxonomyUnavailable}
+              onUpdateRule={updateRoutingRule}
+            />
+            {taxonomyUnavailable ? (
+              <AlertLive>
+                Taxonomy unavailable — open the builder from an event page to choose routing
+                targets.
               </AlertLive>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  pending={reloadPending}
-                  onClick={() => void reloadLatest()}
-                >
-                  {reloadPending ? 'Reloading…' : 'Reload latest'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setDiscardOpen(true)}
-                >
-                  Discard my changes
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  pending={retryPending}
-                  onClick={() => void retryAfterReload()}
-                >
-                  {retryPending ? 'Trying again…' : 'Retry after reload'}
-                </Button>
+            ) : null}
+            {validationMessage !== null ? <AlertLive>{validationMessage}</AlertLive> : null}
+            {saveError !== null ? (
+              saveError.kind === 'forbidden' ? (
+                <AlertLive>Access forbidden.</AlertLive>
+              ) : saveError.kind === 'denied' ? (
+                <AlertLive>Not found.</AlertLive>
+              ) : saveError.kind === 'expired' ? (
+                <AlertLive>Your session has expired. Sign in again to continue.</AlertLive>
+              ) : (
+                <AlertLive>{saveError.message}</AlertLive>
+              )
+            ) : null}
+            {conflictScope !== null ? (
+              // A recovery card, not a red box: the three ways out are the
+              // point, so they get the room. Every one of them is offered
+              // because none of them is safe to pick for the operator.
+              <div className="grid gap-3 rounded-lg bg-destructive/5 p-3 ring-1 ring-destructive/40">
+                <AlertLive className="border-l-0 pl-0 font-medium">
+                  The draft changed elsewhere — reload to see the latest
+                </AlertLive>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    pending={reloadPending}
+                    onClick={() => void reloadLatest()}
+                  >
+                    {reloadPending ? 'Reloading…' : 'Reload latest'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDiscardOpen(true)}
+                  >
+                    Discard my changes
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    pending={retryPending}
+                    onClick={() => void retryAfterReload()}
+                  >
+                    {retryPending ? 'Trying again…' : 'Retry after reload'}
+                  </Button>
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
           </div>
           <aside
             data-slot="builder-live-preview"
@@ -774,7 +782,11 @@ function BuilderEditorScreen({
           >
             <p className="text-xs font-medium text-muted-foreground">What speakers see</p>
             <Suspense fallback={<StatusLive>Loading the live preview…</StatusLive>}>
-              <PreviewEngine content={draft.content} taxonomyItems={taxonomyItems} />
+              <PreviewEngine
+                content={draft.content}
+                taxonomyItems={taxonomyItems}
+                interactive={false}
+              />
             </Suspense>
           </aside>
         </div>

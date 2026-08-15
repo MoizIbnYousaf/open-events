@@ -526,7 +526,7 @@ export class InMemoryContactRepository implements ContactRepository {
         contactId: contact.id,
         email: contact.email,
         name: contact.name,
-        bio: contact.bio,
+        bio: contact.bio ?? null,
         proposalCount: 0,
         sessionCount: 0,
         taskCount: 0,

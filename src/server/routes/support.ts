@@ -51,6 +51,10 @@ function eventSlugFrom(context: ServerContext, body?: Record<string, unknown> | 
   return 'demo-conf-2026'
 }
 
+function routeParam(context: ServerContext, name: string): string {
+  return context.req.param(name) ?? ''
+}
+
 function applyGuestCookie(context: ServerContext, token: string | null): void {
   if (token === null) return
   context.header(
@@ -165,7 +169,7 @@ async function handleList(context: ServerContext): Promise<Response> {
   if (!(actor instanceof OrganizerActor)) return unauthorizedResponse(context)
   const archived = context.req.query('archived') === 'true'
   try {
-    const chats = await deps.support.listChats(actor, context.req.param('slug'), archived)
+    const chats = await deps.support.listChats(actor, routeParam(context, 'slug'), archived)
     return context.json(chats)
   } catch (error) {
     if (error instanceof ApplicationError) {
@@ -183,8 +187,8 @@ async function handleGetAdmin(context: ServerContext): Promise<Response> {
   try {
     const chat = await deps.support.getAdminChat(
       actor,
-      context.req.param('slug'),
-      context.req.param('id'),
+      routeParam(context, 'slug'),
+      routeParam(context, 'id'),
     )
     return context.json(chat)
   } catch (error) {
@@ -207,8 +211,8 @@ async function handleAdminSend(context: ServerContext): Promise<Response> {
   try {
     const message = await deps.support.sendAdminMessage(
       actor,
-      context.req.param('slug'),
-      context.req.param('id'),
+      routeParam(context, 'slug'),
+      routeParam(context, 'id'),
       typeof body.content === 'string' ? body.content : '',
     )
     return context.json(message)
@@ -230,8 +234,8 @@ async function handleArchive(context: ServerContext): Promise<Response> {
   try {
     const chat = await deps.support.setArchived(
       actor,
-      context.req.param('slug'),
-      context.req.param('id'),
+      routeParam(context, 'slug'),
+      routeParam(context, 'id'),
       true,
     )
     return context.json(chat)
@@ -253,8 +257,8 @@ async function handleUnarchive(context: ServerContext): Promise<Response> {
   try {
     const chat = await deps.support.setArchived(
       actor,
-      context.req.param('slug'),
-      context.req.param('id'),
+      routeParam(context, 'slug'),
+      routeParam(context, 'id'),
       false,
     )
     return context.json(chat)

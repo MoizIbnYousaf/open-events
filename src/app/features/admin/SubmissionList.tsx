@@ -7,7 +7,13 @@ import { useSubmissionList } from '../../queries/admin-submissions'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../../../components/ui/card'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { EmptyState } from '../../../components/ui/empty-state'
@@ -305,7 +311,13 @@ export default function SubmissionList() {
                         key={row.id}
                         className={ROW_EMPHASIS}
                         data-selected={selected?.id === row.id ? '' : undefined}
-                        onClick={() => select(row.id)}
+                        onClick={(event) => {
+                          // The row selects the side preview, while its title
+                          // remains a real navigation link. Do not let the
+                          // selection rerender race and cancel that link.
+                          if ((event.target as HTMLElement).closest('a, button') !== null) return
+                          select(row.id)
+                        }}
                       >
                         <TableCell pinned>
                           <Link

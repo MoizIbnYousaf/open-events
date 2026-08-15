@@ -15,7 +15,7 @@ test('app shell loads DemoConf 2026 with no console errors and a healthy API', a
   const response = await page.goto('/')
   expect(response?.status()).toBe(200)
 
-  await expect(page.getByText('DemoConf 2026')).toBeVisible()
+  await expect(page.getByText(/DemoConf 2026/i)).toBeVisible()
 
   const health = await page.request.get('/api/health')
   expect(health.status()).toBe(200)

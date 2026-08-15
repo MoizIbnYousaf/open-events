@@ -26,9 +26,14 @@ import { autocompleteForElement } from '../../lib/autocomplete-purpose'
 interface PreviewEngineProps {
   readonly content: FormVersionContent
   readonly taxonomyItems: readonly TaxonomyItemDto[]
+  readonly interactive?: boolean
 }
 
-export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineProps) {
+export default function PreviewEngine({
+  content,
+  taxonomyItems,
+  interactive = true,
+}: PreviewEngineProps) {
   const [answers, setAnswers] = useState<AnswerMap>({})
   const [issues, setIssues] = useState<readonly AnswerValidationIssue[]>([])
   // A clean run used to change nothing on screen, so the organizer could not
@@ -57,6 +62,7 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
   }, [routingOutcome, taxonomyItems])
 
   useEffect(() => {
+    if (!interactive) return
     const first = content.elements.find(
       (element) =>
         element.fieldKey !== null && (element.kind === 'field' || element.kind === 'question'),
@@ -64,7 +70,7 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
     if (first?.fieldKey !== null && first?.fieldKey !== undefined) {
       fieldRefs.current.get(first.fieldKey)?.focus()
     }
-  }, [content])
+  }, [content, interactive])
 
   const setAnswer = (fieldKey: ElementFieldKey, value: AnswerValue | null) => {
     setPassed(false)
@@ -99,6 +105,27 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
   // used to render only "Please review the highlighted fields." and highlight
   // nothing. Indexing by fieldKey is what lets each control carry its own text.
   const issueByField = new Map(issues.map((issue) => [issue.fieldKey, issue.message]))
+
+  if (!interactive) {
+    return (
+      <div className="grid gap-3 rounded-lg border border-border bg-card p-4 shadow-xs">
+        {visibleElements.map((element) => (
+          <div key={element.id} className="grid gap-1">
+            <p className="text-sm font-medium text-foreground">
+              {element.label ?? element.fieldKey}
+              {element.fieldKey !== null &&
+              isElementRequired(element, content.conditionRules, answers) ? (
+                <span className="text-destructive"> *</span>
+              ) : null}
+            </p>
+            {element.fieldKey !== null ? (
+              <div className="h-8 rounded-md border border-input bg-background" />
+            ) : null}
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="grid gap-4">

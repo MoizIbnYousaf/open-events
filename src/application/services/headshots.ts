@@ -64,12 +64,6 @@ export function headshotStorageKey(
   return `events/${eventId}/contacts/${ownerContactId}/headshot/${id}`
 }
 
-function headshotFileName(contentType: string): string {
-  if (contentType === 'image/jpeg') return 'headshot.jpg'
-  if (contentType === 'image/webp') return 'headshot.webp'
-  return 'headshot.png'
-}
-
 export class HeadshotService {
   readonly #files: UploadedFileRepository
   readonly #storage: ObjectStoragePort
@@ -119,7 +113,10 @@ export class HeadshotService {
       sizeBytes: input.bytes.byteLength,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
-      fileName: headshotFileName(input.contentType),
+      // file_name is reserved for supporting documents. Headshots are served
+      // from their owner-scoped endpoint and deliberately carry no display
+      // filename (migration 0014 enforces that distinction).
+      fileName: undefined,
     }
 
     await this.#storage.put(storageKey, input.bytes, input.contentType)
@@ -151,10 +148,7 @@ export class HeadshotService {
     return (await this.#files.findOwn(eventId, ownerContactId, HEADSHOT_KIND)) !== null
   }
 
-  async getForOwner(
-    eventId: EventId,
-    ownerContactId: ContactId,
-  ): Promise<HeadshotContent | null> {
+  async getForOwner(eventId: EventId, ownerContactId: ContactId): Promise<HeadshotContent | null> {
     const record = await this.#files.findOwn(eventId, ownerContactId, HEADSHOT_KIND)
     if (record === null) return null
     const object = await this.#storage.get(record.storageKey)

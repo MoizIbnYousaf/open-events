@@ -27,11 +27,7 @@ const BASE: FormElement = {
   optionsSource: null,
 }
 
-function ChoicesEditor({
-  onCommit,
-}: {
-  readonly onCommit?: (options: readonly string[]) => void
-}) {
+function ChoicesEditor({ onCommit }: { readonly onCommit?: (options: readonly string[]) => void }) {
   const [element, setElement] = useState<FormElement>(BASE)
   return (
     <ElementEditor

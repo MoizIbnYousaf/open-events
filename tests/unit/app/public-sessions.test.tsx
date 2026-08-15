@@ -58,11 +58,12 @@ function mount() {
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () =>
-      new Response(JSON.stringify(ENVELOPE), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify(ENVELOPE), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     ),
   )
 })

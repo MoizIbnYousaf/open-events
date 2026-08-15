@@ -1,5 +1,8 @@
 allowBuilds:
-  '@clerk/shared': set this to true or false
+  # Clerk ships its runtime artifacts prebuilt. Its only install hook writes a
+  # local telemetry notice, so keep dependency installs deterministic and
+  # side-effect free.
+  '@clerk/shared': false
   esbuild: true
   workerd: true
 minimumReleaseAge: 10080

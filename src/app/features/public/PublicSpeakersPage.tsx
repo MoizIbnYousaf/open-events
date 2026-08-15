@@ -53,6 +53,11 @@ export default function PublicSpeakersPage({ gallery = false }: { readonly galle
           </PageHeaderDescription>
         </PageHeaderContent>
       </PageHeader>
+      <img
+        src="/speakers-conversation.jpg"
+        alt=""
+        className="h-44 w-full rounded-lg object-cover object-center shadow-sm sm:h-56"
+      />
       <div className="flex flex-wrap items-end gap-3">
         <ToggleGroup
           value={[mode]}

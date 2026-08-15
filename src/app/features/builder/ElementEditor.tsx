@@ -89,9 +89,7 @@ export default function ElementEditor({
       </Field>
       {element.questionType === 'single_choice' || element.questionType === 'multi_choice' ? (
         <Field className="sm:col-span-2">
-          <FieldLabel htmlFor={`element-options-${element.id}`}>
-            Choices (one per line)
-          </FieldLabel>
+          <FieldLabel htmlFor={`element-options-${element.id}`}>Choices (one per line)</FieldLabel>
           <ChoicesField
             key={`${element.id}:${element.questionType}`}
             id={`element-options-${element.id}`}

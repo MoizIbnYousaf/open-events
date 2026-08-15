@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useServerMutation } from '../../../adapters/tanstack-react-query'
@@ -62,18 +62,16 @@ export function useOwnHeadshot() {
   })
   const blob = query.data?.blob
   const contentType = query.data?.contentType
-  const [objectUrl, setObjectUrl] = useState<string | undefined>(undefined)
+  const objectUrl = useMemo(
+    () => (blob === undefined ? undefined : URL.createObjectURL(blob)),
+    [blob],
+  )
   useEffect(() => {
-    if (blob === undefined) {
-      setObjectUrl(undefined)
-      return
-    }
-    const url = URL.createObjectURL(blob)
-    setObjectUrl(url)
+    if (objectUrl === undefined) return
     return () => {
-      URL.revokeObjectURL(url)
+      URL.revokeObjectURL(objectUrl)
     }
-  }, [blob])
+  }, [objectUrl])
   return {
     ...query,
     data:

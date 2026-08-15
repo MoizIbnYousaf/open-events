@@ -23,7 +23,9 @@ function mount() {
   render(
     <QueryClientProvider
       client={
-        new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+        new QueryClient({
+          defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        })
       }
     >
       <FilesPage eventSlug={SLUG} />
@@ -52,12 +54,24 @@ beforeEach(() => {
       }
       if (url.includes('/versions')) {
         return jsonResponse([
-          { version: 2, fileName: 'talk-v2.pdf', current: true, createdAt: '2026-08-02T10:00:00.000Z' },
-          { version: 1, fileName: 'talk.pdf', current: false, createdAt: '2026-08-01T10:00:00.000Z' },
+          {
+            version: 2,
+            fileName: 'talk-v2.pdf',
+            current: true,
+            createdAt: '2026-08-02T10:00:00.000Z',
+          },
+          {
+            version: 1,
+            fileName: 'talk.pdf',
+            current: false,
+            createdAt: '2026-08-01T10:00:00.000Z',
+          },
         ])
       }
       if (url.includes('/comments')) {
-        return jsonResponse([{ authorName: 'Organizer', body: 'Looks good', createdAt: '2026-08-02T11:00:00.000Z' }])
+        return jsonResponse([
+          { authorName: 'Organizer', body: 'Looks good', createdAt: '2026-08-02T11:00:00.000Z' },
+        ])
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected' } }, 500)
     }),

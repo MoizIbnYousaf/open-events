@@ -88,6 +88,11 @@ export default function PublicSessionsPage({ eventSlug }: { readonly eventSlug?:
           <PageHeaderDescription>Search and filter the published programme.</PageHeaderDescription>
         </PageHeaderContent>
       </PageHeader>
+      <img
+        src="/session-stage.jpg"
+        alt=""
+        className="h-44 w-full rounded-lg object-cover object-center shadow-sm sm:h-56"
+      />
       <div className="grid max-w-3xl gap-3">
         <Field>
           <FieldLabel htmlFor="session-search">Search sessions</FieldLabel>

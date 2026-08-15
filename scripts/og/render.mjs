@@ -18,7 +18,7 @@ const page = await browser.newPage({
   deviceScaleFactor: 2,
 })
 await page.goto(pathToFileURL(card).href, { waitUntil: 'networkidle' })
-await page.evaluate(() => document.fonts.ready)
+await page.evaluate(() => globalThis.document.fonts.ready)
 const tmp = resolve(root, 'public/og/.open-events@2x.png')
 await page.locator('.card').screenshot({ path: tmp, type: 'png' })
 await browser.close()

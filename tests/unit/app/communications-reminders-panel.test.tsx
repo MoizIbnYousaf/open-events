@@ -73,8 +73,24 @@ function requestUrl(input: RequestInfo | URL): string {
 
 function defaultHandler(url: string, init?: RequestInit): Response {
   const method = init?.method ?? 'GET'
-  if (method === 'GET' && url === ACCEPTANCE_PREVIEW_PATH) return jsonResponse(ACCEPTANCE_PREVIEW)
-  if (method === 'GET' && url === REMINDER_PREVIEW_PATH) return jsonResponse(REMINDER_PREVIEW)
+  if (method === 'GET' && url === ACCEPTANCE_PREVIEW_PATH) {
+    return jsonResponse({
+      ...ACCEPTANCE_PREVIEW,
+      alreadySent: AUDIENCE.every((recipient) =>
+        history.some(
+          (row) => row.kind === 'acceptance' && row.toEmail === recipient.email,
+        ),
+      ),
+    })
+  }
+  if (method === 'GET' && url === REMINDER_PREVIEW_PATH) {
+    return jsonResponse({
+      ...REMINDER_PREVIEW,
+      alreadySent: AUDIENCE.every((recipient) =>
+        history.some((row) => row.kind === 'reminder' && row.toEmail === recipient.email),
+      ),
+    })
+  }
   if (method === 'GET' && url === MESSAGES_PATH) return jsonResponse(history)
   if (method === 'POST' && url === ACCEPTANCE_SEND_PATH) {
     history = [
@@ -141,6 +157,7 @@ async function confirmSend(): Promise<void> {
 describe('communications panel with reminders', () => {
   it('names the resolved audience before anything is sent', async () => {
     renderPanel()
+    expect(await screen.findByText('Reminder: My talk')).toBeInTheDocument()
     const audience = await screen.findByRole('list', { name: /audience/i })
     const items = within(audience).getAllByRole('listitem')
     expect(items.map((item) => item.textContent)).toEqual([
@@ -154,6 +171,7 @@ describe('communications panel with reminders', () => {
     const send = await screen.findByRole('button', { name: /send acceptance/i })
     await userEvent.click(send)
     // The ask counts the resolved audience before any mail is sent.
+    expect(await screen.findByText('Reminder: My talk')).toBeInTheDocument()
     expect(await screen.findByRole('dialog')).toHaveTextContent(/2 recipients/i)
     await confirmSend()
     await waitFor(() => expect(callsTo(ACCEPTANCE_SEND_PATH, 'POST')).toBe(1))

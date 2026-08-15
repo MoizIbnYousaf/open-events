@@ -37,6 +37,7 @@ export default defineConfig({
     command: 'pnpm db:reset && pnpm dev --port 4173 --strictPort',
     url: 'http://localhost:4173',
     reuseExistingServer: !process.env.CI,
+    env: { ...process.env, VITE_CLERK_PUBLISHABLE_KEY: '' },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 })

@@ -1,4 +1,5 @@
 import { isSubmissionEditable } from '../../domain/invariants/cfp'
+import type { SessionContentStatus } from '../../domain/embed'
 import type {
   AnswerMap,
   CfpForm,
@@ -48,6 +49,8 @@ export interface SubmissionDetailDto {
    * deadline from a clock the write path does not share with it.
    */
   readonly editable: boolean
+  /** Persisted session content status; `approved` when no row exists. */
+  readonly contentStatus: SessionContentStatus
 }
 
 /** Narrow organizer-list row derived from the same persisted submission. */
@@ -151,6 +154,10 @@ export function toSubmissionDetailDto(
   version: FormVersion,
   contributors: readonly ContributorDto[],
   now: UtcInstant,
+  extras: {
+    readonly accepted?: boolean
+    readonly contentStatus?: SessionContentStatus
+  } = {},
 ): SubmissionDetailDto {
   return {
     id: submission.id,
@@ -166,7 +173,8 @@ export function toSubmissionDetailDto(
     contributors,
     createdAt: submission.createdAt,
     submittedAt: submission.submittedAt,
-    editable: isSubmissionEditable(form.limits, now),
+    editable: isSubmissionEditable(form.limits, now) || extras.accepted === true,
+    contentStatus: extras.contentStatus ?? 'approved',
   }
 }
 

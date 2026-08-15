@@ -352,18 +352,48 @@ export function createProgrammeRepository(db: D1Database): ProgrammeRepository {
     async findSpeakerProfile(eventId, contactId) {
       const row = await db
         .prepare(
-          `SELECT job_title, company, workflow_status
+          `SELECT job_title, company, travel_notes, workflow_status
              FROM speaker_profiles WHERE event_id = ? AND contact_id = ?`,
         )
         .bind(eventId, contactId)
-        .first<{ job_title: string; company: string; workflow_status: SpeakerWorkflowStatus }>()
+        .first<{
+          job_title: string
+          company: string
+          travel_notes: string
+          workflow_status: SpeakerWorkflowStatus
+        }>()
       return row === null
         ? null
         : {
             jobTitle: row.job_title,
             company: row.company,
+            travelNotes: row.travel_notes,
             workflowStatus: row.workflow_status,
           }
+    },
+
+    async getEmailTemplate(eventId, kind) {
+      const row = await db
+        .prepare(
+          `SELECT subject, body FROM event_email_templates
+            WHERE event_id = ? AND kind = ?`,
+        )
+        .bind(eventId, kind)
+        .first<{ subject: string; body: string }>()
+      return row === null ? null : { subject: row.subject, body: row.body }
+    },
+
+    async saveEmailTemplate(eventId, kind, subject, body) {
+      await db
+        .prepare(
+          `INSERT INTO event_email_templates (event_id, kind, subject, body)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(event_id, kind) DO UPDATE SET
+             subject = excluded.subject,
+             body = excluded.body`,
+        )
+        .bind(eventId, kind, subject, body)
+        .run()
     },
   }
 }

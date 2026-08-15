@@ -499,6 +499,41 @@ export async function handleInviteSpeaker(context: ServerContext): Promise<Respo
   return context.json({ sent: true, to: person.email })
 }
 
+/** GET /api/admin/events/:slug/confirmation-template */
+export async function handleGetConfirmationTemplate(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  return context.json(await deps.communications.getConfirmationTemplate(actor, eventId))
+}
+
+/** PUT /api/admin/events/:slug/confirmation-template */
+export async function handlePutConfirmationTemplate(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.subject !== 'string' || typeof body.body !== 'string') {
+    return validationFailedResponse(context)
+  }
+  return context.json(
+    await deps.communications.saveConfirmationTemplate(actor, eventId, {
+      subject: body.subject,
+      body: body.body,
+    }),
+  )
+}
+
 /** GET /api/admin/events/:slug/speakers/templates */
 export async function handleSpeakerMailTemplates(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -702,6 +737,18 @@ export async function handleRestoreRevision(context: ServerContext): Promise<Res
   const revisionId = context.req.param('revisionId')
   if (slug === undefined || revisionId === undefined) return notFoundResponse(context)
   return context.json(await deps.contentLibrary.restoreRevision(actor, slug, revisionId))
+}
+
+/** GET /api/admin/events/:slug/submissions/:id/content-status */
+export async function handleGetContentStatus(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const submissionId = context.req.param('id')
+  if (slug === undefined || submissionId === undefined) return notFoundResponse(context)
+  return context.json(await deps.contentLibrary.getContentStatus(actor, slug, submissionId))
 }
 
 /** PUT /api/admin/events/:slug/submissions/:id/content-status */
@@ -1700,6 +1747,19 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     handleImportSpeakers,
   )
   app.get(
+    '/api/admin/events/:slug/confirmation-template',
+    requireSession(),
+    requireActor('organizer'),
+    handleGetConfirmationTemplate,
+  )
+  app.put(
+    '/api/admin/events/:slug/confirmation-template',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handlePutConfirmationTemplate,
+  )
+  app.get(
     '/api/admin/events/:slug/speakers/templates',
     requireSession(),
     requireActor('organizer'),
@@ -1809,6 +1869,12 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleListRevisions,
+  )
+  app.get(
+    '/api/admin/events/:slug/submissions/:id/content-status',
+    requireSession(),
+    requireActor('organizer'),
+    handleGetContentStatus,
   )
   app.put(
     '/api/admin/events/:slug/submissions/:id/content-status',

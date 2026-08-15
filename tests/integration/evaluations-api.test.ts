@@ -123,6 +123,9 @@ function unscoredRow(overrides: Partial<RowBody> = {}): RowBody {
     speakerName: SPEAKER_EMAIL,
     anonymized: false,
     coSpeakers: [],
+    abstract: SEEDED_WORKSHOP_ANSWERS.abstract ?? '',
+    track: SEEDED_WORKSHOP_ANSWERS.track ?? '',
+    takeaway: SEEDED_WORKSHOP_ANSWERS.key_takeaway ?? '',
     ...overrides,
   }
 }

@@ -158,14 +158,27 @@ async function handleMarkRead(context: ServerContext): Promise<Response> {
   }
 }
 
+function requireSlug(context: ServerContext): string | null {
+  return context.req.param('slug') ?? null
+}
+
+function requireSlugAndId(context: ServerContext): { slug: string; id: string } | null {
+  const slug = context.req.param('slug')
+  const id = context.req.param('id')
+  if (slug === undefined || id === undefined) return null
+  return { slug, id }
+}
+
 async function handleList(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
   if (deps === null) return databaseUnavailableResponse(context)
   const actor = context.get('actor')
   if (!(actor instanceof OrganizerActor)) return unauthorizedResponse(context)
+  const slug = requireSlug(context)
+  if (slug === null) return notFoundResponse(context)
   const archived = context.req.query('archived') === 'true'
   try {
-    const chats = await deps.support.listChats(actor, context.req.param('slug'), archived)
+    const chats = await deps.support.listChats(actor, slug, archived)
     return context.json(chats)
   } catch (error) {
     if (error instanceof ApplicationError) {
@@ -180,12 +193,10 @@ async function handleGetAdmin(context: ServerContext): Promise<Response> {
   if (deps === null) return databaseUnavailableResponse(context)
   const actor = context.get('actor')
   if (!(actor instanceof OrganizerActor)) return unauthorizedResponse(context)
+  const params = requireSlugAndId(context)
+  if (params === null) return notFoundResponse(context)
   try {
-    const chat = await deps.support.getAdminChat(
-      actor,
-      context.req.param('slug'),
-      context.req.param('id'),
-    )
+    const chat = await deps.support.getAdminChat(actor, params.slug, params.id)
     return context.json(chat)
   } catch (error) {
     if (error instanceof ApplicationError) {
@@ -204,11 +215,13 @@ async function handleAdminSend(context: ServerContext): Promise<Response> {
   if (!(actor instanceof OrganizerActor)) return unauthorizedResponse(context)
   const body = await readJsonBody(context)
   if (body === null) return validationFailedResponse(context)
+  const params = requireSlugAndId(context)
+  if (params === null) return notFoundResponse(context)
   try {
     const message = await deps.support.sendAdminMessage(
       actor,
-      context.req.param('slug'),
-      context.req.param('id'),
+      params.slug,
+      params.id,
       typeof body.content === 'string' ? body.content : '',
     )
     return context.json(message)
@@ -227,13 +240,10 @@ async function handleArchive(context: ServerContext): Promise<Response> {
   if (deps === null) return databaseUnavailableResponse(context)
   const actor = context.get('actor')
   if (!(actor instanceof OrganizerActor)) return unauthorizedResponse(context)
+  const params = requireSlugAndId(context)
+  if (params === null) return notFoundResponse(context)
   try {
-    const chat = await deps.support.setArchived(
-      actor,
-      context.req.param('slug'),
-      context.req.param('id'),
-      true,
-    )
+    const chat = await deps.support.setArchived(actor, params.slug, params.id, true)
     return context.json(chat)
   } catch (error) {
     if (error instanceof ApplicationError) {
@@ -250,13 +260,10 @@ async function handleUnarchive(context: ServerContext): Promise<Response> {
   if (deps === null) return databaseUnavailableResponse(context)
   const actor = context.get('actor')
   if (!(actor instanceof OrganizerActor)) return unauthorizedResponse(context)
+  const params = requireSlugAndId(context)
+  if (params === null) return notFoundResponse(context)
   try {
-    const chat = await deps.support.setArchived(
-      actor,
-      context.req.param('slug'),
-      context.req.param('id'),
-      false,
-    )
+    const chat = await deps.support.setArchived(actor, params.slug, params.id, false)
     return context.json(chat)
   } catch (error) {
     if (error instanceof ApplicationError) {

@@ -201,8 +201,9 @@ export function buildServerDeps(
       createSubmitUnitOfWork(db),
       clock,
       createProgrammeRepository(db),
+      events,
     ),
-    profile: new ProfileService(contacts),
+    profile: new ProfileService(contacts, createProgrammeRepository(db), clock),
     onboarding: new OnboardingService(
       createSubmissionRepository(db),
       events,
@@ -215,6 +216,7 @@ export function buildServerDeps(
       contacts,
       createUploadedFileRepository(db),
       createTaxonomyRepository(db),
+      createProgrammeRepository(db),
     ),
     evaluations: new EvaluationService(
       createSubmissionRepository(db),
@@ -262,6 +264,7 @@ export function buildServerDeps(
       withDelivery(createCapturedMessageRepository(db), emailSender),
       createSpeakerTaskRepository(db),
       clock,
+      createProgrammeRepository(db),
     ),
     support: new SupportService(
       events,

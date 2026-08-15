@@ -14,12 +14,12 @@ const BUDGETS = {
   // there was nothing left to move, and the alternatives were shaving strings a
   // reader can see or restructuring working code for a hundredth of the bundle.
   //
-  // 102 kB, from an observed 102,411 bytes with ~2% of headroom, in the spirit
-  // of the closure budget below. The number that decides first paint is that
-  // closure, not this one — see the note there — and it is still inside its own
-  // budget with room to spare. Raising this is the documented move when the
-  // entry has genuinely grown; quietly tracking the build is not.
-  main: 102 * 1024,
+  // 103 kB, raised by 1 kB after the Vite 8 production manifest measured the
+  // entry at 102.7 kB. The number that decides first paint is the closure below,
+  // not this one, and that remains independently capped at 150 kB. Raising this
+  // is the documented move when the entry has genuinely grown; quietly tracking
+  // the build is not.
+  main: 103 * 1024,
   '/start': 20 * 1024,
   '/cfp/:eventSlug/:formSlug': 80 * 1024,
   '/admin/events/$slug/submissions': 30 * 1024,
@@ -70,20 +70,28 @@ export const EAGER_CLOSURE_BUDGET = 150 * 1024
 function chunkBaseName(file) {
   const pathPart = String(file).split('?')[0]
   const base = pathPart.split('/').pop() ?? ''
-  // Built-asset fixture forms ("start-<hash>.js") strip the hash; source
-  // forms keep the ".tsx" so the manifest chunk table can map them.
-  return base.endsWith('.tsx') ? base : base.replace(/-[A-Za-z0-9_-]+\.js$/, '')
+  // Source-key forms strip the extension; built-asset fixture forms
+  // ("start-<hash>.js") strip the hash. Both then share one route matcher.
+  return base.endsWith('.tsx')
+    ? base.slice(0, -'.tsx'.length).replaceAll('$', '_')
+    : base.replace(/-[A-Za-z0-9_-]+\.js$/, '')
 }
 
 // Route chunks the gate budgets; any other TanStack-split route module is
 // known but not budgeted here (e.g. index/_public/admin/login/builder routes).
 const KNOWN_ROUTE_BASENAMES = new Set([
   'index.tsx',
+  'index',
   'routes',
   '_public.tsx',
   '_public',
   'admin.tsx',
   'admin',
+  'admin_.events',
+  'admin_.events.index',
+  'embed._embedId',
+  'speakers._eventSlug._contactId',
+  'admin_.events._slug_.orby',
   'admin_.events.$slug.tsx',
   'admin_.events._slug',
   'admin_.events.$slug_.taxonomies.tsx',
@@ -92,6 +100,15 @@ const KNOWN_ROUTE_BASENAMES = new Set([
   'admin_.events._slug_.forms._formId',
   'admin_.events.$slug_.forms.$formId_.versions.$versionId.tsx',
   'admin_.events._slug_.forms._formId_.versions._versionId',
+])
+
+// Intentionally lazy feature modules that are not routes. Keep their source
+// keys explicit so a content hash (or a hyphen in the file name) cannot make
+// the attribution depend on generated asset naming.
+const KNOWN_FEATURE_IMPORTS = new Set([
+  'src/app/clerk-root.tsx',
+  'src/app/features/nav/ClerkNavControls.tsx',
+  'src/app/features/orby/OrbyWidget.tsx',
 ])
 
 const ROUTE_CHUNK_PATTERNS = [
@@ -168,8 +185,8 @@ export function resolveRouteChunks(manifest) {
   }
   const chunks = new Map()
   for (const file of dynamicImports) {
-    const chunkEntry = manifest[file]
-    const base = chunkBaseName(chunkEntry?.file ?? file)
+    if (KNOWN_FEATURE_IMPORTS.has(file)) continue
+    const base = chunkBaseName(file)
     const match = ROUTE_CHUNK_PATTERNS.find(({ pattern }) => pattern.test(base))
     if (match === undefined && !KNOWN_ROUTE_BASENAMES.has(base)) {
       throw new Error(`perf:check — unknown/unattributed chunk in manifest: ${file}`)

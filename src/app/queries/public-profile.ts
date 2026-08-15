@@ -45,6 +45,21 @@ async function toApiError(response: Response): Promise<ApiClientError> {
   return new ApiClientError(code, message, response.status)
 }
 
+/** GET /api/public/profile/document as JSON metadata. 404 is "none stored". */
+export async function getOwnDocument(): Promise<DocumentDto | null> {
+  const response = await fetch('/api/public/profile/document', {
+    credentials: 'include',
+    headers: { accept: 'application/json' },
+  })
+  if (response.status === 404) return null
+  if (!response.ok) throw await toApiError(response)
+  return (await response.json()) as DocumentDto
+}
+
+export function useOwnDocument() {
+  return useQuery({ queryKey: publicProfileQueryKeys.document, queryFn: getOwnDocument })
+}
+
 /** PUT /api/public/profile/document — bytes plus the explicit x-file-name header. */
 export async function putOwnDocument(file: File): Promise<DocumentDto> {
   const response = await fetch('/api/public/profile/document', {

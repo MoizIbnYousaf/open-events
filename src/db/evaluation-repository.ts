@@ -511,21 +511,38 @@ export function createEvaluationRepository(db: D1Database): EvaluationRepository
       roundId: string,
       criteria: readonly RoundCriterion[],
     ): Promise<readonly RoundCriterion[]> {
-      // One batch, so a scorecard is never half-replaced: a failure part-way
-      // through would otherwise leave a round holding some of the old rubric
-      // and some of the new, which is a state no screen can render honestly.
-      // The delete carries the event scope, so another event's round is
-      // untouched even if its id were passed.
+      // Keep existing criterion ids (and the scores that hang off them). A
+      // wholesale DELETE cascades onto evaluation_round_scores, so saving an
+      // unchanged scorecard used to wipe every review already collected.
+      const incomingIds = criteria.map((criterion) => criterion.id)
+      const deleteSql =
+        incomingIds.length === 0
+          ? db
+              .prepare(
+                'DELETE FROM evaluation_round_criteria WHERE event_id = ? AND round_id = ?',
+              )
+              .bind(eventId, roundId)
+          : db
+              .prepare(
+                `DELETE FROM evaluation_round_criteria
+                  WHERE event_id = ? AND round_id = ?
+                    AND id NOT IN (${incomingIds.map(() => '?').join(', ')})`,
+              )
+              .bind(eventId, roundId, ...incomingIds)
       await db.batch([
-        db
-          .prepare('DELETE FROM evaluation_round_criteria WHERE event_id = ? AND round_id = ?')
-          .bind(eventId, roundId),
+        deleteSql,
         ...criteria.map((criterion) =>
           db
             .prepare(
               `INSERT INTO evaluation_round_criteria
                  (event_id, id, round_id, position, label, kind, weight, config_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(event_id, id) DO UPDATE SET
+                 position = excluded.position,
+                 label = excluded.label,
+                 kind = excluded.kind,
+                 weight = excluded.weight,
+                 config_json = excluded.config_json`,
             )
             .bind(
               eventId,

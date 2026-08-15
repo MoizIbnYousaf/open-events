@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useServerMutation } from '../../../adapters/tanstack-react-query'
+import { queriesInvalidatedOnVerdict } from './verdict-invalidation'
 
 import {
   acceptSubmission,
@@ -79,9 +80,11 @@ export function useAcceptSubmission(slug: EventSlug, submissionId: SubmissionId)
   return useServerMutation({
     mutationFn: () => acceptSubmission(slug, submissionId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: adminCommunicationQueryKeys.acceptancePreview(submissionId),
-      })
+      await Promise.all(
+        queriesInvalidatedOnVerdict(slug, submissionId).map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      )
     },
   })
 }
@@ -98,9 +101,11 @@ export function useRejectSubmission(slug: EventSlug, submissionId: SubmissionId)
   return useServerMutation({
     mutationFn: () => decideSubmission(slug, submissionId, 'rejected'),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: adminCommunicationQueryKeys.acceptancePreview(submissionId),
-      })
+      await Promise.all(
+        queriesInvalidatedOnVerdict(slug, submissionId).map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      )
     },
   })
 }

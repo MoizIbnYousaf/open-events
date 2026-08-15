@@ -19,6 +19,7 @@ import {
   InMemoryFormContentRepository,
   InMemoryFormRepository,
   InMemoryFormVersionRepository,
+  InMemoryProgrammeRepository,
   InMemorySubmissionRepository,
   InMemoryTaxonomyRepository,
 } from '../helpers/in-memory-repositories'
@@ -309,6 +310,55 @@ describe('OnboardingService.readiness', () => {
     const readiness = await service.readiness(organizerActor, EVENT_ID)
     expect(readiness.percentComplete).toBe(100)
     expect(readiness.submissions[0]?.ready).toBe(true)
+  })
+
+  it('does not call a session Ready while a file request is still pending', async () => {
+    const programme = new InMemoryProgrammeRepository()
+    await programme.saveAssignment({
+      id: 'assign-1',
+      eventId: EVENT_ID,
+      title: 'Upload slides',
+      dueAt: null,
+      kind: 'file_request',
+      instructions: '',
+      createdAt: now,
+    })
+    await programme.setAssignees('assign-1', [
+      { assignmentId: 'assign-1', contactId: OWNER_CONTACT_ID, status: 'pending', completedAt: null },
+    ])
+    service = new OnboardingService(
+      submissions,
+      events,
+      tasks,
+      acceptUnitOfWork,
+      clock,
+      new InMemoryFormRepository(),
+      new InMemoryFormVersionRepository(),
+      new InMemoryFormContentRepository(),
+      new InMemoryContactRepository([
+        { ...ownerContact, bio: 'Seeded bio' },
+        {
+          id: CO_SPEAKER_CONTACT_ID,
+          email: 'speaker-b@example.test',
+          name: 'Speaker B',
+          createdAt: '2026-05-20T09:00:00.000Z',
+          bio: 'Seeded co-speaker bio',
+        },
+      ]),
+      seededUploads(),
+      new InMemoryTaxonomyRepository(),
+      programme,
+    )
+    await service.accept(organizerActor, EVENT_ID, submission.id)
+    for (const contactId of [OWNER_CONTACT_ID, CO_SPEAKER_CONTACT_ID]) {
+      const actor = createSubmitterActor({ contactId })
+      for (const task of await service.listTasks(actor)) {
+        await service.completeTask(actor, task.id)
+      }
+    }
+    const readiness = await service.readiness(organizerActor, EVENT_ID)
+    expect(readiness.submissions[0]?.ready).toBe(false)
+    expect(readiness.completedTasks).toBeLessThan(readiness.totalTasks)
   })
 })
 

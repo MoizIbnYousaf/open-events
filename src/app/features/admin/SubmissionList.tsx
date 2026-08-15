@@ -33,6 +33,7 @@ import {
 } from '../../../components/ui/table'
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
+import { preserveDeskLinkNavigation } from './programme-spotlight'
 import { useProgrammeSpotlight } from './useProgrammeSpotlight'
 
 /*
@@ -313,6 +314,7 @@ export default function SubmissionList() {
                             params={{ slug: slug ?? '', submissionId: row.id }}
                             aria-label={`${row.title} — ${row.primarySpeaker.name}`}
                             className={linkVariants({ hit: true, className: ROW_LINK_HIT })}
+                            onClick={preserveDeskLinkNavigation}
                           >
                             {row.title}
                           </Link>

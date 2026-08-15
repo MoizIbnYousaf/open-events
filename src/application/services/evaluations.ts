@@ -1,3 +1,4 @@
+import { proposalAnswersForReview } from '../evaluation-proposal'
 import type { ContributorDto } from '../dtos/submission.dto'
 import type { Contact, ContactId } from '../../domain/contact'
 import type {
@@ -85,11 +86,20 @@ export interface ConfigureRoundInput {
 
 /** One proposed scorecard question, exactly as the organizer surface sends it. */
 export interface RoundCriterionInput {
+  /** Reused when the organizer is editing an existing question. */
+  readonly id?: string
   readonly label: string
   readonly kind: string
   readonly weight?: number | null
   readonly scale?: { readonly min: number; readonly max: number } | null
   readonly options?: readonly string[] | null
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function isReusableCriterionId(value: string | undefined): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value)
 }
 
 /** One scorecard question as every surface reads it back. */
@@ -752,7 +762,7 @@ export class EvaluationService {
       throw new ApplicationError('validation_failed', 'A choice criterion needs options')
     }
     return {
-      id: crypto.randomUUID(),
+      id: isReusableCriterionId(candidate.id) ? candidate.id : crypto.randomUUID(),
       eventId,
       roundId,
       position: index,
@@ -1410,11 +1420,15 @@ export class EvaluationService {
       this.#speakerNameFor(submission, round, blindHere),
       this.#coSpeakersFor(submission, round, blindHere),
     ])
+    const proposal = proposalAnswersForReview(submission?.answers)
     return {
       submissionId: assignment.submissionId,
       sessionTitle: submission?.title ?? '',
       speakerName,
       coSpeakers,
+      abstract: proposal.abstract,
+      track: proposal.track,
+      takeaway: proposal.takeaway,
       anonymized: round?.anonymize === true,
       roundId: assignment.roundId,
       roundNumber: round?.number ?? 0,
@@ -1589,11 +1603,15 @@ export class EvaluationService {
     )
     previousRounds.sort((left, right) => left.roundNumber - right.roundNumber)
 
+    const proposal = proposalAnswersForReview(submission?.answers)
     return {
       submissionId: assignment.submissionId,
       sessionTitle: submission?.title ?? '',
       speakerName: await this.#speakerNameFor(submission, round, blindHere),
       coSpeakers: await this.#coSpeakersFor(submission, round, blindHere),
+      abstract: proposal.abstract,
+      track: proposal.track,
+      takeaway: proposal.takeaway,
       anonymized: round?.anonymize === true,
       roundId: assignment.roundId,
       roundNumber: round?.number ?? 0,

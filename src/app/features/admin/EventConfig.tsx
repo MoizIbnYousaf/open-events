@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { Controller, useForm, type FieldPath } from 'react-hook-form'
 import { z } from 'zod'
 
-import { getApiErrorCode, getApiErrorMessage } from '../../api/admin-events'
+import { getApiErrorCode, getApiErrorMessage, requestJson } from '../../api/admin-events'
 import {
   useEventConfig,
   useFormsList,
@@ -192,6 +193,7 @@ function EventConfigScreen() {
         />
         <FormsList query={formsQuery} slug={slug ?? ''} />
         <CfpSettings query={formsQuery} slug={slug ?? ''} />
+        <ConfirmationTemplateCard slug={slug ?? ''} />
         <PublicLinks query={formsQuery} slug={slug ?? ''} />
         <ManageLinks slug={slug ?? ''} />
       </div>
@@ -217,6 +219,70 @@ function EventConfigScreen() {
  * uses — and the server validates them; this card does not re-implement the
  * ordering rule, it reports what the server says about it.
  */
+function ConfirmationTemplateCard({ slug }: { readonly slug: EventSlug }) {
+  const template = useQuery({
+    queryKey: ['admin', 'events', slug, 'confirmation-template'],
+    queryFn: () =>
+      requestJson<{ subject: string; body: string }>(
+        `/api/admin/events/${slug}/confirmation-template`,
+      ),
+    enabled: slug.length > 0,
+  })
+  const [subject, setSubject] = useState<string | null>(null)
+  const [body, setBody] = useState<string | null>(null)
+  const save = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${slug}/confirmation-template`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          subject: subject ?? template.data?.subject ?? '',
+          body: body ?? template.data?.body ?? '',
+        }),
+      }),
+  })
+  const subjectValue = subject ?? template.data?.subject ?? ''
+  const bodyValue = body ?? template.data?.body ?? ''
+  if (slug.length === 0) return null
+  return (
+    <Card>
+      <CardHeader>
+        <SectionTitle>Submission confirmation</SectionTitle>
+        <CardDescription>
+          Email sent when a proposal is submitted. Use {'{{title}}'}, {'{{eventName}}'} and{' '}
+          {'{{submissionId}}'}.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        <Field>
+          <FieldLabel htmlFor="confirmation-subject">Subject</FieldLabel>
+          <Input
+            id="confirmation-subject"
+            value={subjectValue}
+            onChange={(event) => setSubject(event.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="confirmation-body">Message</FieldLabel>
+          <textarea
+            id="confirmation-body"
+            className="min-h-28 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+            value={bodyValue}
+            onChange={(event) => setBody(event.target.value)}
+          />
+        </Field>
+        <Button
+          type="button"
+          className="self-start"
+          pending={save.isPending}
+          onClick={() => save.mutate()}
+        >
+          {save.isSuccess ? 'Confirmation saved' : 'Save confirmation'}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
 function CfpSettings({
   query,
   slug,

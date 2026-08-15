@@ -7,7 +7,10 @@ import {
   createSubmitterActor,
   ownerContact,
 } from '../helpers/fixtures'
-import { InMemoryContactRepository } from '../helpers/in-memory-repositories'
+import {
+  InMemoryContactRepository,
+  InMemoryProgrammeRepository,
+} from '../helpers/in-memory-repositories'
 
 // O3 P1 (REQ-006): a signed-in speaker reads and updates their own persisted
 // profile — name and bio — with identity taken only from the submitter actor.
@@ -37,6 +40,8 @@ describe('getOwnProfile', () => {
       name: 'Speaker A',
       email: 'speaker-a@example.test',
       bio: null,
+      jobTitle: '',
+      company: '',
     })
   })
 
@@ -57,6 +62,8 @@ describe('updateOwnProfile', () => {
       name: 'Ada Lovelace',
       email: 'speaker-a@example.test',
       bio: 'First programmer.',
+      jobTitle: '',
+      company: '',
     })
     const stored = await contacts.findById(OWNER_CONTACT_ID)
     expect(stored?.name).toBe('Ada Lovelace')
@@ -69,6 +76,23 @@ describe('updateOwnProfile', () => {
     await service.updateOwnProfile(createSubmitterActor(), { name: 'Ada', bio: 'x' })
     const cleared = await service.updateOwnProfile(createSubmitterActor(), { name: 'Ada', bio: '' })
     expect(cleared.bio).toBeNull()
+  })
+
+  it('persists job title and company on the speaker profile', async () => {
+    const programme = new InMemoryProgrammeRepository()
+    service = new ProfileService(contacts, programme, { now: () => FIXED_NOW })
+    const updated = await service.updateOwnProfile(createSubmitterActor(), {
+      name: 'Ada',
+      bio: null,
+      jobTitle: 'Staff Engineer',
+      company: 'Northwind',
+    })
+    expect(updated.jobTitle).toBe('Staff Engineer')
+    expect(updated.company).toBe('Northwind')
+    expect(await service.getOwnProfile(createSubmitterActor())).toMatchObject({
+      jobTitle: 'Staff Engineer',
+      company: 'Northwind',
+    })
   })
 
   it('rejects an empty name without persisting anything', async () => {

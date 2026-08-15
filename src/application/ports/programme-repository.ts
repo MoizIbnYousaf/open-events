@@ -84,6 +84,18 @@ export interface ProgrammeRepository {
   ): Promise<{
     jobTitle: string
     company: string
+    travelNotes: string
     workflowStatus: SpeakerWorkflowStatus
   } | null>
+
+  getEmailTemplate(
+    eventId: EventId,
+    kind: 'confirmation',
+  ): Promise<{ readonly subject: string; readonly body: string } | null>
+  saveEmailTemplate(
+    eventId: EventId,
+    kind: 'confirmation',
+    subject: string,
+    body: string,
+  ): Promise<void>
 }

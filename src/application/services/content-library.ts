@@ -9,6 +9,7 @@ import type { ProgrammeRepository } from '../ports/programme-repository'
 import type { SubmissionRepository } from '../ports/submission-repository'
 import type { UploadedFileKind, UploadedFileRepository } from '../ports/uploaded-file-repository'
 import { zipStoreFiles } from '../../domain/zip-store'
+import { selectFilesForLatestZip, zipEntryFileName } from '../zip-latest'
 import { isSessionContentStatus } from '../../domain/embed'
 import { shouldSnapshotApprovedCopy } from '../../domain/session-content'
 
@@ -231,6 +232,14 @@ export class ContentLibraryService {
     }
   }
 
+  async getContentStatus(_actor: OrganizerActor, slug: string, submissionId: string) {
+    const event = await this.#event(slug)
+    return {
+      submissionId,
+      status: await this.#programme.getContentStatus(event.id, submissionId),
+    }
+  }
+
   async setContentStatus(
     _actor: OrganizerActor,
     slug: string,
@@ -251,17 +260,12 @@ export class ContentLibraryService {
       throw new ApplicationError('not_found', 'File storage is not configured')
     }
     const files = await this.#files.listByEvent(event.id)
-    const chosen =
-      ownerContactIds.length === 0
-        ? files.filter((file) => file.kind === 'document')
-        : files.filter(
-            (file) => file.kind === 'document' && ownerContactIds.includes(file.ownerContactId),
-          )
+    const chosen = selectFilesForLatestZip(files, ownerContactIds)
     const entries = []
     for (const file of chosen) {
       const object = await this.#storage.get(file.storageKey)
       if (object === null) continue
-      const name = file.fileName && file.fileName.length > 0 ? file.fileName : `${file.id}.bin`
+      const name = zipEntryFileName(file)
       entries.push({ name: `${file.ownerContactId}/${name}`, body: new Uint8Array(object.body) })
     }
     return zipStoreFiles(entries, new Date(this.#clock.now()))

@@ -48,6 +48,14 @@ describe('HeadshotService.storeHeadshot', () => {
     expect(new Uint8Array(fetched?.body ?? new ArrayBuffer(0))).toHaveLength(64)
   })
 
+  it('stores a null file_name so the 0014 uploaded_files CHECK accepts headshots', async () => {
+    const { service, files } = buildHarness()
+
+    await service.storeHeadshot(ownerActor, input())
+
+    expect(files.list()[0]?.fileName).toBeNull()
+  })
+
   it('denies an oversize upload with zero storage and zero metadata writes', async () => {
     const { service, files, storage } = buildHarness()
 

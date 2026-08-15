@@ -13,6 +13,7 @@ import {
   createForm,
   createSubmission,
   createVersion,
+  eventFixture,
   crossEventActor,
   foreignActor,
   openLimits,
@@ -23,7 +24,9 @@ import {
   InMemoryCapturedMessageRepository,
   InMemoryConfirmationRepository,
   InMemoryContactRepository,
+  InMemoryEventRepository,
   InMemoryDraftRepository,
+  InMemoryProgrammeRepository,
   InMemoryFormContentRepository,
   InMemoryFormRepository,
   InMemoryFormVersionRepository,
@@ -40,6 +43,8 @@ function buildHarness(
     formStatus?: 'draft' | 'published'
     publishedVersionId?: string | null
     clockNow?: string
+    programme?: InMemoryProgrammeRepository
+    events?: InMemoryEventRepository
   } = {},
 ) {
   const form = createForm({
@@ -79,6 +84,8 @@ function buildHarness(
     formContent,
     unitOfWork,
     { now: () => options.clockNow ?? FIXED_NOW },
+    options.programme ?? null,
+    options.events ?? null,
   )
   return { service, drafts, submissions, contacts, confirmations, messages, unitOfWork, form }
 }
@@ -126,6 +133,23 @@ describe('SubmitService happy path', () => {
     expect(await confirmations.findBySubmissionId(detail.id)).not.toBeNull()
     expect(messages.list()).toHaveLength(1)
     expect(messages.list()[0]?.toEmail).toBe('speaker-a@example.test')
+    expect(messages.list()[0]?.subject).toBe('Your submission was received')
+    expect(messages.list()[0]?.body).toContain('Hands-on workshop proposal')
+  })
+
+  it('uses the organizer confirmation template when one is stored', async () => {
+    const programme = new InMemoryProgrammeRepository()
+    await programme.saveEmailTemplate(
+      EVENT_ID,
+      'confirmation',
+      '{{eventName}}: got "{{title}}"',
+      'Ref {{submissionId}}',
+    )
+    const events = new InMemoryEventRepository([eventFixture])
+    const { service, messages } = buildHarness({ programme, events })
+    const detail = await service.submit(ownerActor, submitInput())
+    expect(messages.list()[0]?.subject).toBe('DemoConf 2026: got "Hands-on workshop proposal"')
+    expect(messages.list()[0]?.body).toBe(`Ref ${detail.id}`)
   })
 
   it('returns null routing when no rule matches', async () => {

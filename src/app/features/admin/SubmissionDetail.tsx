@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
 
-import type { AnswerValue } from '../../../domain'
+import type { AnswerValue, SessionContentStatus } from '../../../domain'
+import type { ContributorDto } from '../../../application'
 import { getApiErrorCode, requestJson } from '../../api/admin-events'
 import { readDecision, useAcceptancePreview } from '../../queries/admin-communications'
 import { useFormVersionDetail } from '../../queries/admin-forms'
@@ -237,6 +238,8 @@ export default function SubmissionDetail() {
               abstract={answerText(detail.answers.abstract ?? '')}
               answers={answers}
               labelByFieldKey={labelByFieldKey}
+              contributors={detail.contributors}
+              contentStatus={detail.contentStatus}
             />
           </div>
           <aside
@@ -268,6 +271,8 @@ function ProposalCard({
   abstract,
   answers,
   labelByFieldKey,
+  contributors,
+  contentStatus,
 }: {
   readonly slug: string
   readonly submissionId: string
@@ -275,6 +280,8 @@ function ProposalCard({
   readonly abstract: string
   readonly answers: readonly (readonly [string, AnswerValue | null])[]
   readonly labelByFieldKey: ReadonlyMap<string, string>
+  readonly contributors: readonly ContributorDto[]
+  readonly contentStatus: SessionContentStatus
 }) {
   const [editing, setEditing] = useState(false)
 
@@ -302,6 +309,7 @@ function ProposalCard({
             submissionId={submissionId}
             title={title}
             abstract={abstract}
+            contentStatus={contentStatus}
           />
         </CardContent>
       ) : null}
@@ -326,6 +334,19 @@ function ProposalCard({
             ))}
           </dl>
         )}
+        {contributors.length > 0 ? (
+          <div className="grid gap-1 pt-3">
+            <p className="text-xs font-medium text-muted-foreground">On this proposal</p>
+            <ul className="grid gap-0.5">
+              {contributors.map((person) => (
+                <li key={person.contactId} className="text-sm">
+                  <span className="font-medium">{person.name || person.email}</span>
+                  <span className="text-muted-foreground">{` — ${person.role}`}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )
@@ -336,18 +357,23 @@ function SessionContentEditor({
   submissionId,
   title,
   abstract,
+  contentStatus,
 }: {
   readonly slug: string
   readonly submissionId: string
   readonly title: string
   readonly abstract: string
+  readonly contentStatus: SessionContentStatus
 }) {
   const client = useQueryClient()
   const [nextTitle, setNextTitle] = useState<string | null>(null)
   const [nextAbstract, setNextAbstract] = useState<string | null>(null)
   const titleValue = nextTitle ?? title
   const abstractValue = nextAbstract ?? abstract
-  const [status, setStatus] = useState('approved')
+  const [status, setStatus] = useState(contentStatus)
+  useEffect(() => {
+    setStatus(contentStatus)
+  }, [contentStatus])
   const revisions = useQuery({
     queryKey: ['admin', 'revisions', slug, submissionId],
     queryFn: () =>
@@ -362,7 +388,6 @@ function SessionContentEditor({
         body: JSON.stringify({
           title: titleValue,
           abstract: abstractValue,
-          editorName: 'Jordan Alvarez',
         }),
       }),
     onSuccess: () => {
@@ -412,7 +437,10 @@ function SessionContentEditor({
         <NativeSelect
           id="session-content-status"
           value={status}
-          onChange={(event) => setStatus(event.target.value)}
+          onChange={(event) => {
+            const next = event.target.value
+            if (next === 'approved' || next === 'draft') setStatus(next)
+          }}
         >
           <option value="approved">Approved</option>
           <option value="draft">Draft</option>

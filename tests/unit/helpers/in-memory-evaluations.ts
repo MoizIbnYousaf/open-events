@@ -137,14 +137,14 @@ export class InMemoryEvaluationRepository implements EvaluationRepository {
     roundId: string,
     criteria: readonly RoundCriterion[],
   ): Promise<readonly RoundCriterion[]> {
+    const incoming = new Set(criteria.map((criterion) => criterion.id))
     for (const [id, criterion] of [...this.#roundCriteria.entries()]) {
-      if (criterion.eventId === eventId && criterion.roundId === roundId) {
-        this.#roundCriteria.delete(id)
-        // Answers to a question nobody is asked any more go with it, as the
-        // adapter's foreign key would enforce.
-        for (const [key, score] of [...this.#roundScores.entries()]) {
-          if (score.criterionId === id) this.#roundScores.delete(key)
-        }
+      if (criterion.eventId !== eventId || criterion.roundId !== roundId) continue
+      if (incoming.has(id)) continue
+      this.#roundCriteria.delete(id)
+      // Only answers to a removed question go with it.
+      for (const [key, score] of [...this.#roundScores.entries()]) {
+        if (score.criterionId === id) this.#roundScores.delete(key)
       }
     }
     for (const criterion of criteria) this.#roundCriteria.set(criterion.id, criterion)

@@ -26,6 +26,7 @@ import { useMessageLog } from '../../queries/admin-messages'
 import type { EventSlug } from '../../../domain'
 import type { MessageLogEntryDto } from '../../../application'
 import { useProgrammeSpotlight } from './useProgrammeSpotlight'
+import { messageKindLabel } from '../../../domain/message-kind'
 
 const sentAtFormatter = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium',
@@ -39,11 +40,8 @@ function formatSentAt(value: string): string {
 }
 
 /** Plain words for the stored kind, so a reader is not decoding an identifier. */
-function kindLabel(kind: string): string {
-  if (kind === 'confirmation') return 'Sign-in link'
-  if (kind === 'acceptance') return 'Acceptance'
-  if (kind === 'reminder') return 'Reminder'
-  return kind
+function kindLabel(kind: string, subject?: string): string {
+  return messageKindLabel(kind, subject)
 }
 
 /**
@@ -172,7 +170,7 @@ function MessagePeek({ message }: { readonly message: MessageLogEntryDto }) {
           {`To ${message.toEmail} · ${formatSentAt(message.createdAt)}`}
         </CardDescription>
         <CardAction>
-          <Badge variant="outline">{kindLabel(message.kind)}</Badge>
+          <Badge variant="outline">{kindLabel(message.kind, message.subject)}</Badge>
         </CardAction>
       </CardHeader>
       <CardContent>

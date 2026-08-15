@@ -2,7 +2,7 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 
-import { devServerCommand, terminateChild } from './golden-dev-child.mjs'
+import { devServerCommand, e2eServerEnv, terminateChild } from './golden-dev-child.mjs'
 import { devVarsContent, installDevVars, restoreDevVars } from './golden-dev-vars.mjs'
 
 /**
@@ -79,6 +79,7 @@ const { command, args } = devServerCommand(root, PORT)
 child = spawn(command, args, {
   cwd: root,
   stdio: 'inherit',
+  env: e2eServerEnv(),
 })
 
 child.on('exit', (code, signal) => {

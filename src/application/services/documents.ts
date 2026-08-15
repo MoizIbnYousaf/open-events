@@ -179,6 +179,12 @@ export class DocumentService {
     return toDocumentDto(record)
   }
 
+  /** Metadata only — no bytes — so a remount can show the stored file. */
+  async getOwnDocumentMeta(actor: SubmitterActor): Promise<DocumentDto | null> {
+    const record = await this.#files.findOwn(actor.eventId, actor.contactId, DOCUMENT_KIND)
+    return record === null ? null : toDocumentDto(record)
+  }
+
   /** Own-only read; another speaker's document is indistinguishable from none. */
   async getOwnDocument(actor: SubmitterActor): Promise<DocumentContent | null> {
     const record = await this.#files.findOwn(actor.eventId, actor.contactId, DOCUMENT_KIND)

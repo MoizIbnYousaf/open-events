@@ -19,6 +19,7 @@ import type {
   TaxonomyItem,
   TokenHash,
   SessionContentStatus,
+  SpeakerWorkflowStatus,
   VersionId,
 } from '../../../src/domain'
 import type {
@@ -36,6 +37,8 @@ import type {
   SubmissionRepository,
   ObjectStoragePort,
   ProgrammeRepository,
+  SpeakerAssignmentAssigneeRecord,
+  SpeakerAssignmentRecord,
   StoredObject,
   TaxonomyRepository,
   TokenRepository,
@@ -526,7 +529,7 @@ export class InMemoryContactRepository implements ContactRepository {
         contactId: contact.id,
         email: contact.email,
         name: contact.name,
-        bio: contact.bio,
+        bio: contact.bio ?? null,
         proposalCount: 0,
         sessionCount: 0,
         taskCount: 0,
@@ -824,6 +827,13 @@ export class InMemoryProgrammeRepository implements ProgrammeRepository {
     createdAt: string
   }[] = []
   readonly status = new Map<string, SessionContentStatus>()
+  readonly assignments: SpeakerAssignmentRecord[] = []
+  readonly assignees = new Map<string, SpeakerAssignmentAssigneeRecord[]>()
+  readonly profiles = new Map<
+    string,
+    { jobTitle: string; company: string; travelNotes: string; workflowStatus: SpeakerWorkflowStatus }
+  >()
+  readonly emailTemplates = new Map<string, { subject: string; body: string }>()
 
   async listEmbeds() {
     return []
@@ -857,25 +867,48 @@ export class InMemoryProgrammeRepository implements ProgrammeRepository {
       .map(([key, status]) => ({ submissionId: key.slice(eventId.length + 1), status }))
   }
 
-  async saveAssignment() {}
-  async listAssignments() {
-    return []
+  async saveAssignment(record: SpeakerAssignmentRecord) {
+    this.assignments.push(record)
   }
-  async findAssignment() {
-    return null
+  async listAssignments(eventId: string) {
+    return this.assignments.filter((row) => row.eventId === eventId)
   }
-  async setAssignees() {}
-  async listAssignees() {
-    return []
+  async findAssignment(id: string) {
+    return this.assignments.find((row) => row.id === id) ?? null
   }
-  async listAssigneesForContact() {
-    return []
+  async setAssignees(assignmentId: string, assignees: readonly SpeakerAssignmentAssigneeRecord[]) {
+    this.assignees.set(assignmentId, [...assignees])
   }
-  async completeAssignee() {
-    return 'not-found' as const
+  async listAssignees(assignmentId: string) {
+    return this.assignees.get(assignmentId) ?? []
   }
-  async findSpeakerProfile() {
-    return null
+  async listAssigneesForContact(eventId: string, contactId: string) {
+    return this.assignments
+      .filter((assignment) => assignment.eventId === eventId)
+      .flatMap((assignment) =>
+        (this.assignees.get(assignment.id) ?? [])
+          .filter((assignee) => assignee.contactId === contactId)
+          .map((assignee) => ({ ...assignment, status: assignee.status, completedAt: assignee.completedAt })),
+      )
+  }
+  async completeAssignee(assignmentId: string, contactId: string, completedAt: string) {
+    const rows = this.assignees.get(assignmentId)
+    if (rows === undefined) return 'not-found' as const
+    const index = rows.findIndex((row) => row.contactId === contactId)
+    if (index < 0) return 'not-found' as const
+    const current = rows[index]
+    if (current === undefined) return 'not-found' as const
+    rows[index] = { ...current, status: 'completed', completedAt }
+    return 'updated' as const
+  }
+  async findSpeakerProfile(eventId: string, contactId: string) {
+    return this.profiles.get(`${eventId}:${contactId}`) ?? null
+  }
+  async getEmailTemplate(eventId: string, kind: 'confirmation') {
+    return this.emailTemplates.get(`${eventId}:${kind}`) ?? null
+  }
+  async saveEmailTemplate(eventId: string, kind: 'confirmation', subject: string, body: string) {
+    this.emailTemplates.set(`${eventId}:${kind}`, { subject, body })
   }
 }
 

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { isConsoleNoise } from './helpers/console-noise'
 import { capturedMessages, countGoldenRows } from './helpers/golden-rows'
 
 const EMAIL = 'golden-speaker@example.test'
@@ -28,9 +29,6 @@ const EXPECTED_MUTATIONS: Readonly<Record<string, number>> = {
   'POST /api/admin/session': 1,
 }
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-
-// Dev-server/HMR console noise is excluded from the user-facing error list.
-const CONSOLE_NOISE_PATTERNS = [/^\[vite\]/, /Download the React DevTools/i]
 
 // Chromium console companion of the EXPECTED active-draft GET 404 (see
 // isExpectedException). It is consumed AT MOST ONCE per expected draft-404
@@ -164,7 +162,7 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     page.on('console', (message) => {
       if (message.type() !== 'error' && message.type() !== 'warning') return
       const text = message.text()
-      if (CONSOLE_NOISE_PATTERNS.some((pattern) => pattern.test(text))) return
+      if (isConsoleNoise(text)) return
       // Narrow 404 handling: consume AT MOST ONE matching console message per
       // expected draft-404 response; extra or unassociated 404 messages stay
       // in consoleErrors (no blanket /404/ suppression).

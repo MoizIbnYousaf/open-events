@@ -54,6 +54,8 @@ import type {
 } from '../../api/admin-evaluations'
 import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
 import AppShell from '../nav/AppShell'
+import { useEventConfig } from '../../queries/admin-events'
+import { datetimeLocalToUtcInstant, utcInstantToDatetimeLocal } from '../../../domain/datetime-local'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
 import ReviewerInviteLink from './ReviewerInviteLink'
 import RoundConfirmDialog from './RoundConfirmDialog'
@@ -785,6 +787,8 @@ function RoundEditor({
   readonly round: ListedRound
   readonly committee: readonly CommitteeRosterEntry[]
 }) {
+  const event = useEventConfig(slug)
+  const timeZone = event.data?.timezone ?? 'UTC'
   const configure = useConfigureRound(slug, round.id)
   const scorecard = useRoundScorecard(slug, round.id)
   const saveScorecard = usePutRoundScorecard(slug, round.id)
@@ -795,8 +799,8 @@ function RoundEditor({
   const [opensAt, setOpensAt] = useState<string | null>(null)
   const [closesAt, setClosesAt] = useState<string | null>(null)
   const nameValue = name ?? round.name
-  const opensAtValue = opensAt ?? toLocalInput(round.opensAt)
-  const closesAtValue = closesAt ?? toLocalInput(round.closesAt)
+  const opensAtValue = opensAt ?? utcInstantToDatetimeLocal(round.opensAt, timeZone)
+  const closesAtValue = closesAt ?? utcInstantToDatetimeLocal(round.closesAt, timeZone)
   const [anonymize, setAnonymize] = useState(round.anonymize === true)
 
   const [draft, setDraft] = useState<RoundCriterionInput[]>([])
@@ -902,8 +906,8 @@ function RoundEditor({
                 configure.mutate(
                   {
                     name: nameValue,
-                    opensAt: toInstant(opensAtValue),
-                    closesAt: toInstant(closesAtValue),
+                    opensAt: datetimeLocalToUtcInstant(opensAtValue, timeZone),
+                    closesAt: datetimeLocalToUtcInstant(closesAtValue, timeZone),
                     anonymize,
                   },
                   { onSuccess: () => setSaved('Round saved.') },
@@ -1260,17 +1264,9 @@ function ShareOutCard({
  * committee page down with it — a crash here blanks every other control on the
  * screen too.
  */
-function toLocalInput(instant: string | null | undefined): string {
-  return typeof instant === 'string' ? instant.slice(0, 16) : ''
-}
-
-/** A `datetime-local` value as the canonical instant the wire carries. */
-function toInstant(local: string): string | null {
-  return local === '' ? null : `${local}:00.000Z`
-}
-
 function toCriterionInput(criterion: RoundCriterion): RoundCriterionInput {
   return {
+    id: criterion.id,
     label: criterion.label,
     kind: criterion.kind,
     weight: criterion.weight,

@@ -298,6 +298,35 @@ function SummaryRow({ label, value }: { readonly label: string; readonly value: 
  * cannot tell which it is, and would reasonably wonder whether something failed
  * to load. So the round says so.
  */
+function ProposalAnswers({ row }: { readonly row: EvaluationRow }) {
+  const abstract = row.abstract ?? ''
+  const track = row.track ?? ''
+  const takeaway = row.takeaway ?? ''
+  if (abstract === '' && track === '' && takeaway === '') return null
+  return (
+    <dl className="grid gap-1 text-sm">
+      {abstract !== '' ? (
+        <div className="grid gap-0.5">
+          <dt className="text-xs font-medium text-muted-foreground">Abstract</dt>
+          <dd className="whitespace-pre-wrap">{abstract}</dd>
+        </div>
+      ) : null}
+      {track !== '' ? (
+        <div className="grid gap-0.5">
+          <dt className="text-xs font-medium text-muted-foreground">Track</dt>
+          <dd>{track}</dd>
+        </div>
+      ) : null}
+      {takeaway !== '' ? (
+        <div className="grid gap-0.5">
+          <dt className="text-xs font-medium text-muted-foreground">Takeaway</dt>
+          <dd className="whitespace-pre-wrap">{takeaway}</dd>
+        </div>
+      ) : null}
+    </dl>
+  )
+}
+
 function SpeakerLine({ row }: { readonly row: EvaluationRow }) {
   if (row.anonymized === true) {
     return <CardDescription>Blind review — the speaker is not shown in this round.</CardDescription>
@@ -394,6 +423,7 @@ function TypedEvaluationCard({
           </Badge>
         </div>
         <SpeakerLine row={row} />
+        <ProposalAnswers row={row} />
       </CardHeader>
       <CardContent className="grid gap-4">
         {criteria.map((criterion) => {
@@ -570,6 +600,7 @@ function EvaluationCard({
             }`}
           </Badge>
         </div>
+        <ProposalAnswers row={row} />
         {scored ? (
           <dl className="divide-y divide-border">
             <SummaryRow label="Rating" value={String(row.rating)} />

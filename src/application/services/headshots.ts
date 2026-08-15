@@ -64,11 +64,8 @@ export function headshotStorageKey(
   return `events/${eventId}/contacts/${ownerContactId}/headshot/${id}`
 }
 
-function headshotFileName(contentType: string): string {
-  if (contentType === 'image/jpeg') return 'headshot.jpg'
-  if (contentType === 'image/webp') return 'headshot.webp'
-  return 'headshot.png'
-}
+// Migration 0014: headshots must have a NULL file_name; documents own the
+// display name. A non-null name fails the CHECK and the golden portal upload.
 
 export class HeadshotService {
   readonly #files: UploadedFileRepository
@@ -119,7 +116,7 @@ export class HeadshotService {
       sizeBytes: input.bytes.byteLength,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
-      fileName: headshotFileName(input.contentType),
+      fileName: null,
     }
 
     await this.#storage.put(storageKey, input.bytes, input.contentType)

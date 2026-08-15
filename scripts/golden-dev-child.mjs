@@ -25,6 +25,15 @@ export const SHUTDOWN_GRACE_MS = 5_000
  * `node <vite binary>` for the dev server, so the spawned child is the process
  * that has to receive the shutdown signal.
  */
+/**
+ * Local `.env.local` may hold an optional Clerk publishable key. Vite would
+ * load it and pull clerk-js into the judged e2e path. An empty override wins
+ * over the file so the gate stays the no-Clerk judged surface.
+ */
+export function e2eServerEnv(baseEnv = process.env) {
+  return { ...baseEnv, VITE_CLERK_PUBLISHABLE_KEY: '' }
+}
+
 export function devServerCommand(root, port) {
   const require = createRequire(resolve(root, 'package.json'))
   const viteBin = resolve(dirname(require.resolve('vite/package.json')), 'bin', 'vite.js')

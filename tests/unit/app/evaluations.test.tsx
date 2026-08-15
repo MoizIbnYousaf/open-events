@@ -52,6 +52,9 @@ const EVALUATION_ROW = {
   comments: 'Great session',
   updatedAt: '2026-05-13T12:00:00.000Z',
   previousRounds: [],
+  abstract: 'A short abstract for reviewers',
+  track: 'Platform',
+  takeaway: 'Ship smaller diffs',
 } as const
 
 /** An assigned submission the evaluator has not scored yet. */
@@ -270,6 +273,7 @@ describe('evaluations UI', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }))
 
     expect(await screen.findByText(EVALUATION_ROW.sessionTitle)).toBeInTheDocument()
+    expect(screen.getByText('A short abstract for reviewers')).toBeInTheDocument()
   })
 
   it('states plainly that evaluations are not open when the API answers 404', async () => {

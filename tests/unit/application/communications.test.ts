@@ -30,6 +30,7 @@ import {
   InMemoryContactRepository,
   InMemoryEventRepository,
   InMemoryFormVersionRepository,
+  InMemoryProgrammeRepository,
   InMemorySubmissionRepository,
 } from '../helpers/in-memory-repositories'
 import { InMemorySpeakerTaskRepository } from '../helpers/in-memory-onboarding'
@@ -441,5 +442,36 @@ describe('CommunicationsService.sendSpeakerBroadcast', () => {
     expect(stored[0]?.toEmail).toBe(ownerContact.email)
     expect(stored[0]?.body).toContain(ownerContact.name)
     expect(stored[0]?.body).toContain(SPEAKER_PORTAL_PATH)
+  })
+})
+
+describe('CommunicationsService confirmation template', () => {
+  it('returns the default copy and persists an organizer override', async () => {
+    const { contacts, messages } = buildHarness()
+    const programme = new InMemoryProgrammeRepository()
+    const versions = new InMemoryFormVersionRepository([createVersion()])
+    const submissions = new InMemorySubmissionRepository(versions, [createSubmission()])
+    const tasks = new InMemorySpeakerTaskRepository([], [ACCEPTANCE])
+    const service = new CommunicationsService(
+      submissions,
+      new InMemoryEventRepository([eventFixture]),
+      contacts,
+      messages,
+      tasks,
+      { now: () => FIXED_NOW },
+      programme,
+    )
+    expect(await service.getConfirmationTemplate(organizerActor, EVENT_ID)).toEqual({
+      subject: 'Your submission was received',
+      body: 'Open Events: your submission "{{title}}" was received ({{submissionId}}).',
+    })
+    await service.saveConfirmationTemplate(organizerActor, EVENT_ID, {
+      subject: '{{eventName}} received {{title}}',
+      body: 'Thanks {{submissionId}}',
+    })
+    expect(await service.getConfirmationTemplate(organizerActor, EVENT_ID)).toEqual({
+      subject: '{{eventName}} received {{title}}',
+      body: 'Thanks {{submissionId}}',
+    })
   })
 })

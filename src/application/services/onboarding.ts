@@ -4,7 +4,6 @@ import type { EventId } from '../../domain/event'
 import type { FormId } from '../../domain/form'
 import {
   SPEAKER_TASK_KINDS,
-  computeReadinessTotals,
   type SpeakerTask,
   type SpeakerTaskId,
 } from '../../domain/speaker-task'
@@ -39,6 +38,11 @@ import type { FormVersionRepository } from '../ports/form-version-repository'
 import type { SpeakerTaskRepository } from '../ports/speaker-task-repository'
 import type { UploadedFileRepository } from '../ports/uploaded-file-repository'
 import type { SubmissionRepository } from '../ports/submission-repository'
+import type { ProgrammeRepository } from '../ports/programme-repository'
+import {
+  extraReadinessFromAssignments,
+  readinessFromTasksAndAssignments,
+} from '../../domain/readiness-assignments'
 
 export interface AssignFormTaskInput {
   readonly formId: FormId
@@ -64,6 +68,7 @@ export class OnboardingService {
   readonly #content: FormContentRepository
   readonly #contacts: ContactRepository
   readonly #uploads: UploadedFileRepository
+  readonly #programme: ProgrammeRepository | null
 
   constructor(
     submissions: SubmissionRepository,
@@ -77,6 +82,7 @@ export class OnboardingService {
     contacts: ContactRepository,
     uploads: UploadedFileRepository,
     taxonomies: TaxonomyRepository,
+    programme: ProgrammeRepository | null = null,
   ) {
     this.#submissions = submissions
     this.#taxonomies = taxonomies
@@ -89,6 +95,7 @@ export class OnboardingService {
     this.#content = content
     this.#contacts = contacts
     this.#uploads = uploads
+    this.#programme = programme
   }
 
   /**
@@ -560,15 +567,25 @@ export class OnboardingService {
     const acceptedSubmissions = await Promise.all(
       acceptances.map((acceptance) => this.#submissions.findById(acceptance.submissionId)),
     )
+    const extras = await this.#assignmentExtras(eventId, acceptances)
     const submissions = acceptances.map((acceptance, index): SubmissionReadinessDto => {
       const own = tasks.filter((task) => task.submissionId === acceptance.submissionId)
+      const extra = extras.get(acceptance.submissionId) ?? { total: 0, completed: 0 }
       return toSubmissionReadinessDto(
         acceptance.submissionId,
         acceptedSubmissions[index]?.title ?? '',
         own,
+        extra,
       )
     })
-    const totals = computeReadinessTotals(tasks)
+    const extraTotals = [...extras.values()].reduce(
+      (sum, extra) => ({
+        total: sum.total + extra.total,
+        completed: sum.completed + extra.completed,
+      }),
+      { total: 0, completed: 0 },
+    )
+    const totals = readinessFromTasksAndAssignments(tasks, extraTotals)
     return {
       eventId,
       acceptedSubmissions: acceptances.length,
@@ -577,6 +594,34 @@ export class OnboardingService {
       percentComplete: totals.percentComplete,
       submissions,
     }
+  }
+
+  async #assignmentExtras(
+    eventId: EventId,
+    acceptances: readonly { readonly submissionId: SubmissionId }[],
+  ): Promise<ReadonlyMap<SubmissionId, { readonly total: number; readonly completed: number }>> {
+    const extras = new Map<SubmissionId, { readonly total: number; readonly completed: number }>()
+    if (this.#programme === null) return extras
+    const assignments = await this.#programme.listAssignments(eventId)
+    const assigneesByAssignment = await Promise.all(
+      assignments.map((assignment) => this.#programme!.listAssignees(assignment.id)),
+    )
+    for (const acceptance of acceptances) {
+      const contributors = await this.#submissions.listContributorsBySubmission(
+        eventId,
+        acceptance.submissionId,
+      )
+      const contributorIds = new Set(contributors.map((contributor) => contributor.contactId))
+      let total = 0
+      let completed = 0
+      for (const assignees of assigneesByAssignment) {
+        const extra = extraReadinessFromAssignments(contributorIds, assignees)
+        total += extra.total
+        completed += extra.completed
+      }
+      extras.set(acceptance.submissionId, { total, completed })
+    }
+    return extras
   }
 
   async #title(submissionId: SubmissionId, cache: Map<SubmissionId, string>): Promise<string> {

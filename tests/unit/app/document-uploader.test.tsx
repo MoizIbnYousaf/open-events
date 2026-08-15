@@ -52,6 +52,10 @@ function defaultHandler(url: string, init?: RequestInit): Response {
     if (storedDocument === null) {
       return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404)
     }
+    const accept = new Headers(init?.headers).get('accept') ?? ''
+    if (accept.includes('application/json')) {
+      return jsonResponse({ id: 'doc-1', updatedAt: '2026-08-10T09:00:00.000Z', ...storedDocument })
+    }
     return new Response(new Uint8Array([1, 2, 3]).buffer, {
       status: 200,
       headers: { 'content-type': storedDocument.contentType },
@@ -147,5 +151,16 @@ describe('supporting document uploader', () => {
     await userEvent.upload(input, new File(['abc'], 'big.pdf', { type: 'application/pdf' }))
     const alert = await screen.findByRole('alert')
     expect(alert).not.toHaveTextContent(/sql detail/)
+  })
+
+  it('shows the stored document after a remount from GET metadata', async () => {
+    storedDocument = {
+      fileName: 'outline.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+    }
+    renderUploader()
+    expect(await screen.findByText('outline.pdf')).toBeInTheDocument()
+    expect(screen.queryByText(/no supporting document/i)).not.toBeInTheDocument()
   })
 })

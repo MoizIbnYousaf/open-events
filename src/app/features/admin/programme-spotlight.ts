@@ -34,6 +34,15 @@ export function nextSpotlightId(
   return ids[next] ?? null
 }
 
+/**
+ * Desk rows select the peek on click. A nested title link must not bubble
+ * that click or the router navigation is lost and the organizer stays on
+ * the list (golden list/detail).
+ */
+export function preserveDeskLinkNavigation(event: { stopPropagation(): void }): void {
+  event.stopPropagation()
+}
+
 export function shouldIgnoreSpotlightKey(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true

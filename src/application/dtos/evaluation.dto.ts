@@ -142,6 +142,14 @@ export interface EvaluationRowDto {
    * round, it has run a slower one.
    */
   readonly coSpeakers?: readonly EvaluationCoSpeakerDto[]
+  /**
+   * The proposal itself — abstract, track, takeaway — so a reviewer can read
+   * what they are scoring. Always present; empty strings when unanswered.
+   * Identity is withheld separately in a blind round; the talk is not.
+   */
+  readonly abstract?: string
+  readonly track?: string
+  readonly takeaway?: string
 }
 
 /** One other name on a proposal, as a reviewer is allowed to see it. */

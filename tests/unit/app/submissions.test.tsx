@@ -69,6 +69,7 @@ const SUBMISSION_DETAIL: SubmissionDetailDto = {
   createdAt: '2026-08-08T12:00:00.000Z',
   submittedAt: '2026-08-08T12:00:00.000Z',
   editable: true,
+  contentStatus: 'approved',
 }
 
 const FORM_VERSION_DETAIL: FormVersionDetailDto = {
@@ -648,6 +649,8 @@ describe('organizer submissions', () => {
     expect(screen.getByText(/version 1/i)).toBeInTheDocument()
     expect(screen.getByText('Title')).toBeInTheDocument()
     expect(screen.getByText('Format')).toBeInTheDocument()
+    expect(screen.getByText('On this proposal')).toBeInTheDocument()
+    expect(screen.getByText('Speaker A')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /back to submissions/i })).toHaveAttribute(
       'href',
       `/admin/events/${EVENT_SLUG}/submissions`,

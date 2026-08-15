@@ -14,6 +14,17 @@ export default defineConfig({
   optimizeDeps: {
     entries: ['index.html'],
   },
+  server: {
+    watch: {
+      ignored: [
+        '**/.worktrees/**',
+        '**/.grok/**',
+        '**/local/**',
+        '**/research-understanding-plan/**',
+        '**/project-goal/**',
+      ],
+    },
+  },
   resolve: {
     tsconfigPaths: true,
   },

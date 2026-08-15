@@ -76,6 +76,8 @@ describe('speaker profile API', () => {
       name: 'Ada Lovelace',
       email: 'speaker-a@example.test',
       bio: 'First programmer.',
+      jobTitle: '',
+      company: '',
     })
 
     const stored = await env.DB.prepare('SELECT name, bio FROM contacts WHERE email = ?')

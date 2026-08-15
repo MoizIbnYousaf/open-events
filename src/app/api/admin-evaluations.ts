@@ -163,8 +163,9 @@ export interface RoundCriterion {
   readonly options: readonly string[] | null
 }
 
-/** A proposed question; the id and position are the server's to assign. */
+/** A proposed question; the id is reused when the organizer is editing one. */
 export interface RoundCriterionInput {
+  readonly id?: string
   readonly label: string
   readonly kind: 'rating' | 'select' | 'text'
   readonly weight: number | null

@@ -98,6 +98,8 @@ const SUBMISSION_DETAIL = {
   ],
   createdAt: '2026-08-08T12:00:00.000Z',
   submittedAt: '2026-08-08T12:00:00.000Z',
+  editable: true,
+  contentStatus: 'approved',
 }
 
 const FORM_VERSION_DETAIL = {

@@ -141,6 +141,12 @@ beforeEach(() => {
     if (method === 'GET' && url === '/api/admin/events/demo-conf-2026/forms') {
       return jsonResponse(FORMS_DTO)
     }
+    if (method === 'GET' && url === '/api/admin/events/demo-conf-2026/confirmation-template') {
+      return jsonResponse({
+        subject: 'Your submission was received',
+        body: 'Open Events: your submission "{{title}}" was received ({{submissionId}}).',
+      })
+    }
     if (method === 'PATCH' && url === '/api/admin/events/demo-conf-2026') {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>
       return jsonResponse({ ...EVENT_CONFIG_DTO, ...body })

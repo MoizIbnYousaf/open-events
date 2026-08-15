@@ -4,6 +4,7 @@ import {
   toFormDefinitionDto,
   toFormSummaryDto,
   toOwnSubmissionListItemDto,
+  toSubmissionDetailDto,
   toSubmissionListItemDto,
   toFormVersionDetailDto,
 } from '../../../src/application'
@@ -39,6 +40,37 @@ describe('toFormDefinitionDto', () => {
     expect(() => toFormDefinitionDto(form, EVENT_SLUG, draft, createContent(), NOW)).toThrow(
       'Cannot build a public definition',
     )
+  })
+})
+
+describe('toSubmissionDetailDto', () => {
+  it('keeps an accepted proposal editable after the call has closed', () => {
+    const closed = createForm({
+      limits: {
+        opensAt: '2026-01-01T00:00:00.000Z',
+        closesAt: '2026-01-02T00:00:00.000Z',
+        totalCap: null,
+        perIdentityLimit: null,
+      },
+    })
+    const dto = toSubmissionDetailDto(
+      createSubmission(),
+      closed,
+      createVersion(),
+      [
+        {
+          contactId: 'c-1',
+          name: 'Ada',
+          email: 'ada@example.test',
+          role: 'primary',
+          position: 0,
+        },
+      ],
+      '2026-08-01T00:00:00.000Z',
+      { accepted: true, contentStatus: 'draft' },
+    )
+    expect(dto.editable).toBe(true)
+    expect(dto.contentStatus).toBe('draft')
   })
 })
 

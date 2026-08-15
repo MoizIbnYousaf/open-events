@@ -28,9 +28,11 @@ import type { FormRepository } from '../ports/form-repository'
 import type { FormVersionRepository } from '../ports/form-version-repository'
 import type { SubmissionRepository } from '../ports/submission-repository'
 import type { CoSpeakerIntent, SubmitUnitOfWork } from '../ports/submit-unit-of-work'
+import type { EventRepository } from '../ports/event-repository'
 import type { ProgrammeRepository } from '../ports/programme-repository'
 import { answerText } from '../../domain/programme'
 import { shouldSnapshotApprovedCopy } from '../../domain/session-content'
+import { renderConfirmationEmail } from './confirmation-email'
 
 export class SubmitService {
   readonly #drafts: DraftRepository
@@ -42,6 +44,7 @@ export class SubmitService {
   readonly #submitUnitOfWork: SubmitUnitOfWork
   readonly #clock: Clock
   readonly #programme: ProgrammeRepository | null
+  readonly #events: EventRepository | null
 
   constructor(
     drafts: DraftRepository,
@@ -53,6 +56,7 @@ export class SubmitService {
     submitUnitOfWork: SubmitUnitOfWork,
     clock: Clock,
     programme: ProgrammeRepository | null = null,
+    events: EventRepository | null = null,
   ) {
     this.#drafts = drafts
     this.#submissions = submissions
@@ -63,6 +67,7 @@ export class SubmitService {
     this.#submitUnitOfWork = submitUnitOfWork
     this.#clock = clock
     this.#programme = programme
+    this.#events = events
   }
 
   /**
@@ -142,12 +147,25 @@ export class SubmitService {
       createdAt: now,
       submittedAt: now,
     }
+    const event = this.#events === null ? null : await this.#events.findById(actor.eventId)
+    const custom =
+      this.#programme === null
+        ? null
+        : await this.#programme.getEmailTemplate(actor.eventId, 'confirmation')
+    const confirmationCopy = renderConfirmationEmail(
+      {
+        title: input.title,
+        eventName: event?.name ?? 'the event',
+        submissionId,
+      },
+      custom ?? undefined,
+    )
     const message: CapturedMessage = {
       id: crypto.randomUUID(),
       eventId: actor.eventId,
       toEmail: owner.email,
-      subject: 'Your submission was received',
-      body: `Open Events: your submission "${input.title}" was received (${submissionId}).`,
+      subject: confirmationCopy.subject,
+      body: confirmationCopy.body,
       createdAt: now,
       kind: 'confirmation',
     }
@@ -351,7 +369,16 @@ export class SubmitService {
 
   async #detail(submission: ProposalSubmission): Promise<SubmissionDetailDto> {
     const { form, version, contributors } = await this.#context(submission)
-    return toSubmissionDetailDto(submission, form, version, contributors, this.#clock.now())
+    const standing = await this.#standingDecisions(submission.eventId)
+    const accepted = standing.get(submission.id) === 'accepted'
+    const contentStatus =
+      this.#programme === null
+        ? 'approved'
+        : await this.#programme.getContentStatus(submission.eventId, submission.id)
+    return toSubmissionDetailDto(submission, form, version, contributors, this.#clock.now(), {
+      accepted,
+      contentStatus,
+    })
   }
 
   async #standingDecisions(

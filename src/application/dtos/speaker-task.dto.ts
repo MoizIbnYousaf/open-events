@@ -4,14 +4,13 @@ import type { EventId, UtcInstant } from '../../domain/event'
 import type { FormId } from '../../domain/form'
 import type { VersionId } from '../../domain/form-version'
 import {
-  computeReadinessTotals,
-  isSubmissionReady,
   type SpeakerTask,
   type SpeakerTaskId,
   type SpeakerTaskKind,
   type SpeakerTaskStatus,
 } from '../../domain/speaker-task'
 import type { SubmissionId } from '../../domain/submission'
+import { readinessFromTasksAndAssignments } from '../../domain/readiness-assignments'
 
 /** One onboarding task as seen by its owning speaker or by the organizer. */
 export interface SpeakerTaskDto {
@@ -98,14 +97,15 @@ export function toSubmissionReadinessDto(
   submissionId: SubmissionId,
   title: string,
   tasks: readonly SpeakerTask[],
+  extra: { readonly total: number; readonly completed: number } = { total: 0, completed: 0 },
 ): SubmissionReadinessDto {
-  const totals = computeReadinessTotals(tasks)
+  const totals = readinessFromTasksAndAssignments(tasks, extra)
   return {
     submissionId,
     title,
     totalTasks: totals.totalTasks,
     completedTasks: totals.completedTasks,
     percentComplete: totals.percentComplete,
-    ready: isSubmissionReady(tasks),
+    ready: totals.totalTasks === totals.completedTasks,
   }
 }

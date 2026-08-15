@@ -9,7 +9,10 @@ import defaultGate from '../../../playwright.config'
 // prepare the data it reads before it serves the app, the way the organizer
 // gate's dev server wrapper already does.
 
-function singleWebServer(config: typeof defaultGate): { command: string } {
+function singleWebServer(config: typeof defaultGate): {
+  command: string
+  env?: NodeJS.ProcessEnv
+} {
   const webServer = config.webServer
   if (webServer === undefined || Array.isArray(webServer)) {
     throw new Error('the default end-to-end gate must configure exactly one web server')
@@ -26,5 +29,10 @@ describe('default end-to-end gate', () => {
 
     expect(resetAt).toBeGreaterThanOrEqual(0)
     expect(serveAt).toBeGreaterThan(resetAt)
+  })
+
+  it('does not load an optional Clerk key from the developer machine', () => {
+    const { env } = singleWebServer(defaultGate)
+    expect(env?.VITE_CLERK_PUBLISHABLE_KEY).toBe('')
   })
 })

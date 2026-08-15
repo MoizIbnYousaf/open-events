@@ -14,7 +14,13 @@ const PROFILE_URL = '/api/public/profile'
 
 let fetchMock: ReturnType<typeof vi.fn>
 let fetchHandler: (url: string, init?: RequestInit) => Response | Promise<Response>
-let stored: { name: string; email: string; bio: string | null }
+let stored: {
+  name: string
+  email: string
+  bio: string | null
+  jobTitle: string
+  company: string
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -31,15 +37,32 @@ function defaultHandler(url: string, init?: RequestInit): Response {
   const method = init?.method ?? 'GET'
   if (method === 'GET' && url === PROFILE_URL) return jsonResponse(stored)
   if (method === 'PUT' && url === PROFILE_URL) {
-    const body = JSON.parse(String(init?.body)) as { name: string; bio: string | null }
-    stored = { ...stored, name: body.name, bio: body.bio }
+    const body = JSON.parse(String(init?.body)) as {
+      name: string
+      bio: string | null
+      jobTitle?: string
+      company?: string
+    }
+    stored = {
+      ...stored,
+      name: body.name,
+      bio: body.bio,
+      jobTitle: body.jobTitle ?? stored.jobTitle,
+      company: body.company ?? stored.company,
+    }
     return jsonResponse(stored)
   }
   return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
 }
 
 beforeEach(() => {
-  stored = { name: 'Speaker A', email: 'speaker-a@example.test', bio: null }
+  stored = {
+    name: 'Speaker A',
+    email: 'speaker-a@example.test',
+    bio: null,
+    jobTitle: '',
+    company: '',
+  }
   fetchHandler = defaultHandler
   fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
     Promise.resolve(fetchHandler(requestUrl(input), init)),
@@ -71,6 +94,8 @@ describe('portal profile editor', () => {
     expect(screen.getByLabelText(/bio/i)).toHaveValue('')
     const email = screen.getByText('speaker-a@example.test')
     expect(email.closest('input, textarea')).toBeNull()
+    expect(screen.getByLabelText(/job title/i)).toHaveValue('')
+    expect(screen.getByLabelText(/company/i)).toHaveValue('')
   })
 
   it('saves the edited name and bio through the real endpoint', async () => {

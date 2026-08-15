@@ -134,6 +134,15 @@ function defaultHandler(url: string, init?: RequestInit): Response {
   if (method === 'GET' && url === MESSAGES_PATH) {
     return jsonResponse(history)
   }
+  if (url.includes('reminder-preview')) {
+    return jsonResponse({
+      ...PREVIEW,
+      kind: 'reminder',
+      subject: 'Reminder: Workshop proposal',
+      body: 'Please finish onboarding.',
+      alreadySent: false,
+    })
+  }
   if (method === 'POST' && url === ACCEPT_PATH) {
     const alreadyAccepted = accepted
     accepted = true

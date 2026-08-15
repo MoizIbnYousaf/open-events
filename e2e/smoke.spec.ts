@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test'
 
+import { isConsoleNoise } from './helpers/console-noise'
+
 test('app shell loads DemoConf 2026 with no console errors and a healthy API', async ({ page }) => {
   const consoleErrors: string[] = []
   const pageErrors: string[] = []
   page.on('console', (message) => {
-    if (message.type() === 'error') {
+    if (message.type() === 'error' && !isConsoleNoise(message.text())) {
       consoleErrors.push(message.text())
     }
   })

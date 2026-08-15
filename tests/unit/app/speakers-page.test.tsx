@@ -68,10 +68,14 @@ function mount() {
 }
 
 beforeEach(() => {
-  fetchHandler = (url) =>
-    url === SPEAKERS_URL
-      ? jsonResponse(ROSTER)
-      : jsonResponse({ error: { code: 'internal', message: 'unexpected' } }, 500)
+  fetchHandler = (url) => {
+    if (url === SPEAKERS_URL) return jsonResponse(ROSTER)
+    if (url.endsWith('/forms') || url.endsWith('/submissions') || url.endsWith('/assignments')) {
+      return jsonResponse([])
+    }
+    if (url.endsWith('/speakers/templates') || url.endsWith('/messages')) return jsonResponse([])
+    return jsonResponse({ error: { code: 'internal', message: 'unexpected' } }, 500)
+  }
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
@@ -135,6 +139,12 @@ describe('the organizer speaker roster', () => {
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent('Speakers')
+  })
+
+  it('offers a published-form assignment control', async () => {
+    mount()
+    expect(await screen.findByRole('heading', { name: /assign a published form/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^assign form$/i })).toBeDisabled()
   })
 
   it('filters the roster by workflow status', async () => {

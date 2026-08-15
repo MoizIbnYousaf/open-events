@@ -16,6 +16,11 @@ import type { ContactRepository } from '../ports/contact-repository'
 import type { EventRepository } from '../ports/event-repository'
 import type { SpeakerTaskRepository } from '../ports/speaker-task-repository'
 import type { SubmissionRepository } from '../ports/submission-repository'
+import type { ProgrammeRepository } from '../ports/programme-repository'
+import {
+  CONFIRMATION_BODY_TEMPLATE,
+  CONFIRMATION_SUBJECT_TEMPLATE,
+} from './confirmation-email'
 import { SPEAKER_PORTAL_PATH } from '../public-path'
 
 /** Built-in P0 acceptance template; no per-event template storage yet. */
@@ -150,6 +155,7 @@ export class CommunicationsService {
   readonly #messages: CapturedMessageRepository
   readonly #acceptances: SpeakerTaskRepository
   readonly #clock: Clock
+  readonly #programme: ProgrammeRepository | null
 
   constructor(
     submissions: SubmissionRepository,
@@ -158,6 +164,7 @@ export class CommunicationsService {
     messages: CapturedMessageRepository,
     acceptances: SpeakerTaskRepository,
     clock: Clock,
+    programme: ProgrammeRepository | null = null,
   ) {
     this.#submissions = submissions
     this.#events = events
@@ -165,6 +172,38 @@ export class CommunicationsService {
     this.#messages = messages
     this.#acceptances = acceptances
     this.#clock = clock
+    this.#programme = programme
+  }
+
+  async getConfirmationTemplate(
+    _actor: OrganizerActor,
+    eventId: EventId,
+  ): Promise<{ readonly subject: string; readonly body: string }> {
+    const stored =
+      this.#programme === null
+        ? null
+        : await this.#programme.getEmailTemplate(eventId, 'confirmation')
+    return {
+      subject: stored?.subject ?? CONFIRMATION_SUBJECT_TEMPLATE,
+      body: stored?.body ?? CONFIRMATION_BODY_TEMPLATE,
+    }
+  }
+
+  async saveConfirmationTemplate(
+    _actor: OrganizerActor,
+    eventId: EventId,
+    input: { readonly subject: string; readonly body: string },
+  ): Promise<{ readonly subject: string; readonly body: string }> {
+    const subject = input.subject.trim()
+    const body = input.body.trim()
+    if (subject.length === 0 || body.length === 0) {
+      throw new ApplicationError('validation_failed', 'Confirmation subject and body are required')
+    }
+    if (this.#programme === null) {
+      throw new ApplicationError('not_found', 'Confirmation templates are not available')
+    }
+    await this.#programme.saveEmailTemplate(eventId, 'confirmation', subject, body)
+    return { subject, body }
   }
 
   async previewAcceptance(

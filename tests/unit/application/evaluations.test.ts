@@ -323,6 +323,9 @@ describe('EvaluationService evaluator scoping', () => {
         speakerName: null,
         anonymized: false,
         coSpeakers: [],
+        abstract: '',
+        track: '',
+        takeaway: '',
       },
     ])
     expect(rows.map((row) => row.submissionId)).not.toContain(otherSubmission.id)
@@ -382,6 +385,9 @@ describe('EvaluationService scoring', () => {
       speakerName: null,
       anonymized: false,
       coSpeakers: [],
+      abstract: '',
+      track: '',
+      takeaway: '',
     })
     expect(await service.listOwnEvaluations(actor)).toEqual([row])
   })
@@ -648,6 +654,9 @@ describe('EvaluationService multi-round evaluator rows', () => {
         speakerName: null,
         anonymized: false,
         coSpeakers: [],
+        abstract: '',
+        track: '',
+        takeaway: '',
       },
     ])
     expect(new Set(rows.map((row) => row.submissionId)).size).toBe(rows.length)
@@ -1088,5 +1097,60 @@ describe('EvaluationService criteria against recorded scores', () => {
     const summary = await service.weightedSummary(organizerActor, EVENT_ID, submission.id)
     expect(summary.scoreCount).toBe(1)
     expect(summary.weightedTotal).toBe(12)
+  })
+})
+
+describe('EvaluationService scorecard ids and proposal answers', () => {
+  it('keeps criterion ids on a second save so collected scores survive', async () => {
+    const round = await service.openRound(organizerActor, EVENT_ID, { number: 1, name: 'Round 1' })
+    const first = await service.putRoundScorecard(organizerActor, EVENT_ID, round.id, [
+      { label: 'Fit', kind: 'rating', weight: 1 },
+    ])
+    const criterionId = first[0]?.id
+    expect(criterionId).toMatch(/^[0-9a-f-]{36}$/i)
+
+    await evaluations.saveRoundScore({
+      id: 'score-1',
+      eventId: EVENT_ID,
+      assignmentId: 'assignment-1',
+      criterionId: criterionId as string,
+      valueNumber: 4,
+      valueText: null,
+      createdAt: FIXED_NOW,
+      updatedAt: FIXED_NOW,
+    })
+
+    const second = await service.putRoundScorecard(organizerActor, EVENT_ID, round.id, [
+      { id: criterionId, label: 'Fit (renamed)', kind: 'rating', weight: 2 },
+    ])
+    expect(second[0]?.id).toBe(criterionId)
+    expect(second[0]?.label).toBe('Fit (renamed)')
+    const kept = await evaluations.listRoundScoresByAssignment(EVENT_ID, 'assignment-1')
+    expect(kept).toHaveLength(1)
+    expect(kept[0]?.criterionId).toBe(criterionId)
+  })
+
+  it('puts CFP answers on the evaluator queue row', async () => {
+    submissions = new InMemorySubmissionRepository(new InMemoryFormVersionRepository(), [
+      createSubmission({
+        answers: { abstract: 'Read this', track: 'Platform', takeaway: 'Ship it' },
+      }),
+    ])
+    service = new EvaluationService(submissions, contacts, evaluations, clock, messages)
+    await service.addCommitteeMember(organizerActor, EVENT_ID, { email: REVIEWER_ONE_EMAIL })
+    const round = await service.openRound(organizerActor, EVENT_ID, { number: 1, name: 'Round 1' })
+    await service.defineCriteria(organizerActor, EVENT_ID, {
+      criteria: [{ name: 'Overall fit', weight: 1, position: 0 }],
+    })
+    await service.assign(organizerActor, EVENT_ID, submission.id, {
+      evaluatorEmail: REVIEWER_ONE_EMAIL,
+    })
+    const rows = await service.listOwnEvaluations(
+      createSubmitterActor({ contactId: REVIEWER_ONE_ID }),
+    )
+    expect(rows[0]?.abstract).toBe('Read this')
+    expect(rows[0]?.track).toBe('Platform')
+    expect(rows[0]?.takeaway).toBe('Ship it')
+    expect(round.id).toBe(rows[0]?.roundId)
   })
 })

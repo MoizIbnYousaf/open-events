@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 // @ts-expect-error — scripts/golden-dev-child.mjs is plain ESM (narrow documented boundary).
-import { devServerCommand, terminateChild } from '../../../scripts/golden-dev-child.mjs'
+import { devServerCommand, e2eServerEnv, terminateChild } from '../../../scripts/golden-dev-child.mjs'
 
 // Shutdown contract for the organizer end-to-end dev server: a signal the
 // wrapper cannot pass on leaves a listener on the port after the wrapper is
@@ -35,6 +35,14 @@ async function longRunningChild(script: string): Promise<ChildProcess> {
   })
   return child
 }
+
+describe('e2e server env', () => {
+  it('clears the optional Clerk publishable key so .env.local cannot load Clerk', () => {
+    const env = e2eServerEnv({ VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_not-used', PATH: '/bin' })
+    expect(env.VITE_CLERK_PUBLISHABLE_KEY).toBe('')
+    expect(env.PATH).toBe('/bin')
+  })
+})
 
 describe('golden dev server launch command', () => {
   it('runs the dev server itself, with no package manager in between', () => {

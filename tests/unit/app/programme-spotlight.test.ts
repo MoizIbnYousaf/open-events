@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   nextSpotlightId,
   parseSpotlightSearch,
+  preserveDeskLinkNavigation,
   shouldIgnoreSpotlightKey,
   writeSpotlightSearch,
 } from '../../../src/app/features/admin/programme-spotlight'
@@ -21,6 +22,12 @@ describe('programme-spotlight', () => {
     expect(nextSpotlightId(ids, 'c', 1)).toBe('c')
     expect(nextSpotlightId(ids, 'b', -1)).toBe('a')
     expect(nextSpotlightId(ids, 'a', -1)).toBe('a')
+  })
+
+  it('stops a title-link click from selecting the row instead of navigating', () => {
+    const event = { stopPropagation: vi.fn() }
+    preserveDeskLinkNavigation(event)
+    expect(event.stopPropagation).toHaveBeenCalledOnce()
   })
 
   it('ignores keystrokes that belong to a field', () => {

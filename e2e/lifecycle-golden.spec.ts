@@ -3,6 +3,7 @@ import { deflateSync } from 'node:zlib'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 
+import { isConsoleNoise } from './helpers/console-noise'
 import { capturedMessages, countLifecycleRows } from './helpers/golden-rows'
 
 /**
@@ -77,9 +78,6 @@ const EXPECTED_MUTATIONS: Readonly<Record<string, number>> = {
   [`POST /api/admin/events/${EVENT_SLUG}/agenda/publish`]: 1,
 }
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-
-// Dev-server/HMR console noise is excluded from the user-facing error list.
-const CONSOLE_NOISE_PATTERNS = [/^\[vite\]/, /Download the React DevTools/i]
 
 // Chromium console companion of an EXPECTED 404 read (see isExpectedException).
 // Consumed AT MOST ONCE per expected 404 response — never blanket-suppressed.
@@ -351,7 +349,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     page.on('console', (message) => {
       if (message.type() !== 'error' && message.type() !== 'warning') return
       const text = message.text()
-      if (CONSOLE_NOISE_PATTERNS.some((pattern) => pattern.test(text))) return
+      if (isConsoleNoise(text)) return
       if (EXPECTED_404_CONSOLE_PATTERN.test(text)) {
         const consumption = consume404Message(expected404ConsumeBudget)
         expected404ConsumeBudget = consumption.pending
@@ -628,7 +626,9 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
       mimeType: 'application/pdf',
       buffer: Buffer.from('%PDF-1.4 lifecycle outline'),
     })
-    await expect(speakerPage.getByText('lifecycle-outline.pdf')).toBeVisible()
+    await expect(
+      speakerPage.getByText('lifecycle-outline.pdf', { exact: true }),
+    ).toBeVisible()
 
     // Evidence-gated completions on the FEATURED submission's checklist; the
     // bio task is completed by keyboard as the portal's focus evidence.

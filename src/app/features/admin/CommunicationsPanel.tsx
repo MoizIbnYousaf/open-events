@@ -21,6 +21,7 @@ import { StatusLive } from '../../../components/ui/status-live'
 import { SectionHeading } from '../../../components/ui/section-heading'
 import type { SubmissionId } from '../../../domain'
 import { formatInstant } from './format-instant'
+import { acceptanceSendComplete } from './acceptance-send'
 
 interface CommunicationsPanelProps {
   readonly slug: string
@@ -215,6 +216,8 @@ export default function CommunicationsPanel({ slug, submissionId }: Communicatio
           sendError={send.error}
           isSending={send.isPending}
           reminderAlreadySent={reminderPreview.data?.alreadySent === true}
+          reminderSubject={reminderPreview.data?.subject}
+          reminderBody={reminderPreview.data?.body}
           onSendReminder={(onSent) => {
             sendReminder.mutate(undefined, {
               // Same channel decision as the acceptance send (DEC-019/DEC-014).
@@ -243,6 +246,7 @@ interface CommunicationsBodyProps {
         /** Absent on a payload that predates the rejection outcome. */
         readonly decision: SubmissionOutcome
         readonly audience?: readonly { readonly email: string; readonly alreadySent: boolean }[]
+        readonly alreadySent?: boolean
       }
     | undefined
   readonly messages: readonly {
@@ -261,6 +265,8 @@ interface CommunicationsBodyProps {
   readonly sendError: unknown
   readonly isSending: boolean
   readonly reminderAlreadySent: boolean
+  readonly reminderSubject?: string
+  readonly reminderBody?: string
   readonly onSendReminder: (onSent: () => void) => void
   readonly reminderError: unknown
   readonly isSendingReminder: boolean
@@ -276,13 +282,13 @@ function CommunicationsBody({
   sendError,
   isSending,
   reminderAlreadySent,
+  reminderSubject,
+  reminderBody,
   onSendReminder,
   reminderError,
   isSendingReminder,
 }: CommunicationsBodyProps) {
-  // Pre-0012 rows carry no kind on the wire only in stale caches; the server
-  // always sends one now, so a missing kind counts as an acceptance row.
-  const alreadySent = messages.some((message) => (message.kind ?? 'acceptance') === 'acceptance')
+  const alreadySent = acceptanceSendComplete(preview)
   const decision = readDecision(preview)
   // The send gate follows the DECISION, not the older boolean beside it: a
   // proposal that has been turned down must not offer an acceptance email.
@@ -471,6 +477,23 @@ function CommunicationsBody({
       {/* Static copy: a 5xx body is server internals, not organizer guidance. */}
       {reminderError !== null && reminderError !== undefined ? (
         <AlertLive>The reminder could not be sent.</AlertLive>
+      ) : null}
+
+      {reminderSubject !== undefined || reminderBody !== undefined ? (
+        <dl className="flex flex-col divide-y divide-border rounded-lg text-sm ring-1 ring-border">
+          <div className="flex flex-col gap-1 p-3">
+            <dt className="text-xs font-medium text-muted-foreground">Reminder subject</dt>
+            <dd className="font-medium break-words">{reminderSubject ?? ''}</dd>
+          </div>
+          <div className="flex flex-col gap-1 p-3">
+            <dt className="text-xs font-medium text-muted-foreground">Reminder message</dt>
+            <dd>
+              <pre className="border-l-2 border-border pl-3 text-[15px] leading-relaxed whitespace-pre-wrap font-sans">
+                {reminderBody ?? ''}
+              </pre>
+            </dd>
+          </div>
+        </dl>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">

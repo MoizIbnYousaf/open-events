@@ -61,15 +61,28 @@ export default function ProfileEditor() {
 function ProfileForm({
   initial,
 }: {
-  readonly initial: { readonly name: string; readonly email: string; readonly bio: string | null }
+  readonly initial: {
+    readonly name: string
+    readonly email: string
+    readonly bio: string | null
+    readonly jobTitle?: string
+    readonly company?: string
+  }
 }) {
   const update = useUpdateProfile()
   const [name, setName] = useState(initial.name)
   const [bio, setBio] = useState(initial.bio ?? '')
+  const [jobTitle, setJobTitle] = useState(initial.jobTitle ?? '')
+  const [company, setCompany] = useState(initial.company ?? '')
 
   const submit = () => {
     update.mutate(
-      { name, bio: bio.trim().length === 0 ? null : bio },
+      {
+        name,
+        bio: bio.trim().length === 0 ? null : bio,
+        jobTitle,
+        company,
+      },
       {
         onSuccess: () => toast.success('Profile saved'),
       },
@@ -101,6 +114,24 @@ function ProfileForm({
                 value={name}
                 maxLength={200}
                 onChange={(event) => setName(event.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="profile-job-title">Job title</FieldLabel>
+              <Input
+                id="profile-job-title"
+                value={jobTitle}
+                maxLength={200}
+                onChange={(event) => setJobTitle(event.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="profile-company">Company</FieldLabel>
+              <Input
+                id="profile-company"
+                value={company}
+                maxLength={200}
+                onChange={(event) => setCompany(event.target.value)}
               />
             </Field>
             <Field>

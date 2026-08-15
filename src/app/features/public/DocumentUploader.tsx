@@ -13,7 +13,7 @@ import { Field, FieldError, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { StatusLive } from '../../../components/ui/status-live'
 import { SectionHeading } from '../../../components/ui/section-heading'
-import { useUploadDocument } from '../../queries/public-profile'
+import { useOwnDocument, useUploadDocument } from '../../queries/public-profile'
 
 const INPUT_ID = 'document-file'
 
@@ -37,6 +37,7 @@ const MAX_MEGABYTES = Math.round(DOCUMENT_MAX_BYTES / (1024 * 1024))
  */
 export default function DocumentUploader() {
   const upload = useUploadDocument()
+  const storedQuery = useOwnDocument()
   const [rejection, setRejection] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
@@ -71,7 +72,8 @@ export default function DocumentUploader() {
     })
   }
 
-  const stored = upload.data
+  const stored = upload.data ?? storedQuery.data ?? undefined
+  const shown = stored === null ? undefined : stored
 
   return (
     <section aria-labelledby="document-heading">
@@ -108,14 +110,16 @@ export default function DocumentUploader() {
           </Field>
           {rejection !== null ? <AlertLive>{rejection}</AlertLive> : null}
           <StatusLive>{upload.isPending ? 'Uploading your document…' : null}</StatusLive>
-          {stored !== undefined && !upload.isPending ? (
+          {shown !== undefined && !upload.isPending ? (
             <div className="grid gap-0.5 rounded-lg p-3 ring-1 ring-border">
-              <span className="truncate text-sm font-medium">{stored.fileName}</span>
+              <span className="truncate text-sm font-medium">{shown.fileName}</span>
               <span className="text-xs text-muted-foreground">
-                {stored.contentType}, {stored.sizeBytes} bytes
+                {shown.contentType}, {shown.sizeBytes} bytes
               </span>
               <span className="text-xs text-muted-foreground">
-                Uploaded just now. Organizers keep it with your proposal.
+                {upload.data !== undefined
+                  ? 'Uploaded just now. Organizers keep it with your proposal.'
+                  : 'On file. Organizers keep it with your proposal.'}
               </span>
               <DocumentVersionsAndComments />
             </div>
@@ -126,7 +130,7 @@ export default function DocumentUploader() {
               description="No supporting document uploaded yet. A written outline or an accessibility note helps organizers place your session."
             />
           )}
-          {stored === undefined ? <DocumentVersionsAndComments /> : null}
+          {shown === undefined ? <DocumentVersionsAndComments /> : null}
         </CardContent>
       </Card>
     </section>

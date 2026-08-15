@@ -578,13 +578,19 @@ export async function handlePutOwnDocument(context: ServerContext): Promise<Resp
   }
 }
 
-/** GET /api/public/profile/document: own bytes only; anything else is a 404. */
+/** GET /api/public/profile/document: JSON metadata when Accept is json, else bytes. */
 export async function handleGetOwnDocument(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
   if (deps === null) return databaseUnavailableResponse(context)
   if (deps.documents === null) return storageUnavailableResponse(context)
   const actor = requireSubmitter(context)
   if (actor === null) return forbiddenResponse(context)
+  const accept = context.req.header('accept') ?? ''
+  if (accept.includes('application/json')) {
+    const meta = await deps.documents.getOwnDocumentMeta(actor)
+    if (meta === null) return notFoundResponse(context)
+    return context.json(meta)
+  }
   const document = await deps.documents.getOwnDocument(actor)
   if (document === null) return notFoundResponse(context)
   return new Response(document.body, {
@@ -608,9 +614,9 @@ export async function handleGetOwnProfile(context: ServerContext): Promise<Respo
 }
 
 /**
- * PUT /api/public/profile: strict body — exactly `name` (string) and `bio`
- * (string or null). Unknown fields, including any attempt to write the
- * read-only email, are a validation failure.
+ * PUT /api/public/profile: `name` required; `bio`, `jobTitle`, `company`
+ * optional. Unknown fields, including any attempt to write the read-only
+ * email, are a validation failure.
  */
 export async function handlePutOwnProfile(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -628,14 +634,20 @@ export async function handlePutOwnProfile(context: ServerContext): Promise<Respo
   }
   const record = body as Record<string, unknown>
   const keys = Object.keys(record).sort()
+  const allowed = new Set(['name', 'bio', 'jobTitle', 'company'])
   const validShape =
-    (keys.join(',') === 'bio,name' || keys.join(',') === 'name') &&
+    keys.every((key) => allowed.has(key)) &&
+    keys.includes('name') &&
     typeof record.name === 'string' &&
-    (record.bio === undefined || record.bio === null || typeof record.bio === 'string')
+    (record.bio === undefined || record.bio === null || typeof record.bio === 'string') &&
+    (record.jobTitle === undefined || typeof record.jobTitle === 'string') &&
+    (record.company === undefined || typeof record.company === 'string')
   if (!validShape) return validationFailedResponse(context)
   const profile = await deps.profile.updateOwnProfile(actor, {
     name: record.name as string,
     bio: (record.bio ?? null) as string | null,
+    jobTitle: typeof record.jobTitle === 'string' ? record.jobTitle : undefined,
+    company: typeof record.company === 'string' ? record.company : undefined,
   })
   return context.json(profile)
 }

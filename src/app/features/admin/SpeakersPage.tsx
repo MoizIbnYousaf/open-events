@@ -308,6 +308,7 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
             </CardContent>
           </Card>
           <AssignmentForm eventSlug={eventSlug} people={people} />
+          <FormTaskAssign eventSlug={eventSlug} people={people} />
           <SpeakerMailForm eventSlug={eventSlug} people={people} />
         </aside>
       </div>
@@ -529,6 +530,114 @@ function SpeakerProfileEditor({
         </Button>
       </div>
     </form>
+  )
+}
+
+function FormTaskAssign({
+  eventSlug,
+  people,
+}: {
+  readonly eventSlug: EventSlug
+  readonly people: readonly SpeakerRosterEntryDto[]
+}) {
+  const [formId, setFormId] = useState('')
+  const [submissionId, setSubmissionId] = useState('')
+  const [contactId, setContactId] = useState('')
+  const forms = useQuery({
+    queryKey: ['admin', 'forms', eventSlug],
+    queryFn: () =>
+      requestJson<readonly { formId: string; slug: string; publishedVersionId: string | null }[]>(
+        `/api/admin/events/${eventSlug}/forms`,
+      ),
+  })
+  const submissions = useQuery({
+    queryKey: ['admin', 'events', eventSlug, 'submissions'],
+    queryFn: () =>
+      requestJson<
+        readonly {
+          id: string
+          title: string
+          decision: string
+          primarySpeaker: { contactId: string }
+        }[]
+      >(`/api/admin/events/${eventSlug}/submissions`),
+  })
+  const published = (forms.data ?? []).filter((form) => form.publishedVersionId !== null)
+  const accepted = (submissions.data ?? []).filter((row) => row.decision === 'accepted')
+  const assign = useMutation({
+    mutationFn: () =>
+      requestJson(`/api/admin/events/${eventSlug}/submissions/${submissionId}/form-tasks`, {
+        method: 'POST',
+        body: JSON.stringify({ formId, contactId }),
+      }),
+  })
+  return (
+    <section className="grid gap-2" aria-labelledby="form-task-heading">
+      <h2 id="form-task-heading" className="text-lg font-medium">
+        Assign a published form
+      </h2>
+      <form
+        className="grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          assign.mutate()
+        }}
+      >
+        <Field>
+          <FieldLabel htmlFor="form-task-form">Published form</FieldLabel>
+          <NativeSelect
+            id="form-task-form"
+            value={formId}
+            onChange={(change) => setFormId(change.target.value)}
+          >
+            <option value="">Select a form</option>
+            {published.map((form) => (
+              <option key={form.formId} value={form.formId}>
+                {form.slug}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="form-task-submission">Accepted proposal</FieldLabel>
+          <NativeSelect
+            id="form-task-submission"
+            value={submissionId}
+            onChange={(change) => setSubmissionId(change.target.value)}
+          >
+            <option value="">Select a proposal</option>
+            {accepted.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.title}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="form-task-speaker">Speaker</FieldLabel>
+          <NativeSelect
+            id="form-task-speaker"
+            value={contactId}
+            onChange={(change) => setContactId(change.target.value)}
+          >
+            <option value="">Select a speaker</option>
+            {people.map((person) => (
+              <option key={person.contactId} value={person.contactId}>
+                {person.name || person.email}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+        <Button
+          type="submit"
+          className="self-start"
+          pending={assign.isPending}
+          disabled={formId === '' || submissionId === '' || contactId === ''}
+        >
+          {assign.isSuccess ? 'Form assigned' : 'Assign form'}
+        </Button>
+      </form>
+    </section>
   )
 }
 

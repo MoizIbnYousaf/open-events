@@ -88,6 +88,7 @@ describe('migration apply from an empty local D1', () => {
       '0021_programme_depth.sql',
       '0022_create_support_tables.sql',
       '0023_event_email_templates.sql',
+      '0024_guard_evaluation_criterion_round_reuse.sql',
     ])
 
     const tables = await env.DB.prepare(

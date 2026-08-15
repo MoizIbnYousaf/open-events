@@ -769,12 +769,17 @@ function BuilderEditorScreen({
           </div>
           <aside
             data-slot="builder-live-preview"
-            aria-label="What speakers see"
+            aria-hidden="true"
+            inert
             className="grid gap-2 xl:sticky xl:top-16"
           >
             <p className="text-xs font-medium text-muted-foreground">What speakers see</p>
             <Suspense fallback={<StatusLive>Loading the live preview…</StatusLive>}>
-              <PreviewEngine content={draft.content} taxonomyItems={taxonomyItems} />
+              <PreviewEngine
+                labelled={false}
+                content={draft.content}
+                taxonomyItems={taxonomyItems}
+              />
             </Suspense>
           </aside>
         </div>

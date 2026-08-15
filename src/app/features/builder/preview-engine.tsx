@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import type { TaxonomyItemDto } from '../../../application'
 import type {
@@ -26,9 +26,22 @@ import { autocompleteForElement } from '../../lib/autocomplete-purpose'
 interface PreviewEngineProps {
   readonly content: FormVersionContent
   readonly taxonomyItems: readonly TaxonomyItemDto[]
+  /** Dialog-only. The live sidebar must not steal focus from the editor. */
+  readonly autoFocus?: boolean
+  /**
+   * When false, labels are visual only. The dialog preview is the labelled
+   * surface; the live sidebar would otherwise expose a second "Title" control.
+   */
+  readonly labelled?: boolean
 }
 
-export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineProps) {
+export default function PreviewEngine({
+  content,
+  taxonomyItems,
+  autoFocus = false,
+  labelled = true,
+}: PreviewEngineProps) {
+  const instanceId = useId()
   const [answers, setAnswers] = useState<AnswerMap>({})
   const [issues, setIssues] = useState<readonly AnswerValidationIssue[]>([])
   // A clean run used to change nothing on screen, so the organizer could not
@@ -57,6 +70,7 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
   }, [routingOutcome, taxonomyItems])
 
   useEffect(() => {
+    if (!autoFocus) return
     const first = content.elements.find(
       (element) =>
         element.fieldKey !== null && (element.kind === 'field' || element.kind === 'question'),
@@ -64,7 +78,7 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
     if (first?.fieldKey !== null && first?.fieldKey !== undefined) {
       fieldRefs.current.get(first.fieldKey)?.focus()
     }
-  }, [content])
+  }, [autoFocus, content])
 
   const setAnswer = (fieldKey: ElementFieldKey, value: AnswerValue | null) => {
     setPassed(false)
@@ -118,6 +132,8 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
           ) : (
             <PreviewField
               key={element.id}
+              instanceId={instanceId}
+              labelled={labelled}
               element={element}
               answers={answers}
               required={isElementRequired(element, content.conditionRules, answers)}
@@ -132,11 +148,13 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
             whose text changes, never one created together with its text — a
             polite live region has to be in the accessibility tree before its
             content arrives or it announces nothing (DEC-014). */}
-        <StatusLive aria-live="polite">
-          {passed ? 'No problems found in these answers.' : null}
-        </StatusLive>
+        {labelled ? (
+          <StatusLive aria-live="polite">
+            {passed ? 'No problems found in these answers.' : null}
+          </StatusLive>
+        ) : null}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button type="submit">Submit preview</Button>
+          {labelled ? <Button type="submit">Submit preview</Button> : null}
           {routingLabel !== null ? (
             <p className="text-sm font-medium text-muted-foreground">{routingLabel}</p>
           ) : null}
@@ -147,6 +165,8 @@ export default function PreviewEngine({ content, taxonomyItems }: PreviewEngineP
 }
 
 interface PreviewFieldProps {
+  readonly instanceId: string
+  readonly labelled: boolean
   readonly element: FormElement
   readonly answers: AnswerMap
   readonly required: boolean
@@ -158,6 +178,8 @@ interface PreviewFieldProps {
 }
 
 function PreviewField({
+  instanceId,
+  labelled,
   element,
   answers,
   required,
@@ -169,18 +191,24 @@ function PreviewField({
   if (fieldKey === null) return null
   const label = element.label ?? fieldKey
   const value = answers[fieldKey]
-  const id = `preview-field-${fieldKey}`
-  const errorId = `${id}-error`
-  const invalid = error !== undefined
-  const errorNode = invalid ? <FieldError id={errorId}>{error}</FieldError> : null
+  const id = labelled ? `preview-field-${instanceId}-${fieldKey}` : undefined
+  const errorId = id !== undefined ? `${id}-error` : undefined
+  const invalid = labelled && error !== undefined
+  const errorNode =
+    invalid && errorId !== undefined ? <FieldError id={errorId}>{error}</FieldError> : null
+  const labelNode = labelled ? (
+    <FieldLabel htmlFor={id}>{label}</FieldLabel>
+  ) : (
+    <span className="text-xs font-medium text-muted-foreground">{label}</span>
+  )
 
   if (element.questionType === 'long_text') {
     return (
       <Field invalid={invalid}>
-        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        {labelNode}
         <Textarea
           id={id}
-          aria-label={label}
+          aria-label={labelled ? label : undefined}
           ref={registerFieldRef(fieldKey)}
           required={required}
           value={typeof value === 'string' ? value : ''}
@@ -200,7 +228,7 @@ function PreviewField({
     // wins over the prettier one — and it takes a real `<label for>` with it.
     return (
       <Field invalid={invalid}>
-        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        {labelNode}
         <NativeSelect
           id={id}
           // `HTMLSelectElement` does not structurally satisfy `HTMLElement`
@@ -230,7 +258,9 @@ function PreviewField({
     return (
       <Field invalid={invalid}>
         <fieldset className="grid gap-1">
-          <legend className="mb-0.5 text-xs font-medium text-muted-foreground">{label}</legend>
+          <legend className="mb-0.5 text-xs font-medium text-muted-foreground">
+            {labelled ? label : <span aria-hidden="true">{label}</span>}
+          </legend>
           {element.options.map((option, index) => {
             const selected = selectedOptions.has(option)
             const optionId = `${id}-option-${index}`
@@ -268,7 +298,7 @@ function PreviewField({
         : 'text'
   return (
     <Field invalid={invalid}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      {labelNode}
       <Input
         id={id}
         ref={registerFieldRef(fieldKey)}

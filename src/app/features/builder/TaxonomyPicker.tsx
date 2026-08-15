@@ -30,7 +30,10 @@ export default function TaxonomyPicker({ kind, items, value, onChange }: Taxonom
   return (
     <Field>
       <FieldTriggerLabel id={labelId}>Target</FieldTriggerLabel>
-      <Select value={value ?? ''} onValueChange={(next) => onChange(next === '' ? null : next)}>
+      <Select
+        value={value}
+        onValueChange={(next) => onChange(next === '' || next == null ? null : next)}
+      >
         <SelectTrigger aria-labelledby={labelId}>
           <SelectValue />
         </SelectTrigger>

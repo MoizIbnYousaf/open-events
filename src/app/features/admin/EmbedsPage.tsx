@@ -23,7 +23,7 @@ import {
   PageHeaderTitle,
 } from '../../../components/ui/page-header'
 import AppShell from '../nav/AppShell'
-import type { EmbedDto } from '../../../application/services/embeds'
+import { embedPreviewHref, type EmbedDto } from '../../../application/services/embeds'
 import { EMBED_FORMATS, EMBED_KINDS } from '../../../domain/embed'
 
 export default function EmbedsPage({ eventSlug }: { readonly eventSlug: string }) {
@@ -127,13 +127,43 @@ export default function EmbedsPage({ eventSlug }: { readonly eventSlug: string }
                     {embed.enabled ? 'enabled' : 'disabled'}
                   </ItemTitle>
                   <ItemDescription>Get code</ItemDescription>
-                  <Textarea
-                    className="mt-1 font-mono text-xs md:text-xs"
-                    readOnly
-                    rows={3}
-                    value={embed.snippet}
-                    aria-label={`${embed.name} embed code`}
-                  />
+                  <div
+                    data-slot="embed-builder"
+                    className="mt-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+                  >
+                    <div className="grid gap-2">
+                      <Textarea
+                        className="font-mono text-xs md:text-xs"
+                        readOnly
+                        rows={3}
+                        value={embed.snippet}
+                        aria-label={`${embed.name} embed code`}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-slot="embed-copy"
+                        className="self-start"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(embed.snippet)
+                        }}
+                      >
+                        Copy iframe
+                      </Button>
+                    </div>
+                    {embed.format === 'html' ? (
+                      <iframe
+                        data-slot="embed-live-preview"
+                        title={`${embed.name} live preview`}
+                        src={embedPreviewHref(
+                          typeof window === 'undefined' ? '' : window.location.origin,
+                          embed.id,
+                        )}
+                        className="min-h-80 w-full rounded-md border border-border bg-background"
+                      />
+                    ) : null}
+                  </div>
                 </ItemContent>
                 <ItemActions>
                   <a

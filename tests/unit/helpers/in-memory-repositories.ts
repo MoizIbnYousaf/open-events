@@ -18,6 +18,7 @@ import type {
   SubmitterToken,
   TaxonomyItem,
   TokenHash,
+  SessionContentStatus,
   VersionId,
 } from '../../../src/domain'
 import type {
@@ -34,6 +35,7 @@ import type {
   SessionRepository,
   SubmissionRepository,
   ObjectStoragePort,
+  ProgrammeRepository,
   StoredObject,
   TaxonomyRepository,
   TokenRepository,
@@ -808,6 +810,72 @@ export class InMemoryObjectStorage implements ObjectStoragePort {
   async delete(storageKey: string): Promise<void> {
     this.deletes.push(storageKey)
     this.objects.delete(storageKey)
+  }
+}
+
+export class InMemoryProgrammeRepository implements ProgrammeRepository {
+  readonly revisions: {
+    id: string
+    eventId: string
+    submissionId: string
+    editorName: string
+    title: string
+    abstract: string
+    createdAt: string
+  }[] = []
+  readonly status = new Map<string, SessionContentStatus>()
+
+  async listEmbeds() {
+    return []
+  }
+  async findEmbed() {
+    return null
+  }
+  async saveEmbed() {}
+
+  async listRevisions(eventId: string, submissionId: string) {
+    return this.revisions.filter(
+      (row) => row.eventId === eventId && row.submissionId === submissionId,
+    )
+  }
+  async addRevision(record: (typeof this.revisions)[number]) {
+    this.revisions.push(record)
+  }
+  async findRevision(id: string) {
+    return this.revisions.find((row) => row.id === id) ?? null
+  }
+
+  async getContentStatus(eventId: string, submissionId: string) {
+    return this.status.get(`${eventId}:${submissionId}`) ?? 'approved'
+  }
+  async setContentStatus(eventId: string, submissionId: string, status: SessionContentStatus) {
+    this.status.set(`${eventId}:${submissionId}`, status)
+  }
+  async listContentStatuses(eventId: string) {
+    return [...this.status.entries()]
+      .filter(([key]) => key.startsWith(`${eventId}:`))
+      .map(([key, status]) => ({ submissionId: key.slice(eventId.length + 1), status }))
+  }
+
+  async saveAssignment() {}
+  async listAssignments() {
+    return []
+  }
+  async findAssignment() {
+    return null
+  }
+  async setAssignees() {}
+  async listAssignees() {
+    return []
+  }
+  async listAssigneesForContact() {
+    return []
+  }
+  async completeAssignee() {
+    return 'not-found' as const
+  }
+  async findSpeakerProfile() {
+    return null
   }
 }
 

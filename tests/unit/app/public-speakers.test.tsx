@@ -21,7 +21,16 @@ const PEOPLE = {
       bio: 'Builds platforms.',
       hasHeadshot: true,
       photoUrl: '/api/public/events/demo-conf-2026/speakers/c-1/headshot',
-      sessions: [],
+      sessions: [
+        {
+          submissionId: 's-1',
+          title: 'Taming 40-Minute CI',
+          day: '2026-05-13',
+          start: '2026-05-13T10:00:00.000Z',
+          end: '2026-05-13T10:30:00.000Z',
+          room: 'Main hall',
+        },
+      ],
     },
   ],
 }
@@ -65,5 +74,6 @@ describe('public speakers widget', () => {
     expect(screen.getByText('Priya Raman')).toBeInTheDocument()
     expect(screen.getByText(/Staff Engineer/)).toBeInTheDocument()
     expect(screen.getByText(/Northwind/)).toBeInTheDocument()
+    expect(screen.getByText(/Taming 40-Minute CI/)).toBeInTheDocument()
   })
 })

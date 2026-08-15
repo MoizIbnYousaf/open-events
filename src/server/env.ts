@@ -40,6 +40,10 @@ export type ServerBindings = Pick<
   readonly CLERK_PUBLISHABLE_KEY?: string
   /** Clerk secret key; verifies session JWTs when the publishable key is absent. */
   readonly CLERK_SECRET_KEY?: string
+  /** OpenRouter key for Orby replies. Absent means Orby stays quiet. */
+  readonly OPENROUTER_API_KEY?: string
+  /** OpenRouter model id. Defaults to openai/gpt-5.6-luna. */
+  readonly OPENROUTER_MODEL?: string
 }
 
 /** Per-request context values set by the session/actor middleware. */

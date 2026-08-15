@@ -32,6 +32,10 @@ export function embedSnippet(origin: string, embed: EmbedRecord): string {
   return href
 }
 
+export function embedPreviewHref(origin: string, embedId: string): string {
+  return `${origin.replace(/\/$/, '')}/embed/${embedId}`
+}
+
 export class EmbedService {
   readonly #events: EventRepository
   readonly #programme: ProgrammeRepository

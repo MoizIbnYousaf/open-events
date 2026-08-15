@@ -1,11 +1,15 @@
 # Local-only development values. Never commit real secrets.
 LOCAL_ADMIN_TOKEN=
 LOCAL_DEV_MODE=true
-# CSRF origin allowlist, comma separated. Leave the line out entirely to use the
-# local development origins; an empty value is an explicit "allow nothing" and
-# rejects every cookie-authenticated cross-origin mutation.
-# ALLOWED_ORIGINS=
+# CSRF origin allowlist, comma separated. `pnpm dev` serves Vite on 5173; include
+# that origin or cookie-authenticated writes return 403. An empty value is an
+# explicit "allow nothing". Leave the line out entirely only if you want the
+# fallback origins (http://localhost:8787 and http://127.0.0.1:8787).
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 # Optional TTL overrides (ms, within frozen maxima); committed defaults apply when empty:
 # ORGANIZER_SESSION_TTL_MS=7200000
-# SUBMITTER_SESSION_TTL_MS=1800000
+# SUBMITTER_SESSION_TTL_MS=28800000
 # SUBMITTER_TOKEN_TTL_MS=86400000
+# Orby replies through OpenRouter. Empty means a human answers from the desk.
+# OPENROUTER_API_KEY=
+# OPENROUTER_MODEL=openai/gpt-5.6-luna

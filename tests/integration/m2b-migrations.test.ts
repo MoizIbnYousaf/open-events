@@ -45,6 +45,8 @@ const EXPECTED_TABLES = [
   'evaluation_rounds',
   'evaluation_assignments',
   'evaluation_scores',
+  'support_chats',
+  'support_messages',
 ] as const
 
 beforeEach(async () => {
@@ -83,6 +85,7 @@ describe('migration apply from an empty local D1', () => {
       '0019_add_assignment_recusal.sql',
       '0020_add_element_options_source.sql',
       '0021_programme_depth.sql',
+      '0022_create_support_tables.sql',
     ])
 
     const tables = await env.DB.prepare(

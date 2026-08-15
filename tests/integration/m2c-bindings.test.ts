@@ -9,10 +9,8 @@ import { bindings, bindingsFrom } from './m2c-helpers'
  * A local `.dev.vars` is loaded into the pool environment, and `.dev.vars`
  * is not part of the checkout, so any key left to the ambient environment would
  * silently change what the whole integration suite asserts depending on a file
- * some machines have and others do not. `ServerBindings` declares ten keys:
- * two resource bindings that can only come from the pool, and eight values a
- * `.dev.vars` can supply — the admin token, the local mode flag, the origin
- * allowlist, three TTLs, and the Clerk keys. These assertions pin the suite
+ * some machines have and others do not. `ServerBindings` declares the resource
+ * bindings plus every value a `.dev.vars` can supply. These assertions pin the suite
  * values against an ambient environment where every one of them is wrong, and
  * keep `overrides` as the single opt-in for per-test values.
  */
@@ -70,6 +68,8 @@ describe('integration bindings', () => {
       'FILES',
       'LOCAL_ADMIN_TOKEN',
       'LOCAL_DEV_MODE',
+      'OPENROUTER_API_KEY',
+      'OPENROUTER_MODEL',
       'ORGANIZER_SESSION_TTL_MS',
       'RESEND_API_KEY',
       'SUBMITTER_SESSION_TTL_MS',

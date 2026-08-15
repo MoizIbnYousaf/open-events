@@ -50,7 +50,7 @@ const ROSTER = [
   },
 ]
 
-let fetchHandler: (url: string) => Response
+let fetchHandler: (url: string, init?: RequestInit) => Response
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -74,8 +74,8 @@ beforeEach(() => {
       : jsonResponse({ error: { code: 'internal', message: 'unexpected' } }, 500)
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) =>
-      fetchHandler(typeof input === 'string' ? input : String(input)),
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      fetchHandler(typeof input === 'string' ? input : String(input), init),
     ),
   )
 })
@@ -172,6 +172,26 @@ describe('the organizer speaker roster', () => {
     expect(
       screen.getByRole('button', { name: /send reminder to speakers with outstanding tasks/i }),
     ).toBeInTheDocument()
+  })
+
+  it('posts the CSV the organizer typed to the import route', async () => {
+    const user = userEvent.setup()
+    const posts: string[] = []
+    fetchHandler = (url, init) => {
+      if (url === SPEAKERS_URL) return jsonResponse(ROSTER)
+      if (url === `${SPEAKERS_URL}/import` && (init?.method ?? 'GET') === 'POST') {
+        posts.push(typeof init?.body === 'string' ? init.body : '')
+        return jsonResponse({ imported: 1 })
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected' } }, 500)
+    }
+    mount()
+    await screen.findByRole('list', { name: /speakers/i })
+    await user.type(screen.getByLabelText(/^import csv$/i), 'name,email\nGrace Hopper,grace@example.test')
+    await user.click(screen.getByRole('button', { name: /import speakers/i }))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(posts[0]).toContain('Grace Hopper')
+    expect(posts[0]).toContain('grace@example.test')
   })
 
   it('saves an organizer bio edit through the speaker profile form', async () => {

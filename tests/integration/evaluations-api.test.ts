@@ -424,6 +424,20 @@ describe('organizer assignments', () => {
     expect(malformed.status).toBe(400)
   })
 
+  it('captures a copyable magic link when assigning a never-seen reviewer', async () => {
+    const cold = await assignReviewer('sbek-reviewer@example.test')
+    expect(cold.status).toBe(200)
+    const body = (await cold.json()) as { invitePath?: string; inviteSent?: boolean }
+    expect(body.inviteSent).toBe(true)
+    expect(body.invitePath).toMatch(/\/api\/public\/session\?token=/)
+    const inbox = await env.DB.prepare(
+      'SELECT body FROM captured_messages WHERE to_email = ? ORDER BY created_at DESC LIMIT 1',
+    )
+      .bind('sbek-reviewer@example.test')
+      .first<{ body: string }>()
+    expect(inbox?.body).toContain('/api/public/session?token=')
+  })
+
   it('409s an assignment once every round is closed', async () => {
     await organizerPost(`/api/admin/events/demo-conf-2026/rounds/${DEMO_CONF_2026_ROUND_ID}/close`)
 

@@ -79,6 +79,9 @@ function defaultHandler(url: string): Response {
   if (url === `/api/admin/events/${EVENT_SLUG}/readiness`) {
     return jsonResponse({ eventId: EVENT_CONFIG_DTO.id, submissions: [] })
   }
+  if (url.startsWith('/api/support-chat')) {
+    return jsonResponse({ role: 'none', needsIdentity: true, chat: null, guestToken: null })
+  }
   if (url === `/api/admin/events/${EVENT_SLUG}/agenda`) return jsonResponse({ sessions: [] })
   if (url === `/api/admin/events/${EVENT_SLUG}/criteria`) return jsonResponse([])
   if (url === `/api/admin/events/${EVENT_SLUG}/rounds`) return jsonResponse([])
@@ -141,6 +144,7 @@ describe('nav model', () => {
       'Agenda',
       'Embeds',
       'Files',
+      'Orby',
     ])
     for (const destination of organizerDestinations(EVENT_SLUG)) {
       if (destination.to.includes('$slug')) {

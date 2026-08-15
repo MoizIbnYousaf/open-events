@@ -153,6 +153,10 @@ function acceptUrl() {
   return `/api/admin/events/demo-conf-2026/submissions/${SUBMISSION_ID}/accept`
 }
 
+function revisionsUrl() {
+  return `/api/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}/revisions`
+}
+
 /** Acceptance state the detail page's acceptance panel reads. */
 const ACCEPTANCE_PREVIEW = {
   submissionId: SUBMISSION_ID,
@@ -284,6 +288,9 @@ beforeEach(() => {
     if (method === 'GET' && url === messagesUrl()) {
       return jsonResponse([])
     }
+    if (method === 'GET' && url === revisionsUrl()) {
+      return jsonResponse([])
+    }
     return (
       committeeResponse(url, method) ??
       jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -344,7 +351,7 @@ describe('organizer submissions', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Decision' })).toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument()
-    expect(screen.getByText('Pending review')).toBeInTheDocument()
+    expect(screen.getAllByText('Pending review').length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: 'My talk — Speaker A' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Pending/ })).not.toBeInTheDocument()
   })
@@ -362,7 +369,7 @@ describe('organizer submissions', () => {
     }
     await mountList()
     await screen.findByRole('table')
-    expect(screen.getByText('Accepted')).toBeInTheDocument()
+    expect(screen.getAllByText('Accepted').length).toBeGreaterThan(0)
     expect(screen.getByText('Rejected')).toBeInTheDocument()
   })
 
@@ -535,6 +542,95 @@ describe('organizer submissions', () => {
     expect(description?.textContent ?? '').not.toMatch(/\d/)
   })
 
+  it('peeks the selected proposal beside the list without leaving the desk', async () => {
+    const user = userEvent.setup()
+    const second = {
+      ...SUBMISSION_LIST_ITEM,
+      id: 'submission-2',
+      title: 'Workshop on incremental builds',
+      primarySpeaker: {
+        ...SUBMISSION_LIST_ITEM.primarySpeaker,
+        contactId: 'contact-2',
+        name: 'Speaker B',
+        email: 'speaker.b@example.test',
+      },
+    }
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === listUrl()) return jsonResponse([SUBMISSION_LIST_ITEM, second])
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountList()
+    await screen.findByRole('table')
+    const peek = document.querySelector('[data-slot="submissions-peek"]')
+    expect(peek).toHaveTextContent('My talk')
+    await user.click(screen.getByText('Speaker B'))
+    expect(document.querySelector('[data-slot="submissions-peek"]')).toHaveTextContent(
+      'Workshop on incremental builds',
+    )
+    expect(screen.getByRole('link', { name: /open proposal/i })).toHaveAttribute(
+      'href',
+      `/admin/events/${EVENT_SLUG}/submissions/submission-2`,
+    )
+  })
+
+  it('moves the desk spotlight with j and deep-links ?spotlight=', async () => {
+    const user = userEvent.setup()
+    const second = {
+      ...SUBMISSION_LIST_ITEM,
+      id: 'submission-2',
+      title: 'Workshop on incremental builds',
+      primarySpeaker: {
+        ...SUBMISSION_LIST_ITEM.primarySpeaker,
+        contactId: 'contact-2',
+        name: 'Speaker B',
+        email: 'speaker.b@example.test',
+      },
+    }
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === listUrl()) return jsonResponse([SUBMISSION_LIST_ITEM, second])
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountList()
+    await screen.findByRole('table')
+    await user.keyboard('j')
+    await user.keyboard('j')
+    expect(document.querySelector('[data-slot="submissions-canvas"]')).toHaveAttribute(
+      'data-spotlight',
+      'submission-2',
+    )
+    expect(window.location.search).toContain('spotlight=submission-2')
+    expect(document.querySelector('[data-slot="submissions-peek"]')).toHaveTextContent(
+      'Workshop on incremental builds',
+    )
+  })
+
+  it('narrows the desk by title or speaker', async () => {
+    const user = userEvent.setup()
+    const second = {
+      ...SUBMISSION_LIST_ITEM,
+      id: 'submission-2',
+      title: 'Workshop on incremental builds',
+      primarySpeaker: {
+        ...SUBMISSION_LIST_ITEM.primarySpeaker,
+        contactId: 'contact-2',
+        name: 'Speaker B',
+        email: 'speaker.b@example.test',
+      },
+    }
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === listUrl()) return jsonResponse([SUBMISSION_LIST_ITEM, second])
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await mountList()
+    await screen.findByRole('table')
+    await user.type(screen.getByLabelText(/search submissions/i), 'Workshop')
+    expect(screen.getAllByText('Workshop on incremental builds').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('link', { name: /my talk — speaker a/i })).not.toBeInTheDocument()
+  })
+
   it('renders no counters or dashboard summary elements', async () => {
     await mountList()
     await screen.findByRole('table')
@@ -605,28 +701,51 @@ describe('organizer submissions', () => {
     expect(version?.className ?? '').not.toContain('before:')
   })
 
-  // R1-M12 / V7-M12 / RV2-N2: the two columns of the detail canvas. The rail's
-  // width is what stops an acceptance subject line wrapping mid-title, the
-  // answer measure is what stops a long abstract running the full width of a
-  // desktop, and the answers card ends where its answers end so a sparse
-  // proposal never draws 1527px of framed nothing beside a 1600px rail.
+  // The proposal is a reading column, not a `1fr` track. A full-width first
+  // column parked the rail at the viewport edge and framed ~1500px of empty
+  // card around short answers. The group stays left: proposal `max-w-3xl`,
+  // rail 26rem beside it.
   it('holds the proposal and its rail in two columns, neither of them a void', async () => {
     await mountDetail()
     await screen.findByRole('heading', { name: 'My talk' })
 
-    const answers = screen.getByText('Title').closest('div')
-    expect(answers?.className ?? '').toMatch(/md:grid-cols-\[minmax\(0,10rem\)_minmax\(0,62ch\)\]/)
-
-    const canvas = screen.getByText('Title').closest('[class*="26rem"]')
+    const canvas = document.querySelector('[data-slot="submission-canvas"]')
     expect(canvas).not.toBeNull()
-    expect(canvas?.className ?? '').toMatch(/lg:grid-cols-\[minmax\(0,1fr\)_26rem\]/)
-    // The row keeps stretching, so a proposal taller than the rail still pairs
-    // the two columns; only the card that would carry the void opts out.
-    expect(canvas?.className.split(/\s+/)).not.toContain('items-start')
+    expect(canvas?.className ?? '').toMatch(/xl:flex-row/)
+    expect(canvas?.className ?? '').toMatch(/xl:items-start/)
+    expect(canvas?.className ?? '').not.toMatch(/1fr/)
+
+    const proposal = document.querySelector('[data-slot="submission-proposal"]')
+    expect(proposal?.className ?? '').toMatch(/max-w-3xl/)
+
+    const rail = document.querySelector('[data-slot="submission-rail"]')
+    expect(rail).not.toBeNull()
+    expect(rail?.className ?? '').toMatch(/xl:w-\[26rem\]/)
 
     const answersCard = screen.getByText('Title').closest('[data-slot="card"]')
     expect(answersCard).not.toBeNull()
-    expect(answersCard?.className.split(/\s+/)).toContain('self-start')
+    expect(
+      within(answersCard as HTMLElement).getByRole('heading', { name: 'Proposal' }),
+    ).toBeInTheDocument()
+    expect(
+      within(answersCard as HTMLElement).getByRole('button', { name: 'Edit session content' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Title').closest('div')?.className ?? '').not.toMatch(/62ch/)
+  })
+
+  it('opens the session editor inside the proposal card and closes it again', async () => {
+    const user = userEvent.setup()
+    await mountDetail()
+    const edit = await screen.findByRole('button', { name: 'Edit session content' })
+    await user.click(edit)
+
+    expect(screen.getByLabelText('Session title')).toBeInTheDocument()
+    expect(screen.getByLabelText('Abstract')).toBeInTheDocument()
+    expect(document.getElementById('session-content-editor')).not.toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Close editor' }))
+    expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit session content' })).toBeInTheDocument()
   })
 
   it('reaches acceptance from the per-submission page and reflects the acceptance state', async () => {
@@ -768,7 +887,7 @@ describe('organizer submissions', () => {
     expect(empty).not.toBeNull()
     expect(empty).toHaveTextContent('No answers were submitted')
     expect(empty).toHaveTextContent(/optional or hidden/i)
-    expect(document.querySelector('dl')).toBeNull()
+    expect(document.querySelector('[data-slot="submission-proposal"] dl')).toBeNull()
   })
 
   it('retries the failed version query when only the form-version GET fails', async () => {

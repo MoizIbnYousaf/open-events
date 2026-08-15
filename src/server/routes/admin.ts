@@ -45,6 +45,7 @@ import {
   unauthorizedResponse,
   validationFailedResponse,
 } from '../error'
+import { sendReviewerInvite } from '../reviewer-invite'
 import {
   HEADSHOT_MAX_BYTES,
   HeadshotEmptyError,
@@ -1173,7 +1174,9 @@ export async function handleAddCommitteeMember(context: ServerContext): Promise<
     email,
     ...(typeof name === 'string' ? { name } : {}),
   }
-  return context.json(await deps.evaluations.addCommitteeMember(actor, eventId, input))
+  const seated = await deps.evaluations.addCommitteeMember(actor, eventId, input)
+  const invite = await sendReviewerInvite(context, deps, slug, email)
+  return context.json({ ...seated, ...invite })
 }
 
 /**
@@ -1559,7 +1562,9 @@ export async function handleAssignEvaluator(context: ServerContext): Promise<Res
   if (slug === undefined) return notFoundResponse(context)
   const eventId = await resolveEventId(deps, slug)
   if (eventId === null) return notFoundResponse(context)
-  return context.json(await deps.evaluations.assign(actor, eventId, submissionId, input))
+  const assignment = await deps.evaluations.assign(actor, eventId, submissionId, input)
+  const invite = await sendReviewerInvite(context, deps, slug, evaluatorEmail)
+  return context.json({ ...assignment, ...invite })
 }
 
 /** GET /api/admin/submissions/:id/evaluation-summary: weighted totals. */

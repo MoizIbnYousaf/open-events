@@ -1,4 +1,5 @@
 import type { FormElement, FormPage } from '../../../domain'
+import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { DocumentIcon } from '../../../components/ui/icons'
@@ -12,6 +13,7 @@ interface PageListProps {
   readonly invalidElementId: string | null
   readonly onUpdateElement: (elementId: string, patch: Partial<FormElement>) => void
   readonly onMoveElement: (elementId: string, direction: 'up' | 'down') => void
+  readonly onAddQuestion: (pageId: string) => void
   readonly registerLabelRef: (elementId: string) => (node: HTMLInputElement | null) => void
 }
 
@@ -21,6 +23,7 @@ export default function PageList({
   invalidElementId,
   onUpdateElement,
   onMoveElement,
+  onAddQuestion,
   registerLabelRef,
 }: PageListProps) {
   return (
@@ -65,6 +68,16 @@ export default function PageList({
                     />
                   </div>
                 ))}
+                <div className="pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onAddQuestion(page.id)}
+                  >
+                    Add question
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </section>

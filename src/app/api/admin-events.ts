@@ -29,10 +29,16 @@ function isApiErrorBody(body: unknown): body is { error: { code: string; message
 }
 
 export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  // A GET that claims to be JSON with no body is a lie some proxies refuse.
+  // Only advertise the type when we are actually sending JSON.
+  if (init.body !== undefined && !headers.has('content-type')) {
+    headers.set('content-type', 'application/json')
+  }
   const response = await fetch(path, {
     ...init,
     credentials: 'include',
-    headers: { 'content-type': 'application/json', ...init.headers },
+    headers,
   })
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null)

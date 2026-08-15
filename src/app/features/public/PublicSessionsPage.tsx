@@ -88,123 +88,127 @@ export default function PublicSessionsPage({ eventSlug }: { readonly eventSlug?:
           <PageHeaderDescription>Search and filter the published programme.</PageHeaderDescription>
         </PageHeaderContent>
       </PageHeader>
-      <Card>
-        <CardContent className="grid gap-3">
+      <div className="grid max-w-3xl gap-3">
+        <Field>
+          <FieldLabel htmlFor="session-search">Search sessions</FieldLabel>
+          <InputGroup>
+            <InputGroupAddon>
+              <InputGroupText>Find</InputGroupText>
+            </InputGroupAddon>
+            <InputGroupInput
+              id="session-search"
+              type="search"
+              value={term}
+              onChange={(event) => setTerm(event.target.value)}
+            />
+          </InputGroup>
+        </Field>
+        <fieldset className="grid gap-2 sm:grid-cols-3">
+          <legend className="text-sm font-medium">Filters</legend>
           <Field>
-            <FieldLabel htmlFor="session-search">Search sessions</FieldLabel>
-            <InputGroup>
-              <InputGroupAddon>
-                <InputGroupText>Find</InputGroupText>
-              </InputGroupAddon>
-              <InputGroupInput
-                id="session-search"
-                type="search"
-                value={term}
-                onChange={(event) => setTerm(event.target.value)}
-              />
-            </InputGroup>
+            <FieldLabel htmlFor="session-track">Track</FieldLabel>
+            <NativeSelect
+              id="session-track"
+              value={track}
+              onChange={(event) => setTrack(event.target.value)}
+            >
+              <option value="">All tracks</option>
+              {tracks.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </NativeSelect>
           </Field>
-          <fieldset className="grid gap-2 md:grid-cols-3">
-            <legend className="text-sm font-medium">Filters</legend>
-            <Field>
-              <FieldLabel htmlFor="session-track">Track</FieldLabel>
-              <NativeSelect
-                id="session-track"
-                value={track}
-                onChange={(event) => setTrack(event.target.value)}
-              >
-                <option value="">All tracks</option>
-                {tracks.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="session-format">Format</FieldLabel>
-              <NativeSelect
-                id="session-format"
-                value={format}
-                onChange={(event) => setFormat(event.target.value)}
-              >
-                <option value="">All formats</option>
-                {formats.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="session-location">Location</FieldLabel>
-              <NativeSelect
-                id="session-location"
-                value={room}
-                onChange={(event) => setRoom(event.target.value)}
-              >
-                <option value="">All rooms</option>
-                {rooms.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-          </fieldset>
-        </CardContent>
-      </Card>
+          <Field>
+            <FieldLabel htmlFor="session-format">Format</FieldLabel>
+            <NativeSelect
+              id="session-format"
+              value={format}
+              onChange={(event) => setFormat(event.target.value)}
+            >
+              <option value="">All formats</option>
+              {formats.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="session-location">Location</FieldLabel>
+            <NativeSelect
+              id="session-location"
+              value={room}
+              onChange={(event) => setRoom(event.target.value)}
+            >
+              <option value="">All rooms</option>
+              {rooms.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+        </fieldset>
+      </div>
       <StatusLive>
         {shown.length} of {sessions.length} session{sessions.length === 1 ? '' : 's'} shown.
       </StatusLive>
       {shown.length === 0 ? (
         <EmptyState title="No sessions match" description="Clear the search or track filter." />
       ) : (
-        shown.map((session) => {
-          const description = session.description ?? ''
-          const open = openId === session.submissionId
-          return (
-            <Card key={session.submissionId}>
-              <CardContent className="grid gap-2">
-                <p className="font-medium">{session.title}</p>
-                <p className="text-sm text-muted-foreground">
-                  {session.day} · {formatClock(session.start)} – {formatClock(session.end)} ·{' '}
-                  {session.room}
-                </p>
-                <p className="text-sm">
-                  {(session.speakerCards ?? []).map((card) => (
-                    <span key={card.name} className="mr-3">
-                      {card.name}
-                      {card.jobTitle !== '' ? `, ${card.jobTitle}` : ''}
-                      {card.company !== '' ? `, ${card.company}` : ''}
-                    </span>
-                  ))}
-                  {(session.speakerCards ?? []).length === 0 ? session.speakers.join(' · ') : null}
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {session.format ? <Badge variant="outline">Format {session.format}</Badge> : null}
-                  {session.track ? <Badge variant="outline">Track {session.track}</Badge> : null}
-                </div>
-                {description !== '' ? (
-                  <>
-                    <p className="text-sm">{open ? description : description.slice(0, 140)}</p>
-                    {description.length > 140 ? (
-                      <Button
-                        type="button"
-                        variant="link"
-                        className="h-auto justify-self-start px-0"
-                        aria-expanded={open}
-                        onClick={() => setOpenId(open ? null : session.submissionId)}
-                      >
-                        {open ? 'Show less' : 'Show more'}
-                      </Button>
+        <div className="mx-auto grid w-full max-w-3xl gap-3">
+          {shown.map((session) => {
+            const description = session.description ?? ''
+            const open = openId === session.submissionId
+            return (
+              <Card key={session.submissionId}>
+                <CardContent className="grid gap-2">
+                  <p className="font-medium">{session.title}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {session.day} · {formatClock(session.start)} – {formatClock(session.end)} ·{' '}
+                    {session.room}
+                  </p>
+                  <p className="text-sm">
+                    {(session.speakerCards ?? []).map((card) => (
+                      <span key={card.name} className="mr-3">
+                        {card.name}
+                        {card.jobTitle !== '' ? `, ${card.jobTitle}` : ''}
+                        {card.company !== '' ? `, ${card.company}` : ''}
+                      </span>
+                    ))}
+                    {(session.speakerCards ?? []).length === 0
+                      ? session.speakers.join(' · ')
+                      : null}
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {session.format ? (
+                      <Badge variant="outline">Format {session.format}</Badge>
                     ) : null}
-                  </>
-                ) : null}
-              </CardContent>
-            </Card>
-          )
-        })
+                    {session.track ? <Badge variant="outline">Track {session.track}</Badge> : null}
+                  </div>
+                  {description !== '' ? (
+                    <>
+                      <p className="text-sm">{open ? description : description.slice(0, 140)}</p>
+                      {description.length > 140 ? (
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="h-auto justify-self-start px-0"
+                          aria-expanded={open}
+                          onClick={() => setOpenId(open ? null : session.submissionId)}
+                        >
+                          {open ? 'Show less' : 'Show more'}
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : null}
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
       )}
     </div>
   )

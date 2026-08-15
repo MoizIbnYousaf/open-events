@@ -16,6 +16,7 @@ export {
 export { createAgendaRepository } from './agenda-repository'
 export { createEvaluationRepository } from './evaluation-repository'
 export { createUploadedFileRepository } from './uploaded-file-repository'
+export { createSupportRepository } from './support-repository'
 export type { AgendaRepository, AgendaSessionRecord } from './agenda-repository'
 export { createSpeakerTaskRepository } from './speaker-task-repository'
 export { createAcceptUnitOfWork } from './accept-unit-of-work'

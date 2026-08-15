@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
-import { Button } from '../../../components/ui/button'
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../../../components/ui/card'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
@@ -14,9 +21,11 @@ import {
 } from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
+import { cn } from '../../../lib/utils'
 import { useMessageLog } from '../../queries/admin-messages'
 import type { EventSlug } from '../../../domain'
 import type { MessageLogEntryDto } from '../../../application'
+import { useProgrammeSpotlight } from './useProgrammeSpotlight'
 
 const sentAtFormatter = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium',
@@ -62,6 +71,8 @@ export default function MessagesPage({ eventSlug }: { readonly eventSlug: EventS
         message.subject.toLowerCase().includes(needle),
     )
   }, [messages, term])
+  const { spotlightId, select } = useProgrammeSpotlight(matches.map((message) => message.id))
+  const selected = matches.find((message) => message.id === spotlightId) ?? matches[0] ?? null
 
   return (
     <div className="grid gap-4">
@@ -110,11 +121,41 @@ export default function MessagesPage({ eventSlug }: { readonly eventSlug: EventS
               description="Try part of an email address or a subject line."
             />
           ) : (
-            <ul className="grid gap-2" aria-label="Sent messages">
-              {matches.map((message) => (
-                <MessageRow key={message.id} message={message} />
-              ))}
-            </ul>
+            <div
+              data-slot="messages-canvas"
+              data-spotlight={selected?.id ?? undefined}
+              className="flex flex-col gap-4 xl:flex-row xl:items-start"
+            >
+              <ul
+                data-slot="messages-list"
+                aria-label="Sent messages"
+                className="grid w-full shrink-0 gap-0.5 xl:w-[22rem]"
+              >
+                {matches.map((message) => {
+                  const active = selected?.id === message.id
+                  return (
+                    <li key={message.id}>
+                      <button
+                        type="button"
+                        aria-current={active ? 'true' : undefined}
+                        className={cn(
+                          'grid w-full min-w-0 gap-0.5 rounded-md px-3 py-2 text-left outline-none',
+                          'hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring',
+                          active ? 'bg-muted' : '',
+                        )}
+                        onClick={() => select(message.id)}
+                      >
+                        <span className="truncate text-sm font-medium">{message.subject}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {`To ${message.toEmail} · ${formatSentAt(message.createdAt)}`}
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+              {selected !== null ? <MessagePeek message={selected} /> : null}
+            </div>
           )}
         </>
       )}
@@ -122,44 +163,26 @@ export default function MessagesPage({ eventSlug }: { readonly eventSlug: EventS
   )
 }
 
-function MessageRow({ message }: { readonly message: MessageLogEntryDto }) {
-  const [open, setOpen] = useState(false)
-  const bodyId = `message-body-${message.id}`
-
+function MessagePeek({ message }: { readonly message: MessageLogEntryDto }) {
   return (
-    <li className="grid gap-2 rounded-md border border-border px-3 py-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="grid min-w-0">
-          <span className="truncate text-sm font-medium">{message.subject}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            {`To ${message.toEmail} · ${formatSentAt(message.createdAt)}`}
-          </span>
-        </span>
-        <span className="flex items-center gap-2">
+    <Card data-slot="messages-peek" className="min-w-0 w-full max-w-3xl">
+      <CardHeader className="border-b">
+        <CardTitle level={2}>{message.subject}</CardTitle>
+        <CardDescription>
+          {`To ${message.toEmail} · ${formatSentAt(message.createdAt)}`}
+        </CardDescription>
+        <CardAction>
           <Badge variant="outline">{kindLabel(message.kind)}</Badge>
-          {/* The body is behind a disclosure rather than on the row. A sign-in
-              link is in there, and a screen that sprays every one of them at
-              once is a screen nobody can safely read over a shoulder. */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-expanded={open}
-            aria-controls={bodyId}
-            onClick={() => setOpen((current) => !current)}
-          >
-            {open ? 'Hide message' : 'View message'}
-          </Button>
-        </span>
-      </div>
-      {open ? (
-        <pre
-          id={bodyId}
-          className="overflow-x-auto rounded-md bg-muted p-2 text-xs whitespace-pre-wrap"
-        >
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {/* One body at a time. A sign-in link is often in there, and a
+            screen that sprays every one of them at once is a screen nobody
+            can safely read over a shoulder. */}
+        <pre className="text-[15px] leading-relaxed whitespace-pre-wrap font-sans">
           {message.body}
         </pre>
-      ) : null}
-    </li>
+      </CardContent>
+    </Card>
   )
 }

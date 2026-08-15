@@ -19,6 +19,7 @@
     "ORGANIZER_SESSION_TTL_MS": "7200000",
     "SUBMITTER_SESSION_TTL_MS": "28800000",
     "SUBMITTER_TOKEN_TTL_MS": "86400000",
+    "OPENROUTER_MODEL": "openai/gpt-5.6-luna",
   },
   "d1_databases": [
     {

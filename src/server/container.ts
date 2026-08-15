@@ -6,10 +6,13 @@ import {
 } from '../application/security/webcrypto'
 import { AgendaService } from '../application/services/agenda'
 import { SpeakerService } from '../application/services/speakers'
+import { SupportService } from '../application/services/support'
 import { AssignmentService } from '../application/services/assignments'
 import { ContentLibraryService } from '../application/services/content-library'
 import { EmbedService } from '../application/services/embeds'
 import { capturingEmailSender, selectEmailSender } from './email'
+import { selectOrbyReplyer } from './orby'
+import type { OrbyReplyer } from '../application/ports/orby-replyer'
 import type { EmailSender } from '../application/ports/email-sender'
 import type { CapturedMessageRepository } from '../application/ports/captured-message-repository'
 import { CapturedMessageService } from '../application/services/captured-messages'
@@ -57,6 +60,7 @@ import { createProgrammeRepository } from '../db/programme-repository'
 import { createSessionUnitOfWork } from '../db/session-unit-of-work'
 import { createSpeakerTaskRepository } from '../db/speaker-task-repository'
 import { createSubmitUnitOfWork } from '../db/submit-unit-of-work'
+import { createSupportRepository } from '../db/support-repository'
 import { createUploadedFileRepository } from '../db/uploaded-file-repository'
 
 import type { ServerContext } from './env'
@@ -96,6 +100,7 @@ export interface ServerDeps {
   readonly documents: DocumentService | null
 
   readonly communications: CommunicationsService
+  readonly support: SupportService
 }
 
 /** Builds every frozen service/adapters for the raw D1 and R2 bindings. */
@@ -134,6 +139,7 @@ export function buildServerDeps(
   // behaviour is what you get by default and turning on real delivery is the
   // deliberate act.
   emailSender: EmailSender = capturingEmailSender,
+  orby: OrbyReplyer = selectOrbyReplyer({}),
 ): ServerDeps {
   const clock: Clock = { now: () => new Date().toISOString() }
   const events = createEventRepository(db)
@@ -194,6 +200,7 @@ export function buildServerDeps(
       content,
       createSubmitUnitOfWork(db),
       clock,
+      createProgrammeRepository(db),
     ),
     profile: new ProfileService(contacts),
     onboarding: new OnboardingService(
@@ -256,6 +263,16 @@ export function buildServerDeps(
       createSpeakerTaskRepository(db),
       clock,
     ),
+    support: new SupportService(
+      events,
+      contacts,
+      createSupportRepository(db),
+      withDelivery(createCapturedMessageRepository(db), emailSender),
+      createSha256TokenHasher(),
+      createUuidTokenGenerator(),
+      clock,
+      orby,
+    ),
   }
 }
 
@@ -264,5 +281,10 @@ export function depsFromContext(context: ServerContext): ServerDeps | null {
   const db = getDatabaseBinding(context)
   return db === null
     ? null
-    : buildServerDeps(db, getFilesBinding(context), selectEmailSender(context.env))
+    : buildServerDeps(
+        db,
+        getFilesBinding(context),
+        selectEmailSender(context.env),
+        selectOrbyReplyer(context.env),
+      )
 }

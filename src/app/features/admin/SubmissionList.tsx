@@ -1,9 +1,13 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 
+import type { SubmissionListItemDto } from '../../../application'
 import { getApiErrorCode } from '../../api/admin-events'
 import { useSubmissionList } from '../../queries/admin-submissions'
 import { AlertLive } from '../../../components/ui/alert-live'
+import { Field, FieldLabel } from '../../../components/ui/field'
+import { Input } from '../../../components/ui/input'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { EmptyState } from '../../../components/ui/empty-state'
@@ -29,6 +33,7 @@ import {
 } from '../../../components/ui/table'
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
+import { useProgrammeSpotlight } from './useProgrammeSpotlight'
 
 /*
  * The persisted submission `status` is pinned to 'pending' for the whole life
@@ -143,10 +148,26 @@ export default function SubmissionList() {
   const slug = params.slug as string | undefined
   const navigate = useNavigate()
   const listQuery = useSubmissionList(slug)
+  const [term, setTerm] = useState('')
 
   useEffect(() => {
     document.title = 'Submissions — Open Events'
   }, [])
+
+  const rows = listQuery.data
+  const needle = term.trim().toLowerCase()
+  const matches = (rows ?? []).filter((row) => {
+    if (needle === '') return true
+    return (
+      row.title.toLowerCase().includes(needle) ||
+      row.primarySpeaker.name.toLowerCase().includes(needle) ||
+      row.primarySpeaker.email.toLowerCase().includes(needle)
+    )
+  })
+  const matchIds = matches.map((row) => row.id)
+  const { spotlightId, select } = useProgrammeSpotlight(matchIds)
+  const selected = matches.find((row) => row.id === spotlightId) ?? matches[0] ?? null
+  const hasRows = rows !== undefined && rows.length > 0
 
   if (listQuery.isError) {
     const code = getApiErrorCode(listQuery.error)
@@ -167,9 +188,6 @@ export default function SubmissionList() {
       return <DeniedState />
     }
   }
-
-  const rows = listQuery.data
-  const hasRows = rows !== undefined && rows.length > 0
 
   return (
     <AppShell slug={slug ?? ''}>
@@ -243,58 +261,123 @@ export default function SubmissionList() {
             </Button>
           </EmptyState>
         ) : rows !== undefined ? (
-          <Table className="min-w-[46rem]">
-            <TableCaption className="sr-only">Proposals submitted to this event</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col" pinned className={TITLE_COLUMN}>
-                  Title
-                </TableHead>
-                <TableHead scope="col">Primary speaker</TableHead>
-                <TableHead scope="col">Co-speakers</TableHead>
-                <TableHead scope="col">Form/Version</TableHead>
-                {/* Named for what the cell holds: the routing rule's action
-                    target, not a track-and-tags list. */}
-                <TableHead scope="col">Routing</TableHead>
-                <TableHead scope="col">Decision</TableHead>
-                <TableHead scope="col">Submitted</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id} className={ROW_EMPHASIS}>
-                  <TableCell pinned>
-                    <Link
-                      to="/admin/events/$slug/submissions/$submissionId"
-                      params={{ slug: slug ?? '', submissionId: row.id }}
-                      aria-label={`${row.title} — ${row.primarySpeaker.name}`}
-                      className={linkVariants({ hit: true, className: ROW_LINK_HIT })}
-                    >
-                      {row.title}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{row.primarySpeaker.name}</TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">
-                    {row.coSpeakerCount}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.formSlug} v{row.version}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.routing?.actionTarget ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    <DecisionChip decision={row.decision} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    <time dateTime={row.submittedAt}>{formatSubmitted(row.submittedAt)}</time>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div
+            data-slot="submissions-canvas"
+            data-spotlight={selected?.id ?? undefined}
+            className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_26rem] xl:items-start"
+          >
+            <div className="grid min-w-0 gap-3">
+              <Field className="max-w-sm">
+                <FieldLabel htmlFor="submission-search">
+                  Search submissions — j and k move the spotlight
+                </FieldLabel>
+                <Input
+                  id="submission-search"
+                  type="search"
+                  value={term}
+                  onChange={(event) => setTerm(event.target.value)}
+                />
+              </Field>
+              {matches.length === 0 ? (
+                <EmptyState
+                  title="Nothing matches that"
+                  description="Try part of a title, a speaker name, or an email."
+                />
+              ) : (
+                <Table className="min-w-[46rem]">
+                  <TableCaption className="sr-only">Proposals submitted to this event</TableCaption>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="col" pinned className={TITLE_COLUMN}>
+                        Title
+                      </TableHead>
+                      <TableHead scope="col">Primary speaker</TableHead>
+                      <TableHead scope="col">Co-speakers</TableHead>
+                      <TableHead scope="col">Form/Version</TableHead>
+                      <TableHead scope="col">Routing</TableHead>
+                      <TableHead scope="col">Decision</TableHead>
+                      <TableHead scope="col">Submitted</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {matches.map((row) => (
+                      <TableRow
+                        key={row.id}
+                        className={ROW_EMPHASIS}
+                        data-selected={selected?.id === row.id ? '' : undefined}
+                        onClick={() => select(row.id)}
+                      >
+                        <TableCell pinned>
+                          <Link
+                            to="/admin/events/$slug/submissions/$submissionId"
+                            params={{ slug: slug ?? '', submissionId: row.id }}
+                            aria-label={`${row.title} — ${row.primarySpeaker.name}`}
+                            className={linkVariants({ hit: true, className: ROW_LINK_HIT })}
+                          >
+                            {row.title}
+                          </Link>
+                        </TableCell>
+                        <TableCell>{row.primarySpeaker.name}</TableCell>
+                        <TableCell className="tabular-nums text-muted-foreground">
+                          {row.coSpeakerCount}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {row.formSlug} v{row.version}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {row.routing?.actionTarget ?? '—'}
+                        </TableCell>
+                        <TableCell>
+                          <DecisionChip decision={row.decision} />
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          <time dateTime={row.submittedAt}>{formatSubmitted(row.submittedAt)}</time>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+            {selected !== null ? <SubmissionPeek row={selected} slug={slug ?? ''} /> : null}
+          </div>
         ) : null}
       </section>
     </AppShell>
+  )
+}
+
+function SubmissionPeek({
+  row,
+  slug,
+}: {
+  readonly row: SubmissionListItemDto
+  readonly slug: string
+}) {
+  return (
+    <Card data-slot="submissions-peek" className="min-w-0 w-full">
+      <CardHeader className="border-b">
+        <CardTitle level={2}>{row.title}</CardTitle>
+        <CardDescription>
+          {row.primarySpeaker.name} · {row.primarySpeaker.email}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        <DecisionChip decision={row.decision} />
+        <p className="text-sm text-muted-foreground">
+          {row.formSlug} v{row.version}
+          {row.routing?.actionTarget !== undefined && row.routing.actionTarget !== ''
+            ? ` · ${row.routing.actionTarget}`
+            : ''}
+        </p>
+        <Link
+          to="/admin/events/$slug/submissions/$submissionId"
+          params={{ slug, submissionId: row.id }}
+          className={linkVariants({ hit: true })}
+        >
+          Open proposal
+        </Link>
+      </CardContent>
+    </Card>
   )
 }

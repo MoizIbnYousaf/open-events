@@ -295,15 +295,14 @@ describe('organizer review committee panel', () => {
     expect(email.getAttribute('aria-describedby')).toBe(error.id)
   })
 
-  // F-R3-9: assignment resolves an existing identity and never creates one, so
-  // the ordinary refusal has a cause the organizer cannot guess and a recovery
-  // nobody was telling them about.
+  // Assignment now provisions a never-seen email. A leftover 404 is a
+  // generic refusal, not "they have to sign in first".
   it.each([
     {
       code: 'not_found',
       status: 404,
-      expected: /no one has signed in with that email yet/i,
-      recovery: /request a sign-in link/i,
+      expected: /that evaluator could not be assigned/i,
+      recovery: /check the email/i,
     },
     {
       code: 'conflict',

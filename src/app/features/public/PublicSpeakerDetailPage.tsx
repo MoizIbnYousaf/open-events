@@ -32,39 +32,39 @@ export default function PublicSpeakerDetailPage() {
       <EmptyState title="Speaker not found" description="That speaker is not on this programme." />
     )
   }
+  const photo = person.photoUrl !== null && person.photoUrl !== '' ? person.photoUrl : null
+  const initials =
+    person.name
+      .split(/\s+/)
+      .map((part) => part[0])
+      .join('')
+      .slice(0, 2) || '?'
+
   return (
-    <div className="grid gap-4">
+    <div className="mx-auto grid w-full max-w-3xl gap-5">
       <PageHeader surface="wash">
         <PageHeaderContent>
           <PageHeaderTitle>{person.name}</PageHeaderTitle>
         </PageHeaderContent>
       </PageHeader>
-      <Avatar className="size-24">
-        {person.photoUrl !== null && person.photoUrl !== '' ? (
-          <img
-            src={person.photoUrl}
-            alt={person.name}
-            className="aspect-square size-full rounded-full object-cover"
-          />
+      <div className="h-[280px] overflow-hidden rounded-lg bg-muted">
+        {photo !== null ? (
+          <img src={photo} alt={person.name} className="size-full object-cover" />
         ) : (
-          <AvatarFallback>
-            {person.name
-              .split(/\s+/)
-              .map((part) => part[0])
-              .join('')
-              .slice(0, 2) || '?'}
-          </AvatarFallback>
+          <Avatar className="size-full rounded-none">
+            <AvatarFallback className="rounded-none text-2xl">{initials}</AvatarFallback>
+          </Avatar>
         )}
-      </Avatar>
-      <p className="text-sm text-muted-foreground">
+      </div>
+      <p className="text-[13px] text-muted-foreground">
         {person.jobTitle}
         {person.company !== '' ? ` · ${person.company}` : ''}
       </p>
       {person.bio !== '' ? <SpeakerBio text={person.bio} /> : null}
-      <h2 className="text-sm font-medium">Sessions ({person.sessions.length})</h2>
+      <h2 className="text-[15px] font-medium">Sessions ({person.sessions.length})</h2>
       <ul className="grid gap-2">
         {person.sessions.map((session) => (
-          <li key={session.submissionId}>
+          <li key={session.submissionId} className="text-sm">
             {session.title} · {session.day} · {formatSessionClock(session.start)} –{' '}
             {formatSessionClock(session.end)} · {session.room}
           </li>

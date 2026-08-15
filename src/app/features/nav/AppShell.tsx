@@ -110,6 +110,12 @@ function DestinationIcon({ id }: { readonly id: string }): ReactElement {
           <path d="M8 3v5M16 3v5M3.5 10.5h17" />
         </svg>
       )
+    case 'orby':
+      return (
+        <svg {...ICON_PROPS}>
+          <path d="M5 6.5h14A1.5 1.5 0 0 1 20.5 8v7.5A1.5 1.5 0 0 1 19 17h-4l-4 3.5V17H5A1.5 1.5 0 0 1 3.5 15.5V8A1.5 1.5 0 0 1 5 6.5Z" />
+        </svg>
+      )
     default:
       return (
         <svg {...ICON_PROPS}>

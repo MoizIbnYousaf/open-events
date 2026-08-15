@@ -278,6 +278,45 @@ describe('speaker portal', () => {
     expect(screen.getByText(/Priya Raman/).parentElement).toHaveTextContent(/primary/i)
   })
 
+  it('lets a speaker revise their own abstract while the call is open', async () => {
+    const user = userEvent.setup()
+    const puts: string[] = []
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === PORTAL_URL) return jsonResponse(SUBMISSIONS_ENVELOPE)
+      if (method === 'GET' && url.startsWith('/api/public/submission/')) {
+        return jsonResponse({
+          id: 'submission-1',
+          title: 'Taming 40-Minute CI',
+          answers: { abstract: 'Incremental builds.' },
+          editable: true,
+          contributors: [],
+        })
+      }
+      if (method === 'PUT' && url.startsWith('/api/public/submission/')) {
+        puts.push(typeof init?.body === 'string' ? init.body : '')
+        return jsonResponse({
+          id: 'submission-1',
+          title: 'Taming 40-Minute CI',
+          answers: { abstract: 'Incremental builds. Updated.' },
+          editable: true,
+          contributors: [],
+        })
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    renderPage()
+    const list = await screen.findByRole('list', { name: /your submissions/i })
+    await user.click(within(list).getAllByRole('button', { name: /view proposal/i })[0]!)
+    const field = await screen.findByLabelText('abstract')
+    await user.clear(field)
+    await user.type(field, 'Incremental builds. Updated.')
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
+    await waitFor(() => expect(puts).toHaveLength(1))
+    expect(puts[0]).toContain('Incremental builds. Updated.')
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+  })
+
   it('sends the speaker back to sign-in when View proposal gets a 401', async () => {
     const user = userEvent.setup()
     fetchHandler = (url, init) => {

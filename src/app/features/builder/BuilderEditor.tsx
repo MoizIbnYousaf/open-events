@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useBlocker, useNavigate, useParams } from '@tanstack/react-router'
 
 import AppShell from '../nav/AppShell'
@@ -49,6 +49,7 @@ import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import {
   conditionValueKey,
+  addQuestionToDraft,
   dtoToBuilderDraft,
   moveElementInDraft,
   rebindDraft,
@@ -62,6 +63,8 @@ import PageList from './PageList'
 import PreviewDialog from './PreviewDialog'
 import PublishConfirmDialog from './PublishConfirmDialog'
 import RoutingRuleEditor from './RoutingRuleEditor'
+
+const PreviewEngine = lazy(() => import('./preview-engine'))
 
 export default function BuilderEditor() {
   return <BuilderEditorByForm />
@@ -345,6 +348,13 @@ function BuilderEditorScreen({
     // The status region below already carries this sentence; announcing it as
     // well would speak the move twice (DEC-014).
     setStatusMessage(`Moved to position ${result.pageIndex}`)
+  }
+
+  const addQuestion = (pageId: string) => {
+    setDraft((current) => (current === null ? current : addQuestionToDraft(current, pageId, 'short_text')))
+    setDirty(true)
+    dirtyRef.current = true
+    setStatusMessage('Question added')
   }
 
   const saveDraft = () => {
@@ -669,13 +679,15 @@ function BuilderEditorScreen({
         <StatusLive aria-live="polite">
           {save.isPending ? 'Saving the form draft…' : statusMessage}
         </StatusLive>
-        <div className="grid gap-4">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_26rem] xl:items-start">
+          <div className="grid gap-4">
           <PageList
             pages={draft.content.pages}
             elements={draft.content.elements}
             invalidElementId={validationIssue?.kind === 'label' ? validationIssue.elementId : null}
             onUpdateElement={updateElement}
             onMoveElement={moveElement}
+            onAddQuestion={addQuestion}
             registerLabelRef={registerLabelRef}
           />
           <ConditionRuleEditor
@@ -754,6 +766,17 @@ function BuilderEditorScreen({
               </div>
             </div>
           ) : null}
+          </div>
+          <aside
+            data-slot="builder-live-preview"
+            aria-label="What speakers see"
+            className="grid gap-2 xl:sticky xl:top-16"
+          >
+            <p className="text-xs font-medium text-muted-foreground">What speakers see</p>
+            <Suspense fallback={<StatusLive>Loading the live preview…</StatusLive>}>
+              <PreviewEngine content={draft.content} taxonomyItems={taxonomyItems} />
+            </Suspense>
+          </aside>
         </div>
         <VersionsCard versions={versionsQuery.data} eventSlug={eventSlug} formId={formId} />
         {/* The one control on this page that destroys work with no way back,

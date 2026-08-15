@@ -14,6 +14,7 @@ import {
 import { TOUR_TOGGLE_EVENT } from '../features/tour/ProductTour'
 
 const ClerkNavControls = lazy(() => import('../features/nav/ClerkNavControls'))
+const OrbyWidget = lazy(() => import('../features/orby/OrbyWidget'))
 
 export const Route = createRootRoute({
   component: Root,
@@ -80,12 +81,14 @@ function Root() {
             to="/"
             className="flex shrink-0 items-center gap-2 rounded-md outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span
+            <img
+              src="/logo.svg"
+              alt=""
+              width={24}
+              height={24}
               aria-hidden="true"
-              className="flex size-6 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground"
-            >
-              S
-            </span>
+              className="size-6 rounded-md"
+            />
             <span className="text-sm font-medium text-foreground">Open Events</span>
           </Link>
           {/* A visible way into the command palette; ⌘K/Ctrl+K still works
@@ -174,6 +177,9 @@ function Root() {
       {/* Outside <main> so the #main skip target is unchanged, and inside the
             root route so it survives every route transition. */}
       <LiveAnnouncer />
+      <Suspense fallback={null}>
+        <OrbyWidget />
+      </Suspense>
     </div>
   )
 }

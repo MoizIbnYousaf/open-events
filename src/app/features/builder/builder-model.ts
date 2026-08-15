@@ -142,11 +142,28 @@ export function dtoToBuilderDraft(dto: FormVersionDetailDto): BuilderDraft {
   }
 }
 
+/**
+ * Split the one-per-line choices field on newlines only. The live textarea
+ * never calls this — it keeps the raw string — so a space in "Option 1" cannot
+ * be eaten on the way through. Commit (blur) is the only caller.
+ */
+export function choicesTextToOptions(text: string): readonly string[] {
+  return text.split('\n')
+}
+
+/** Drop blank choice rows before a draft is written. */
+export function compactChoiceOptions(options: readonly string[]): readonly string[] {
+  return options.map((line) => line.trim()).filter((line) => line.length > 0)
+}
+
 /** Full-replace save body: the domain-shaped content exactly. */
 export function toSaveInput(draft: BuilderDraft): SaveFormDraftInput {
   return {
     pages: draft.content.pages,
-    elements: draft.content.elements,
+    elements: draft.content.elements.map((element) => ({
+      ...element,
+      options: compactChoiceOptions(element.options),
+    })),
     conditionRules: draft.content.conditionRules,
     routingRules: draft.content.routingRules,
   }
@@ -234,6 +251,73 @@ export function rebindDraft(
       updatedAt: response.updatedAt,
     },
     content: { pages, elements, conditionRules, routingRules },
+  }
+}
+
+/**
+ * Appends a question the organizer can then label, type, and (for a dropdown)
+ * give options. The builder used to be a rearrange-only surface: every field
+ * had to already exist on the published form, so an organizer could not add
+ * "Key takeaway" or "Audience level" from scratch.
+ */
+export function addQuestionToDraft(
+  draft: BuilderDraft,
+  pageId: string | null,
+  questionType: QuestionType,
+): BuilderDraft {
+  let pages = draft.content.pages
+  let targetPageId = pageId
+  if (pages.length === 0) {
+    const page: FormPage = {
+      id: crypto.randomUUID(),
+      eventId: draft.meta.eventId,
+      versionId: draft.meta.versionId,
+      position: 0,
+      kind: 'info',
+      title: 'Proposal',
+      content: '',
+    }
+    pages = [page]
+    targetPageId = page.id
+  } else if (targetPageId === null) {
+    targetPageId = pages[0]?.id ?? null
+  }
+  if (targetPageId === null) return draft
+  const used = new Set(
+    draft.content.elements
+      .map((element) => element.fieldKey)
+      .filter((key): key is string => key !== null && key !== ''),
+  )
+  let index = 1
+  let fieldKey = `custom_question_${index}`
+  while (used.has(fieldKey)) {
+    index += 1
+    fieldKey = `custom_question_${index}`
+  }
+  const position = draft.content.elements.filter((element) => element.pageId === targetPageId).length
+  const isChoice = questionType === 'single_choice' || questionType === 'multi_choice'
+  const element: FormElement = {
+    id: crypto.randomUUID(),
+    eventId: draft.meta.eventId,
+    versionId: draft.meta.versionId,
+    pageId: targetPageId,
+    position,
+    kind: 'question',
+    fieldKey,
+    label: 'New question',
+    required: false,
+    maxLength: questionType === 'long_text' ? 4000 : 200,
+    questionType,
+    options: isChoice ? ['Option 1'] : [],
+    optionsSource: null,
+  }
+  return {
+    ...draft,
+    content: {
+      ...draft.content,
+      pages,
+      elements: [...draft.content.elements, element],
+    },
   }
 }
 

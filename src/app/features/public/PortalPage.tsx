@@ -265,7 +265,7 @@ function ProposalEditor({ detail }: { readonly detail: SubmissionDetailDto }) {
   const edit = useEditOwnSubmission(detail.id)
   const [answers, setAnswers] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      Object.entries(detail.answers).map(([key, value]) => [
+      Object.entries(detail.answers ?? {}).map(([key, value]) => [
         key,
         Array.isArray(value) ? value.join(', ') : String(value ?? ''),
       ]),

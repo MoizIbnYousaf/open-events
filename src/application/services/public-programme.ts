@@ -11,6 +11,7 @@ import type { AgendaSessionRecord } from '../ports/agenda-repository'
 import type { ContactRepository } from '../ports/contact-repository'
 import type { FormContentRepository } from '../ports/form-content-repository'
 import type { ProgrammeRepository } from '../ports/programme-repository'
+import { publicSessionCopy } from '../../domain/session-content'
 
 export interface PublicSpeakerCard {
   readonly name: string
@@ -55,11 +56,17 @@ export function isPubliclyVisible(
   session: AgendaSessionRecord,
   rejected: ReadonlySet<string>,
   contentStatus: ReadonlyMap<string, string>,
+  approvedSnapshots: ReadonlySet<string> = new Set(),
 ): boolean {
   if (session.status !== 'published') return false
   if (rejected.has(session.submissionId)) return false
   const status = contentStatus.get(session.submissionId) ?? 'approved'
-  return status === 'approved'
+  return publicSessionCopy({
+    contentStatus: status,
+    liveTitle: '',
+    liveAbstract: '',
+    lastApproved: approvedSnapshots.has(session.submissionId) ? { title: '', abstract: '' } : null,
+  }).visible
 }
 
 export async function loadContentByVersion(
@@ -88,13 +95,16 @@ export async function toPublicSessions(input: {
   readonly submissions: readonly ProposalSubmission[]
   readonly rejected: ReadonlySet<string>
   readonly contentStatus: ReadonlyMap<string, string>
+  readonly approvedSnapshots?: ReadonlySet<string>
+  readonly approvedCopy?: ReadonlyMap<string, { readonly title: string; readonly abstract: string }>
   readonly labelByTaxonomyId: ReadonlyMap<string, string>
   readonly contacts: ContactRepository
   readonly formContent: FormContentRepository
   readonly profiles: ProgrammeRepository
 }): Promise<readonly PublicSessionView[]> {
+  const snapshots = input.approvedSnapshots ?? new Set<string>()
   const visible = input.sessions.filter((session) =>
-    isPubliclyVisible(session, input.rejected, input.contentStatus),
+    isPubliclyVisible(session, input.rejected, input.contentStatus, snapshots),
   )
   const submissionById = new Map(input.submissions.map((submission) => [submission.id, submission]))
   const definitions = await loadContentByVersion(
@@ -141,9 +151,16 @@ export async function toPublicSessions(input: {
       const card = cardById.get(speakerId)
       return card === undefined ? [] : [card]
     })
+    const status = input.contentStatus.get(session.submissionId) ?? 'approved'
+    const copy = publicSessionCopy({
+      contentStatus: status,
+      liveTitle: submission?.title ?? '',
+      liveAbstract: facets.description,
+      lastApproved: input.approvedCopy?.get(session.submissionId) ?? null,
+    })
     return {
       submissionId: session.submissionId,
-      title: submission?.title ?? '',
+      title: copy.title,
       speakers: speakerCards.map((card) => card.name),
       speakerCards,
       track: session.trackId === null ? '' : (input.labelByTaxonomyId.get(session.trackId) ?? ''),
@@ -153,7 +170,7 @@ export async function toPublicSessions(input: {
       end: session.end,
       position: session.position,
       format: facets.format,
-      description: facets.description,
+      description: copy.abstract,
     }
   })
 }

@@ -28,6 +28,9 @@ import type { FormRepository } from '../ports/form-repository'
 import type { FormVersionRepository } from '../ports/form-version-repository'
 import type { SubmissionRepository } from '../ports/submission-repository'
 import type { CoSpeakerIntent, SubmitUnitOfWork } from '../ports/submit-unit-of-work'
+import type { ProgrammeRepository } from '../ports/programme-repository'
+import { answerText } from '../../domain/programme'
+import { shouldSnapshotApprovedCopy } from '../../domain/session-content'
 
 export class SubmitService {
   readonly #drafts: DraftRepository
@@ -38,6 +41,7 @@ export class SubmitService {
   readonly #content: FormContentRepository
   readonly #submitUnitOfWork: SubmitUnitOfWork
   readonly #clock: Clock
+  readonly #programme: ProgrammeRepository | null
 
   constructor(
     drafts: DraftRepository,
@@ -48,6 +52,7 @@ export class SubmitService {
     content: FormContentRepository,
     submitUnitOfWork: SubmitUnitOfWork,
     clock: Clock,
+    programme: ProgrammeRepository | null = null,
   ) {
     this.#drafts = drafts
     this.#submissions = submissions
@@ -57,6 +62,7 @@ export class SubmitService {
     this.#content = content
     this.#submitUnitOfWork = submitUnitOfWork
     this.#clock = clock
+    this.#programme = programme
   }
 
   /**
@@ -277,10 +283,15 @@ export class SubmitService {
       throw new ApplicationError('not_found', `Form for submission '${id}' not found`)
     }
     if (!isSubmissionEditable(form.limits, this.#clock.now())) {
-      throw new ApplicationError(
-        'conflict',
-        'The call for papers is closed, so this proposal can no longer be edited',
+      const accepted = (await this.#submissions.listDecisionsByEvent(actor.eventId)).some(
+        (row) => row.submissionId === id && row.outcome === 'accepted',
       )
+      if (!accepted) {
+        throw new ApplicationError(
+          'conflict',
+          'The call for papers is closed, so this proposal can no longer be edited',
+        )
+      }
     }
     // Validated against the version the proposal was SUBMITTED under, not the
     // newest one: a republished form must not retroactively invalidate a proposal
@@ -315,6 +326,21 @@ export class SubmitService {
     })
     if (outcome === 'not-found') {
       throw new ApplicationError('not_found', `Submission '${id}' not found`)
+    }
+    if (this.#programme !== null) {
+      const status = await this.#programme.getContentStatus(actor.eventId, id)
+      if (shouldSnapshotApprovedCopy(status)) {
+        await this.#programme.addRevision({
+          id: crypto.randomUUID(),
+          eventId: actor.eventId,
+          submissionId: id,
+          editorName: actor.contactId,
+          title: submission.title,
+          abstract: answerText(submission.answers.abstract),
+          createdAt: this.#clock.now(),
+        })
+      }
+      await this.#programme.setContentStatus(actor.eventId, id, 'draft')
     }
     const updated = await this.#submissions.findById(id)
     if (updated === null) {

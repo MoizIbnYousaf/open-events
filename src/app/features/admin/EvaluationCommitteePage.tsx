@@ -55,6 +55,7 @@ import type {
 import { ConfirmDialog } from '../../../components/ui/confirm-dialog'
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
+import ReviewerInviteLink from './ReviewerInviteLink'
 import RoundConfirmDialog from './RoundConfirmDialog'
 
 /**
@@ -204,6 +205,7 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
   const [email, setEmail] = useState('')
   const [invalid, setInvalid] = useState(false)
   const [invited, setInvited] = useState<string | null>(null)
+  const [invitePath, setInvitePath] = useState<string | null>(null)
   const [pendingRemoval, setPendingRemoval] = useState<CommitteeRosterEntry | null>(null)
   const remind = useRemindReviewers(slug)
   const [nudge, setNudge] = useState<string | null>(null)
@@ -247,6 +249,7 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
         // Announcing an invitation for somebody already seated tells the
         // organizer they did something they did not.
         setInvited(seated.created ? seated.name.trim() || seated.email : null)
+        setInvitePath(seated.invitePath ?? null)
         setEmail('')
       },
     })
@@ -407,8 +410,9 @@ function ReviewersSection({ slug }: { readonly slug: EventSlug }) {
           <StatusLive aria-label="Invite result">
             {invited === null
               ? null
-              : `${invited} is on the review committee. They sign in from the home page with their email — no password, and no account needed first.`}
+              : `${invited} is on the review committee. They sign in with the magic link below — no password, and no account needed first.`}
           </StatusLive>
+          {invitePath !== null ? <ReviewerInviteLink path={invitePath} /> : null}
         </CardContent>
         <CardFooter>
           <CardDescription>

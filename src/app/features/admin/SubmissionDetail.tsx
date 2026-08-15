@@ -11,7 +11,7 @@ import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { ButtonGroup } from '../../../components/ui/button-group'
-import { Card, CardContent } from '../../../components/ui/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
 import { NativeSelect } from '../../../components/ui/native-select'
@@ -151,22 +151,29 @@ export default function SubmissionDetail() {
         <div className="grid gap-4" aria-busy="true" aria-label="Loading this submission">
           <Skeleton className="h-4 w-32" />
           <Skeleton className="h-6 w-64" />
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_26rem]">
-            <Card>
-              <CardContent className="grid gap-3">
-                <Skeleton className="h-3.5 w-24" />
-                <Skeleton className="h-3.5 w-full" />
-                <Skeleton className="h-3.5 w-24" />
-                <Skeleton className="h-3.5 w-2/3" />
-                <StatusLive aria-live="polite">Loading this submission…</StatusLive>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="grid gap-3">
-                <Skeleton className="h-3.5 w-32" />
-                <Skeleton className="h-3.5 w-full" />
-              </CardContent>
-            </Card>
+          <div
+            data-slot="submission-canvas"
+            className="flex flex-col gap-4 xl:flex-row xl:items-start"
+          >
+            <div data-slot="submission-proposal" className="grid min-w-0 w-full max-w-3xl gap-4">
+              <Card>
+                <CardContent className="grid gap-3">
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-3.5 w-full" />
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-3.5 w-2/3" />
+                  <StatusLive aria-live="polite">Loading this submission…</StatusLive>
+                </CardContent>
+              </Card>
+            </div>
+            <aside data-slot="submission-rail" className="grid w-full shrink-0 gap-4 xl:w-[26rem]">
+              <Card>
+                <CardContent className="grid gap-3">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-3.5 w-full" />
+                </CardContent>
+              </Card>
+            </aside>
           </div>
         </div>
       </AppShell>
@@ -213,68 +220,30 @@ export default function SubmissionDetail() {
             <Badge variant="ghost">Version {detail.version}</Badge>
           </PageHeaderActions>
         </PageHeader>
-        <SessionContentEditor
-          slug={slug ?? ''}
-          submissionId={detail.id}
-          title={detail.title}
-          abstract={answerText(detail.answers.abstract ?? '')}
-        />
-        {/* The proposal is the page; decisions and evaluation are the rail
-            beside it, so a reviewer never loses the text they are judging.
-            The rail holds an email preview and a committee roster, so 26rem is
-            the width at which its subject line stops wrapping mid-title — it
-            used to break every line it held while the canvas beside a short
-            proposal was hundreds of pixels of nothing. The answer values keep a
-            reading measure of their own rather than running the full width of a
-            desktop, without leaving the card short of its column.
-
-            The rail runs to about 1600px on a real submission while a sparse
-            proposal's answers end 76px in, and neither of the two obvious
-            answers to that is right on its own. `items-start` let the answers
-            card stop at its own content, which read as a card that ran out —
-            a hairline edge floating in the middle of the page. Taking it away
-            only moved the emptiness inside the border: measured at 1440px, a
-            1603px card whose ink stopped at 76px, i.e. 1527px of framed
-            nothing, in both themes.
-
-            So the row still stretches — a proposal longer than the rail pairs
-            the two columns, which is what the template is for — and only the
-            side that would carry the void opts out. `self-start` makes the
-            answers card end where its answers end; the rail beside it is a
-            column of cards that already do. Empty page beside a rail is
-            ordinary layout; empty space inside a border is a broken box. */}
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_26rem]">
-          <Card className="self-start">
-            <CardContent>
-              {answers.length === 0 ? (
-                // A submitted proposal with nothing in it is a real state (every
-                // field on its version was optional, or conditionally hidden),
-                // and it used to render an empty box with no explanation.
-                <EmptyState
-                  icon={<InboxIcon size={20} />}
-                  title="No answers were submitted"
-                  description="Every question on this form version was optional or hidden for this speaker, so the proposal arrived with nothing but its title."
-                />
-              ) : (
-                <dl className="divide-y divide-border">
-                  {answers.map(([fieldKey, value]) => (
-                    <div
-                      key={fieldKey}
-                      className="grid gap-1 py-2.5 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,10rem)_minmax(0,62ch)] md:gap-4"
-                    >
-                      <dt className="text-xs font-medium text-muted-foreground">
-                        {labelByFieldKey.get(fieldKey) ?? 'Answer'}
-                      </dt>
-                      <dd className="text-[15px] whitespace-pre-wrap text-foreground">
-                        {answerText(value)}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-            </CardContent>
-          </Card>
-          <div className="grid gap-4">
+        {/* Proposal is a reading column (`max-w-3xl`), not a `1fr` track: a
+            full-width first column parked Acceptance at the far right and left
+            a 1500px empty card around short answers. The rail stays 26rem so
+            an acceptance subject still fits on one line, and it sits next to
+            the proposal instead of the viewport edge. */}
+        <div
+          data-slot="submission-canvas"
+          className="flex flex-col gap-4 xl:flex-row xl:items-start"
+        >
+          <div data-slot="submission-proposal" className="grid min-w-0 w-full max-w-3xl gap-4">
+            <ProposalCard
+              slug={slug ?? ''}
+              submissionId={detail.id}
+              title={detail.title}
+              abstract={answerText(detail.answers.abstract ?? '')}
+              answers={answers}
+              labelByFieldKey={labelByFieldKey}
+            />
+          </div>
+          <aside
+            data-slot="submission-rail"
+            aria-label="Acceptance and review"
+            className="grid w-full shrink-0 gap-4 xl:sticky xl:top-16 xl:w-[26rem]"
+          >
             <Card>
               <CardContent>
                 <CommunicationsPanel slug={slug ?? ''} submissionId={detail.id} />
@@ -285,10 +254,80 @@ export default function SubmissionDetail() {
                 <EvaluationPanel slug={slug ?? ''} submissionId={submissionId ?? ''} />
               </CardContent>
             </Card>
-          </div>
+          </aside>
         </div>
       </div>
     </AppShell>
+  )
+}
+
+function ProposalCard({
+  slug,
+  submissionId,
+  title,
+  abstract,
+  answers,
+  labelByFieldKey,
+}: {
+  readonly slug: string
+  readonly submissionId: string
+  readonly title: string
+  readonly abstract: string
+  readonly answers: readonly (readonly [string, AnswerValue | null])[]
+  readonly labelByFieldKey: ReadonlyMap<string, string>
+}) {
+  const [editing, setEditing] = useState(false)
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle level={2}>Proposal</CardTitle>
+        <CardAction>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={editing}
+            aria-controls="session-content-editor"
+            onClick={() => setEditing((current) => !current)}
+          >
+            {editing ? 'Close editor' : 'Edit session content'}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      {editing ? (
+        <CardContent id="session-content-editor" className="border-b">
+          <SessionContentEditor
+            slug={slug}
+            submissionId={submissionId}
+            title={title}
+            abstract={abstract}
+          />
+        </CardContent>
+      ) : null}
+      <CardContent>
+        {answers.length === 0 ? (
+          <EmptyState
+            icon={<InboxIcon size={20} />}
+            title="No answers were submitted"
+            description="Every question on this form version was optional or hidden for this speaker, so the proposal arrived with nothing but its title."
+          />
+        ) : (
+          <dl className="divide-y divide-border">
+            {answers.map(([fieldKey, value]) => (
+              <div key={fieldKey} className="grid gap-1 py-3 first:pt-0 last:pb-0">
+                <dt className="text-xs font-medium text-muted-foreground">
+                  {labelByFieldKey.get(fieldKey) ?? 'Answer'}
+                </dt>
+                <dd className="text-[15px] leading-relaxed whitespace-pre-wrap text-foreground">
+                  {answerText(value)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -304,7 +343,6 @@ function SessionContentEditor({
   readonly abstract: string
 }) {
   const client = useQueryClient()
-  const [open, setOpen] = useState(false)
   const [nextTitle, setNextTitle] = useState<string | null>(null)
   const [nextAbstract, setNextAbstract] = useState<string | null>(null)
   const titleValue = nextTitle ?? title
@@ -316,7 +354,6 @@ function SessionContentEditor({
       requestJson<readonly { id: string; editorName: string; title: string; createdAt: string }[]>(
         `/api/admin/events/${slug}/submissions/${submissionId}/revisions`,
       ),
-    enabled: open,
   })
   const save = useMutation({
     mutationFn: () =>
@@ -352,69 +389,66 @@ function SessionContentEditor({
       void client.invalidateQueries()
     },
   })
-  if (!open) {
-    return (
-      <Button type="button" variant="outline" className="self-start" onClick={() => setOpen(true)}>
-        Edit session content
-      </Button>
-    )
-  }
   return (
-    <Card>
-      <CardContent className="grid gap-2">
-        <Field>
-          <FieldLabel htmlFor="session-title">Session title</FieldLabel>
-          <Input
-            id="session-title"
-            value={titleValue}
-            onChange={(event) => setNextTitle(event.target.value)}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="session-abstract">Abstract</FieldLabel>
-          <Textarea
-            id="session-abstract"
-            value={abstractValue}
-            onChange={(event) => setNextAbstract(event.target.value)}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="session-content-status">Content status</FieldLabel>
-          <NativeSelect
-            id="session-content-status"
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="approved">Approved</option>
-            <option value="draft">Draft</option>
-          </NativeSelect>
-        </Field>
-        <ButtonGroup>
-          <Button type="button" onClick={() => save.mutate()} pending={save.isPending}>
-            Save session content
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => approve.mutate()}
-            pending={approve.isPending}
-          >
-            Save content status
-          </Button>
-        </ButtonGroup>
-        <ul className="grid gap-1 text-sm">
-          {(revisions.data ?? []).map((revision) => (
-            <li key={revision.id} className="flex items-center justify-between gap-2">
-              <span>
-                {revision.createdAt} · {revision.editorName} · {revision.title}
-              </span>
-              <Button type="button" variant="outline" onClick={() => restore.mutate(revision.id)}>
-                Restore
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
+    <div className="grid gap-3">
+      <Field>
+        <FieldLabel htmlFor="session-title">Session title</FieldLabel>
+        <Input
+          id="session-title"
+          value={titleValue}
+          onChange={(event) => setNextTitle(event.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="session-abstract">Abstract</FieldLabel>
+        <Textarea
+          id="session-abstract"
+          value={abstractValue}
+          onChange={(event) => setNextAbstract(event.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="session-content-status">Content status</FieldLabel>
+        <NativeSelect
+          id="session-content-status"
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+        >
+          <option value="approved">Approved</option>
+          <option value="draft">Draft</option>
+        </NativeSelect>
+      </Field>
+      <ButtonGroup>
+        <Button type="button" onClick={() => save.mutate()} pending={save.isPending}>
+          Save session content
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => approve.mutate()}
+          pending={approve.isPending}
+        >
+          Save content status
+        </Button>
+      </ButtonGroup>
+      <ul className="grid gap-2 text-sm">
+        {(revisions.data ?? []).map((revision) => (
+          <li key={revision.id} className="flex min-w-0 items-start justify-between gap-2">
+            <span className="min-w-0 break-words">
+              {revision.createdAt} · {revision.editorName} · {revision.title}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() => restore.mutate(revision.id)}
+            >
+              Restore
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

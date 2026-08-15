@@ -264,6 +264,23 @@ describe('public schedule', () => {
     }
   })
 
+  it('stars a session into My schedule and keeps the iCal link', async () => {
+    const user = userEvent.setup()
+    window.localStorage.clear()
+    await mountPage('ready')
+    await screen.findByRole('heading', { level: 1, name: 'Schedule' })
+    expect(screen.getByRole('link', { name: /add to calendar/i })).toHaveAttribute(
+      'href',
+      `/api/public/events/${EVENT_SLUG}/schedule.ics`,
+    )
+    await user.click(screen.getAllByRole('button', { name: /add to my schedule/i })[0]!)
+    expect(screen.getByText(/1 session saved on this device/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /remove from my schedule/i })).toBeInTheDocument()
+    cleanup()
+    await mountPage('ready')
+    expect(await screen.findByText(/1 session saved on this device/i)).toBeInTheDocument()
+  })
+
   it('renders a track as an enumerated value, never wearing the state face', async () => {
     await mountPage('ready')
 

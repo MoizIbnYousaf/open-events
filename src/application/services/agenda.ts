@@ -299,9 +299,18 @@ export class AgendaService {
       await this.#taxonomies.replaceForEvent(event.id, [...items, fallback])
       roomIds = [fallback.id]
     }
-    const proposals = [
-      ...proposeAgendaPlacements(buildAgendaGrid(event.dates), event.id, roomIds, placed, unplaced),
-    ]
+    let grid = buildAgendaGrid(event.dates)
+    if (grid.days.length === 0) {
+      // An event with no usable window used to leave every session unplaced
+      // ("Scheduled 0 / 1 still need a slot"). Synthesize one working day so
+      // assisted place still has cells a human could have dragged into.
+      const day = this.#clock.now().slice(0, 10)
+      grid = buildAgendaGrid({
+        startsAt: `${day}T08:00:00.000Z`,
+        endsAt: `${day}T17:00:00.000Z`,
+      })
+    }
+    const proposals = [...proposeAgendaPlacements(grid, event.id, roomIds, placed, unplaced)]
     const proposedIds = new Set(proposals.map((proposal) => proposal.submissionId))
     const leftover = unplaced.filter((session) => !proposedIds.has(session.submissionId))
     const byId = new Map(sessions.map((session) => [session.submissionId, session]))
@@ -319,31 +328,23 @@ export class AgendaService {
         speakerIds: byId.get(proposal.submissionId)?.speakerIds ?? [],
       })
     }
-    for (const waiting of leftover) {
-      const session = byId.get(waiting.submissionId)
-      if (session === undefined) continue
-      for (const roomId of roomIds) {
-        const candidate: AgendaPlacement = {
-          submissionId: session.submissionId,
+    // Retry leftovers against the same grid slots, not the session's
+    // placeholder day/start — those dummy times never match a cell.
+    if (leftover.length > 0) {
+      const extra = proposeAgendaPlacements(grid, event.id, roomIds, taken, leftover)
+      for (const proposal of extra) {
+        proposals.push(proposal)
+        taken.push({
+          submissionId: proposal.submissionId,
           eventId: event.id,
-          trackId: session.trackId ?? '',
-          roomId,
-          day: session.day,
-          start: session.start,
-          end: session.end,
-          position: session.position ?? 0,
-          speakerIds: session.speakerIds,
-        }
-        if (findAgendaConflicts([...taken, candidate]).length > 0) continue
-        taken.push(candidate)
-        proposals.push({
-          submissionId: session.submissionId,
-          day: session.day,
-          start: session.start,
-          end: session.end,
-          roomId,
+          trackId: byId.get(proposal.submissionId)?.trackId ?? '',
+          roomId: proposal.roomId,
+          day: proposal.day,
+          start: proposal.start,
+          end: proposal.end,
+          position: 0,
+          speakerIds: byId.get(proposal.submissionId)?.speakerIds ?? [],
         })
-        break
       }
     }
     const now = this.#clock.now()

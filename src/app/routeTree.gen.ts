@@ -30,6 +30,7 @@ import { Route as AdminEventsSlugEmbedsRouteImport } from './routes/admin_.event
 import { Route as AdminEventsSlugEvaluationsRouteImport } from './routes/admin_.events.$slug_.evaluations'
 import { Route as AdminEventsSlugFilesRouteImport } from './routes/admin_.events.$slug_.files'
 import { Route as AdminEventsSlugMessagesRouteImport } from './routes/admin_.events.$slug_.messages'
+import { Route as AdminEventsSlugOrbyRouteImport } from './routes/admin_.events.$slug_.orby'
 import { Route as AdminEventsSlugReadinessRouteImport } from './routes/admin_.events.$slug_.readiness'
 import { Route as AdminEventsSlugSpeakersRouteImport } from './routes/admin_.events.$slug_.speakers'
 import { Route as AdminEventsSlugSubmissionsRouteImport } from './routes/admin_.events.$slug_.submissions'
@@ -145,6 +146,11 @@ const AdminEventsSlugMessagesRoute = AdminEventsSlugMessagesRouteImport.update({
   path: '/$slug/messages',
   getParentRoute: () => AdminEventsRoute,
 } as any)
+const AdminEventsSlugOrbyRoute = AdminEventsSlugOrbyRouteImport.update({
+  id: '/$slug_/orby',
+  path: '/$slug/orby',
+  getParentRoute: () => AdminEventsRoute,
+} as any)
 const AdminEventsSlugReadinessRoute =
   AdminEventsSlugReadinessRouteImport.update({
     id: '/$slug_/readiness',
@@ -208,6 +214,7 @@ export interface FileRoutesByFullPath {
   '/admin/events/$slug/evaluations': typeof AdminEventsSlugEvaluationsRoute
   '/admin/events/$slug/files': typeof AdminEventsSlugFilesRoute
   '/admin/events/$slug/messages': typeof AdminEventsSlugMessagesRoute
+  '/admin/events/$slug/orby': typeof AdminEventsSlugOrbyRoute
   '/admin/events/$slug/readiness': typeof AdminEventsSlugReadinessRoute
   '/admin/events/$slug/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin/events/$slug/submissions': typeof AdminEventsSlugSubmissionsRoute
@@ -236,6 +243,7 @@ export interface FileRoutesByTo {
   '/admin/events/$slug/evaluations': typeof AdminEventsSlugEvaluationsRoute
   '/admin/events/$slug/files': typeof AdminEventsSlugFilesRoute
   '/admin/events/$slug/messages': typeof AdminEventsSlugMessagesRoute
+  '/admin/events/$slug/orby': typeof AdminEventsSlugOrbyRoute
   '/admin/events/$slug/readiness': typeof AdminEventsSlugReadinessRoute
   '/admin/events/$slug/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin/events/$slug/submissions': typeof AdminEventsSlugSubmissionsRoute
@@ -267,6 +275,7 @@ export interface FileRoutesById {
   '/admin_/events/$slug_/evaluations': typeof AdminEventsSlugEvaluationsRoute
   '/admin_/events/$slug_/files': typeof AdminEventsSlugFilesRoute
   '/admin_/events/$slug_/messages': typeof AdminEventsSlugMessagesRoute
+  '/admin_/events/$slug_/orby': typeof AdminEventsSlugOrbyRoute
   '/admin_/events/$slug_/readiness': typeof AdminEventsSlugReadinessRoute
   '/admin_/events/$slug_/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin_/events/$slug_/submissions': typeof AdminEventsSlugSubmissionsRoute
@@ -298,6 +307,7 @@ export interface FileRouteTypes {
     | '/admin/events/$slug/evaluations'
     | '/admin/events/$slug/files'
     | '/admin/events/$slug/messages'
+    | '/admin/events/$slug/orby'
     | '/admin/events/$slug/readiness'
     | '/admin/events/$slug/speakers'
     | '/admin/events/$slug/submissions'
@@ -326,6 +336,7 @@ export interface FileRouteTypes {
     | '/admin/events/$slug/evaluations'
     | '/admin/events/$slug/files'
     | '/admin/events/$slug/messages'
+    | '/admin/events/$slug/orby'
     | '/admin/events/$slug/readiness'
     | '/admin/events/$slug/speakers'
     | '/admin/events/$slug/submissions'
@@ -356,6 +367,7 @@ export interface FileRouteTypes {
     | '/admin_/events/$slug_/evaluations'
     | '/admin_/events/$slug_/files'
     | '/admin_/events/$slug_/messages'
+    | '/admin_/events/$slug_/orby'
     | '/admin_/events/$slug_/readiness'
     | '/admin_/events/$slug_/speakers'
     | '/admin_/events/$slug_/submissions'
@@ -521,6 +533,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventsSlugMessagesRouteImport
       parentRoute: typeof AdminEventsRoute
     }
+    '/admin_/events/$slug_/orby': {
+      id: '/admin_/events/$slug_/orby'
+      path: '/$slug/orby'
+      fullPath: '/admin/events/$slug/orby'
+      preLoaderRoute: typeof AdminEventsSlugOrbyRouteImport
+      parentRoute: typeof AdminEventsRoute
+    }
     '/admin_/events/$slug_/readiness': {
       id: '/admin_/events/$slug_/readiness'
       path: '/$slug/readiness'
@@ -623,6 +642,7 @@ interface AdminEventsRouteChildren {
   AdminEventsSlugEvaluationsRoute: typeof AdminEventsSlugEvaluationsRoute
   AdminEventsSlugFilesRoute: typeof AdminEventsSlugFilesRoute
   AdminEventsSlugMessagesRoute: typeof AdminEventsSlugMessagesRoute
+  AdminEventsSlugOrbyRoute: typeof AdminEventsSlugOrbyRoute
   AdminEventsSlugReadinessRoute: typeof AdminEventsSlugReadinessRoute
   AdminEventsSlugSpeakersRoute: typeof AdminEventsSlugSpeakersRoute
   AdminEventsSlugSubmissionsRoute: typeof AdminEventsSlugSubmissionsRoute
@@ -640,6 +660,7 @@ const AdminEventsRouteChildren: AdminEventsRouteChildren = {
   AdminEventsSlugEvaluationsRoute: AdminEventsSlugEvaluationsRoute,
   AdminEventsSlugFilesRoute: AdminEventsSlugFilesRoute,
   AdminEventsSlugMessagesRoute: AdminEventsSlugMessagesRoute,
+  AdminEventsSlugOrbyRoute: AdminEventsSlugOrbyRoute,
   AdminEventsSlugReadinessRoute: AdminEventsSlugReadinessRoute,
   AdminEventsSlugSpeakersRoute: AdminEventsSlugSpeakersRoute,
   AdminEventsSlugSubmissionsRoute: AdminEventsSlugSubmissionsRoute,

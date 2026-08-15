@@ -5,6 +5,9 @@ import {
   toPublicSpeakers,
 } from '../../application/services/public-programme'
 import { toIcsCalendar } from '../../domain/calendar'
+import type { ProgrammeRepository } from '../../application/ports/programme-repository'
+import type { EventId, SubmissionId } from '../../domain'
+import { latestApprovedSnapshot } from '../../domain/session-content'
 import { depsFromContext } from '../container'
 import type { ServerContext } from '../env'
 import { databaseUnavailableResponse } from '../env'
@@ -35,12 +38,19 @@ export async function handleGetPublicSchedule(context: ServerContext): Promise<R
     if (decision.outcome === 'rejected') rejected.add(decision.submissionId)
   }
   const contentStatus = new Map(statuses.map((row) => [row.submissionId, row.status]))
+  const { approvedSnapshots, approvedCopy } = await loadApprovedCopy(
+    deps.programme,
+    event.id,
+    submissions.map((row) => row.id),
+  )
   const labelByTaxonomyId = new Map(items.map((item) => [item.id, item.label]))
   const publicSessions = await toPublicSessions({
     sessions: stored,
     submissions,
     rejected,
     contentStatus,
+    approvedSnapshots,
+    approvedCopy,
     labelByTaxonomyId,
     contacts: deps.contacts,
     formContent: deps.formContent,
@@ -73,11 +83,18 @@ export async function handleGetPublicSpeakers(context: ServerContext): Promise<R
     if (decision.outcome === 'rejected') rejected.add(decision.submissionId)
   }
   const contentStatus = new Map(statuses.map((row) => [row.submissionId, row.status]))
+  const { approvedSnapshots, approvedCopy } = await loadApprovedCopy(
+    deps.programme,
+    event.id,
+    submissions.map((row) => row.id),
+  )
   const sessions = await toPublicSessions({
     sessions: stored,
     submissions,
     rejected,
     contentStatus,
+    approvedSnapshots,
+    approvedCopy,
     labelByTaxonomyId: new Map(items.map((item) => [item.id, item.label])),
     contacts: deps.contacts,
     formContent: deps.formContent,
@@ -85,7 +102,7 @@ export async function handleGetPublicSpeakers(context: ServerContext): Promise<R
   })
   const visibleIds = new Set<string>()
   for (const session of stored) {
-    if (!isPubliclyVisible(session, rejected, contentStatus)) continue
+    if (!isPubliclyVisible(session, rejected, contentStatus, approvedSnapshots)) continue
     for (const speakerId of session.speakerIds) visibleIds.add(speakerId)
   }
   const rosterById = new Map(roster.map((row) => [row.contactId, row]))
@@ -196,4 +213,26 @@ export async function handleGetPublicIcs(context: ServerContext): Promise<Respon
       'cache-control': 'public, max-age=60',
     },
   })
+}
+
+async function loadApprovedCopy(
+  programme: ProgrammeRepository,
+  eventId: EventId,
+  submissionIds: readonly SubmissionId[],
+): Promise<{
+  readonly approvedSnapshots: ReadonlySet<string>
+  readonly approvedCopy: ReadonlyMap<string, { readonly title: string; readonly abstract: string }>
+}> {
+  const approvedSnapshots = new Set<string>()
+  const approvedCopy = new Map<string, { readonly title: string; readonly abstract: string }>()
+  await Promise.all(
+    submissionIds.map(async (submissionId) => {
+      const revisions = await programme.listRevisions(eventId, submissionId)
+      const last = latestApprovedSnapshot(revisions)
+      if (last === null) return
+      approvedSnapshots.add(submissionId)
+      approvedCopy.set(submissionId, last)
+    }),
+  )
+  return { approvedSnapshots, approvedCopy }
 }

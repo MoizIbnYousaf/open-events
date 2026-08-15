@@ -10,6 +10,7 @@ import type { SubmissionRepository } from '../ports/submission-repository'
 import type { UploadedFileKind, UploadedFileRepository } from '../ports/uploaded-file-repository'
 import { zipStoreFiles } from '../../domain/zip-store'
 import { isSessionContentStatus } from '../../domain/embed'
+import { shouldSnapshotApprovedCopy } from '../../domain/session-content'
 
 export class ContentLibraryService {
   readonly #events: EventRepository
@@ -167,15 +168,18 @@ export class ContentLibraryService {
       throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
     }
     const previousAbstract = answerText(submission.answers.abstract)
-    await this.#programme.addRevision({
-      id: crypto.randomUUID(),
-      eventId: event.id,
-      submissionId,
-      editorName: input.editorName?.trim() || 'Organizer',
-      title: submission.title,
-      abstract: previousAbstract,
-      createdAt: this.#clock.now(),
-    })
+    const status = await this.#programme.getContentStatus(event.id, submissionId)
+    if (shouldSnapshotApprovedCopy(status)) {
+      await this.#programme.addRevision({
+        id: crypto.randomUUID(),
+        eventId: event.id,
+        submissionId,
+        editorName: input.editorName?.trim() || 'Organizer',
+        title: submission.title,
+        abstract: previousAbstract,
+        createdAt: this.#clock.now(),
+      })
+    }
     const answers = { ...submission.answers, abstract: input.abstract }
     const updated = await this.#submissions.updateContent({
       eventId: event.id,
@@ -186,6 +190,7 @@ export class ContentLibraryService {
     if (updated === 'not-found') {
       throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
     }
+    await this.#programme.setContentStatus(event.id, submissionId, 'draft')
     return { submissionId, title: input.title, abstract: input.abstract }
   }
 

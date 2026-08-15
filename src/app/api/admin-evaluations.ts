@@ -82,12 +82,17 @@ export function listEvaluationAssignments(
  * accepted a round all along; not sending one is what made every assignment
  * land in whichever round happened to be open.
  */
+export type ReviewerInvite = {
+  readonly invitePath?: string | null
+  readonly inviteSent?: boolean
+}
+
 export function assignEvaluator(
   slug: EventSlug,
   submissionId: SubmissionId,
   evaluatorEmail: string,
   roundId?: string,
-): Promise<EvaluationAssignmentDto> {
+): Promise<EvaluationAssignmentDto & ReviewerInvite> {
   return requestJson(
     `/api/admin/events/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(submissionId)}/assignments`,
     {
@@ -119,7 +124,7 @@ export function listCommittee(slug: EventSlug): Promise<readonly CommitteeRoster
 export function addCommitteeMember(
   slug: EventSlug,
   email: string,
-): Promise<CommitteeRosterEntry & { readonly created: boolean }> {
+): Promise<CommitteeRosterEntry & { readonly created: boolean } & ReviewerInvite> {
   return requestJson(`/api/admin/events/${encodeURIComponent(slug)}/evaluations/committee`, {
     method: 'POST',
     body: JSON.stringify({ email }),

@@ -25,6 +25,7 @@ import {
   useEvaluationSummary,
   useRunEvaluationRound,
 } from '../../queries/admin-evaluations'
+import ReviewerInviteLink from './ReviewerInviteLink'
 import RoundConfirmDialog from './RoundConfirmDialog'
 
 interface EvaluationPanelProps {
@@ -51,7 +52,7 @@ const groupTitleClass = 'text-sm font-medium'
 function assignmentRefusal(error: unknown): string {
   switch (getApiErrorCode(error)) {
     case 'not_found':
-      return 'No one has signed in with that email yet, and assigning does not create an identity. Ask them to request a sign-in link from the speaker start page, then assign them again.'
+      return 'That evaluator could not be assigned. Check the email and try again.'
     case 'conflict':
       return 'This event has no open review round, so there is nothing to assign into. Open a round above, then assign them again.'
     case 'validation_failed':
@@ -115,6 +116,7 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
   const [email, setEmail] = useState('')
   const [chosenRound, setChosenRound] = useState('')
   const [emailMissing, setEmailMissing] = useState(false)
+  const [invitePath, setInvitePath] = useState<string | null>(null)
   const [confirmRound, setConfirmRound] = useState<'open' | 'close' | null>(null)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
 
@@ -173,7 +175,12 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
     setEmailMissing(false)
     assign.mutate(
       { evaluatorEmail: trimmed, ...(targetRound === '' ? {} : { roundId: targetRound }) },
-      { onSuccess: () => setEmail('') },
+      {
+        onSuccess: (result) => {
+          setEmail('')
+          setInvitePath(result.invitePath ?? null)
+        },
+      },
     )
   }
 
@@ -390,6 +397,7 @@ export default function EvaluationPanel({ slug, submissionId }: EvaluationPanelP
               {assign.isPending ? 'Assigning the evaluator…' : null}
             </StatusLive>
             {assign.isError ? <AlertLive>{assignmentRefusal(assign.error)}</AlertLive> : null}
+            {invitePath !== null ? <ReviewerInviteLink path={invitePath} /> : null}
           </div>
         </>
       )}

@@ -16,7 +16,7 @@ import {
   InputGroupText,
 } from '../../../components/ui/input-group'
 import { NativeSelect } from '../../../components/ui/native-select'
-import { Separator } from '../../../components/ui/separator'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Textarea } from '../../../components/ui/textarea'
 import {
   PageHeader,
@@ -30,6 +30,7 @@ import { requestJson } from '../../api/admin-events'
 import { speakerQueryKeys, useSpeakerRoster } from '../../queries/admin-speakers'
 import type { EventSlug } from '../../../domain'
 import type { SpeakerRosterEntryDto } from '../../../application'
+import { useProgrammeSpotlight } from './useProgrammeSpotlight'
 
 async function loadCsvText(file: File): Promise<string> {
   return file.text()
@@ -100,6 +101,8 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
       )
     })
   }, [people, term, statusFilter, taskFilter])
+  const { spotlightId, select } = useProgrammeSpotlight(matches.map((person) => person.contactId))
+  const selected = matches.find((person) => person.contactId === spotlightId) ?? matches[0] ?? null
 
   return (
     <div className="grid gap-4">
@@ -114,173 +117,230 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
 
       {roster.isError ? <AlertLive>The speaker list is unavailable right now.</AlertLive> : null}
 
-      <form
-        className="grid max-w-md gap-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          add.mutate()
-        }}
+      <div
+        data-slot="speakers-canvas"
+        data-spotlight={selected?.contactId ?? undefined}
+        className="flex flex-col gap-4 xl:flex-row xl:items-start"
       >
-        <Field>
-          <FieldLabel htmlFor="add-speaker-name">Add speaker name</FieldLabel>
-          <Input
-            id="add-speaker-name"
-            value={name}
-            onChange={(change) => setName(change.target.value)}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="add-speaker-email">Email</FieldLabel>
-          <Input
-            id="add-speaker-email"
-            value={email}
-            onChange={(change) => setEmail(change.target.value)}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="add-speaker-bio">Bio</FieldLabel>
-          <Input
-            id="add-speaker-bio"
-            value={bio}
-            onChange={(change) => setBio(change.target.value)}
-          />
-        </Field>
-        <Button type="submit" className="self-start" pending={add.isPending}>
-          Add speaker
-        </Button>
-      </form>
-      <Separator />
-      <Field>
-        <FieldLabel htmlFor="speaker-csv-file">Import speakers CSV file</FieldLabel>
-        <InputGroup>
-          <InputGroupAddon>
-            <label
-              htmlFor="speaker-csv-file"
-              className="cursor-pointer font-medium text-foreground"
-            >
-              Choose CSV
-            </label>
-          </InputGroupAddon>
-          <input
-            id="speaker-csv-file"
-            type="file"
-            accept=".csv,text/csv"
-            className="sr-only"
-            onChange={(change) => {
-              void onCsvChosen(change.target.files?.[0])
-            }}
-          />
-          <InputGroupText>{csv.length > 0 ? 'CSV loaded' : 'No file chosen'}</InputGroupText>
-        </InputGroup>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="speaker-csv">Import CSV</FieldLabel>
-        <Textarea
-          id="speaker-csv"
-          className="font-mono text-sm md:text-sm"
-          value={csv}
-          onChange={(change) => setCsv(change.target.value)}
-        />
-      </Field>
-      <Button
-        type="button"
-        variant="outline"
-        className="self-start"
-        pending={importCsv.isPending}
-        onClick={() => importCsv.mutate()}
-      >
-        Import speakers
-      </Button>
-      <AssignmentForm eventSlug={eventSlug} people={people} />
-      <SpeakerMailForm eventSlug={eventSlug} people={people} />
-
-      {roster.isPending ? (
-        <div aria-busy="true" className="grid gap-2">
-          <StatusLive>Loading the speakers…</StatusLive>
-          <Skeleton className="h-10" />
-          <Skeleton className="h-10" />
-        </div>
-      ) : people.length === 0 ? (
-        <EmptyState
-          title="No speakers yet"
-          description="Anyone named on a proposal appears here — the submitter and every co-speaker."
-        />
-      ) : (
-        <>
-          <div className="flex flex-wrap items-end gap-3">
-            <Field className="max-w-sm">
-              <FieldLabel htmlFor="speaker-search">Search speakers</FieldLabel>
-              <InputGroup>
-                <InputGroupAddon>
-                  <InputGroupText>Find</InputGroupText>
-                </InputGroupAddon>
-                <InputGroupInput
-                  id="speaker-search"
-                  type="search"
-                  value={term}
-                  placeholder="Name or email"
-                  onChange={(event) => setTerm(event.target.value)}
-                />
-              </InputGroup>
-            </Field>
-            <Field className="max-w-xs">
-              <FieldLabel htmlFor="speaker-status-filter">Filter by status</FieldLabel>
-              <NativeSelect
-                id="speaker-status-filter"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <option value="all">All statuses</option>
-                <option value="invited">Invited</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="accepted">Accepted</option>
-                <option value="declined">Declined</option>
-              </NativeSelect>
-            </Field>
-            <Field className="max-w-xs">
-              <FieldLabel htmlFor="speaker-task-filter">Filter by task completion</FieldLabel>
-              <NativeSelect
-                id="speaker-task-filter"
-                value={taskFilter}
-                onChange={(event) => setTaskFilter(event.target.value)}
-              >
-                <option value="all">All task progress</option>
-                <option value="complete">Tasks complete</option>
-                <option value="incomplete">Outstanding tasks</option>
-              </NativeSelect>
-            </Field>
-          </div>
-
-          {/* The count is announced, so filtering is legible to someone who
-              cannot see the list shrink. */}
-          <StatusLive aria-live="polite">
-            {`${matches.length} of ${people.length} speaker(s) shown.`}
-          </StatusLive>
-
-          {matches.length === 0 ? (
+        <div data-slot="speakers-roster" className="grid min-w-0 w-full max-w-3xl gap-4">
+          {roster.isPending ? (
+            <div aria-busy="true" className="grid gap-2">
+              <StatusLive>Loading the speakers…</StatusLive>
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
+            </div>
+          ) : people.length === 0 ? (
             <EmptyState
-              title="Nobody matches that"
-              description="Try part of a name or an email address."
+              title="No speakers yet"
+              description="Anyone named on a proposal appears here — the submitter and every co-speaker."
             />
           ) : (
-            <ul className="grid gap-2" aria-label="Speakers">
-              {matches.map((person) => (
-                <SpeakerRow key={person.contactId} person={person} eventSlug={eventSlug} />
-              ))}
-            </ul>
+            <>
+              <div className="flex flex-wrap items-end gap-3">
+                <Field className="max-w-sm">
+                  <FieldLabel htmlFor="speaker-search">Search speakers</FieldLabel>
+                  <InputGroup>
+                    <InputGroupAddon>
+                      <InputGroupText>Find</InputGroupText>
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      id="speaker-search"
+                      type="search"
+                      value={term}
+                      placeholder="Name or email"
+                      onChange={(event) => setTerm(event.target.value)}
+                    />
+                  </InputGroup>
+                </Field>
+                <Field className="max-w-xs">
+                  <FieldLabel htmlFor="speaker-status-filter">Filter by status</FieldLabel>
+                  <NativeSelect
+                    id="speaker-status-filter"
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="invited">Invited</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="declined">Declined</option>
+                  </NativeSelect>
+                </Field>
+                <Field className="max-w-xs">
+                  <FieldLabel htmlFor="speaker-task-filter">Filter by task completion</FieldLabel>
+                  <NativeSelect
+                    id="speaker-task-filter"
+                    value={taskFilter}
+                    onChange={(event) => setTaskFilter(event.target.value)}
+                  >
+                    <option value="all">All task progress</option>
+                    <option value="complete">Tasks complete</option>
+                    <option value="incomplete">Outstanding tasks</option>
+                  </NativeSelect>
+                </Field>
+              </div>
+
+              {/* The count is announced, so filtering is legible to someone who
+              cannot see the list shrink. */}
+              <StatusLive aria-live="polite">
+                {`${matches.length} of ${people.length} speaker(s) shown.`}
+              </StatusLive>
+
+              {matches.length === 0 ? (
+                <EmptyState
+                  title="Nobody matches that"
+                  description="Try part of a name or an email address."
+                />
+              ) : (
+                <div className="grid gap-3">
+                  <ul className="grid gap-2" aria-label="Speakers">
+                    {matches.map((person) => (
+                      <SpeakerRow
+                        key={person.contactId}
+                        person={person}
+                        eventSlug={eventSlug}
+                        selected={selected?.contactId === person.contactId}
+                        onSelect={() => select(person.contactId)}
+                      />
+                    ))}
+                  </ul>
+                  {selected !== null ? <SpeakerPeek person={selected} /> : null}
+                </div>
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+        <aside
+          data-slot="speakers-rail"
+          aria-label="Add and import speakers"
+          className="grid w-full shrink-0 gap-4 xl:sticky xl:top-16 xl:w-[22rem]"
+        >
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle level={2}>Add speaker</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="grid gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  add.mutate()
+                }}
+              >
+                <Field>
+                  <FieldLabel htmlFor="add-speaker-name">Add speaker name</FieldLabel>
+                  <Input
+                    id="add-speaker-name"
+                    value={name}
+                    onChange={(change) => setName(change.target.value)}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="add-speaker-email">Email</FieldLabel>
+                  <Input
+                    id="add-speaker-email"
+                    value={email}
+                    onChange={(change) => setEmail(change.target.value)}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="add-speaker-bio">Bio</FieldLabel>
+                  <Input
+                    id="add-speaker-bio"
+                    value={bio}
+                    onChange={(change) => setBio(change.target.value)}
+                  />
+                </Field>
+                <Button type="submit" className="self-start" pending={add.isPending}>
+                  Add speaker
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle level={2}>Import</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              <Field>
+                <FieldLabel htmlFor="speaker-csv-file">Import speakers CSV file</FieldLabel>
+                <InputGroup>
+                  <InputGroupAddon>
+                    <label
+                      htmlFor="speaker-csv-file"
+                      className="cursor-pointer font-medium text-foreground"
+                    >
+                      Choose CSV
+                    </label>
+                  </InputGroupAddon>
+                  <input
+                    id="speaker-csv-file"
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="sr-only"
+                    onChange={(change) => {
+                      void onCsvChosen(change.target.files?.[0])
+                    }}
+                  />
+                  <InputGroupText>
+                    {csv.length > 0 ? 'CSV loaded' : 'No file chosen'}
+                  </InputGroupText>
+                </InputGroup>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="speaker-csv">Import CSV</FieldLabel>
+                <Textarea
+                  id="speaker-csv"
+                  className="min-h-24 font-mono text-sm md:text-sm"
+                  value={csv}
+                  onChange={(change) => setCsv(change.target.value)}
+                />
+              </Field>
+              <Button
+                type="button"
+                variant="outline"
+                className="self-start"
+                pending={importCsv.isPending}
+                onClick={() => importCsv.mutate()}
+              >
+                Import speakers
+              </Button>
+            </CardContent>
+          </Card>
+          <AssignmentForm eventSlug={eventSlug} people={people} />
+          <SpeakerMailForm eventSlug={eventSlug} people={people} />
+        </aside>
+      </div>
     </div>
+  )
+}
+
+function SpeakerPeek({ person }: { readonly person: SpeakerRosterEntryDto }) {
+  return (
+    <Card data-slot="speakers-peek" className="min-w-0">
+      <CardHeader className="border-b">
+        <CardTitle level={2}>{person.name || person.email}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-1 text-sm">
+        <p>{person.email}</p>
+        <p className="text-muted-foreground">
+          {person.workflowStatus} · {person.outstandingTaskCount} outstanding
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
 function SpeakerRow({
   person,
   eventSlug,
+  selected,
+  onSelect,
 }: {
   readonly person: SpeakerRosterEntryDto
   readonly eventSlug: EventSlug
+  readonly selected: boolean
+  readonly onSelect: () => void
 }) {
   const client = useQueryClient()
   const status = useMutation({
@@ -304,7 +364,11 @@ function SpeakerRow({
     },
   })
   return (
-    <li className="grid gap-2 rounded-md border border-border px-3 py-2">
+    <li
+      data-selected={selected ? '' : undefined}
+      className="grid gap-2 rounded-md border border-border px-3 py-2"
+      onClick={onSelect}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="grid min-w-0">
           <span className="truncate text-sm font-medium">{person.name || person.email}</span>
@@ -512,7 +576,7 @@ function AssignmentForm({
     },
   })
   return (
-    <section className="grid max-w-md gap-2" aria-labelledby="assignment-heading">
+    <section className="grid gap-2" aria-labelledby="assignment-heading">
       <h2 id="assignment-heading" className="text-lg font-medium">
         Assigned tasks
       </h2>

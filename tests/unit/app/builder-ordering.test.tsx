@@ -248,6 +248,7 @@ describe('builder element ordering', () => {
     expect(await screen.findByDisplayValue('Format')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /move up/i })).toHaveLength(3)
     expect(screen.getAllByRole('button', { name: /move down/i })).toHaveLength(3)
+    expect(screen.getAllByRole('button', { name: /add question/i })).toHaveLength(2)
   })
 
   // Button's size recipe tightens the leading padding through

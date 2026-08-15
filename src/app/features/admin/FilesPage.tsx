@@ -23,6 +23,7 @@ import {
   PageHeaderTitle,
 } from '../../../components/ui/page-header'
 import AppShell from '../nav/AppShell'
+import { versionApprovalTrail } from './file-versions'
 
 interface FileRow {
   readonly id: string
@@ -71,7 +72,7 @@ export default function FilesPage({ eventSlug }: { readonly eventSlug: string })
 
   return (
     <AppShell slug={eventSlug}>
-      <div className="grid gap-4">
+      <div className="mx-auto grid w-full max-w-3xl gap-4">
         <PageHeader>
           <PageHeaderContent>
             <PageHeaderTitle>Files</PageHeaderTitle>
@@ -178,6 +179,9 @@ function FileExtras({ eventSlug, file }: { readonly eventSlug: string; readonly 
       </Button>
       {open ? (
         <>
+          <p className="text-xs text-muted-foreground">
+            Approval trail: {versionApprovalTrail(versions.data ?? []) || 'none yet'}
+          </p>
           <ul className="text-xs">
             {(versions.data ?? []).map((row) => (
               <li key={`${row.version}-${row.createdAt}`}>

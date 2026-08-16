@@ -175,11 +175,11 @@ export default function LandingEventState() {
             </span>
           </Link>
         </div>
-        <div className="relative min-h-[54svh] overflow-hidden lg:min-h-full">
+        <div className="relative min-h-[54svh] overflow-hidden bg-black lg:min-h-full">
           <img
             src="/images/open-events-hero-v2.png"
-            alt="An event director overlooking a prepared conference auditorium"
-            className="absolute inset-0 h-full w-full object-cover object-left"
+            alt="Codex, Claude Code, and Grok connected in a three-dimensional agent network"
+            className="absolute inset-0 h-full w-full object-contain object-center lg:object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/10 lg:bg-gradient-to-r lg:from-background/45 lg:via-transparent lg:to-transparent" />
           <div className="absolute right-5 bottom-5 left-5 flex items-end justify-between border-t border-white/30 pt-4 text-xs tracking-[0.08em] text-white/80 uppercase sm:right-10 sm:left-10">

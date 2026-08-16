@@ -73,8 +73,8 @@ export function PublicStartPage() {
       <section className="relative grid min-h-[34rem] content-end overflow-hidden p-6 text-white sm:p-10">
         <img
           src="/images/open-events-hero-v2.png"
-          alt="An event director overlooking a prepared conference auditorium"
-          className="absolute inset-0 h-full w-full object-cover object-left"
+          alt="Codex, Claude Code, and Grok connected in a three-dimensional agent network"
+          className="absolute inset-0 h-full w-full object-cover object-center"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/10" />
         <div className="relative grid gap-7">

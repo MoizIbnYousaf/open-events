@@ -34,8 +34,8 @@ const TARGET_POLL_MS = 2000
  * while the tour is held.
  */
 const HOLD_RECHECK_MS = 400
-const POPOVER_WIDTH = 320
-const POPOVER_HEIGHT_ESTIMATE = 220
+const POPOVER_WIDTH = 344
+const POPOVER_HEIGHT_ESTIMATE = 252
 const VIEWPORT_MARGIN = 8
 const SPOTLIGHT_PAD = 4
 
@@ -186,32 +186,62 @@ function TourSpotlight({ rect }: { readonly rect: TargetRect }): ReactElement {
 /** The step's eyebrow, title and body — everything the popover says. */
 function TourNarration({
   index,
+  journey,
   copy,
   titleId,
   bodyId,
 }: {
   readonly index: number
+  readonly journey: string
   readonly copy: StepCopy
   readonly titleId: string
   readonly bodyId: string
 }): ReactElement {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid gap-2.5">
       {/* The counter is the step's eyebrow AND its announcement: one live
           region, reading "Step N of M" on screen and naming the step for
           anyone who cannot see which card just changed. */}
-      <StatusLive className="text-xs font-medium text-muted-foreground tabular-nums">
-        Step {index + 1} of {TOUR_STEPS.length}
-        <span className="sr-only">: {copy.heading}</span>
-      </StatusLive>
-      <h2 id={titleId} className={SECTION_HEADING_CLASS}>
-        {copy.heading}
-      </h2>
-      <p id={bodyId} className="text-muted-foreground">
-        {copy.narration}
-      </p>
+      <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
+        <span className="uppercase tracking-[0.12em] text-link">{journey} journey</span>
+        <StatusLive className="tabular-nums">
+          Step {index + 1} of {TOUR_STEPS.length}
+          <span className="sr-only">: {copy.heading}</span>
+        </StatusLive>
+      </div>
+      <div
+        role="progressbar"
+        aria-label="Tour progress"
+        aria-valuemin={1}
+        aria-valuemax={TOUR_STEPS.length}
+        aria-valuenow={index + 1}
+        className="h-1 overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          aria-hidden="true"
+          className="h-full rounded-full bg-primary transition-[width] animation-duration-150 motion-reduce:transition-none"
+          style={{ width: `${((index + 1) / TOUR_STEPS.length) * 100}%` }}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <h2 id={titleId} className={SECTION_HEADING_CLASS}>
+          {copy.heading}
+        </h2>
+        <p id={bodyId} className="text-muted-foreground">
+          {copy.narration}
+        </p>
+      </div>
     </div>
   )
+}
+
+function journeyLabel(step: (typeof TOUR_STEPS)[number]): string {
+  if (step.id === 'welcome') return 'Overview'
+  if (step.access === 'organizer') return 'Organizer'
+  if (step.access === 'portal') return 'Speaker'
+  if (step.access === 'evaluation') return 'Reviewer'
+  if (step.id === 'public-cfp' || step.id === 'start') return 'Submitter'
+  return 'Attendee'
 }
 
 /**
@@ -659,7 +689,13 @@ export function ProductTour({ onNavigate, onResume }: ProductTourProps): ReactEl
         className="fixed z-50 m-0 grid gap-3 rounded-lg border-0 bg-popover p-4 text-sm text-popover-foreground shadow-popover ring-1 ring-border outline-hidden animation-duration-150 ease-entrance animate-in fade-in-0 focus-visible:ring-2 focus-visible:ring-ring"
         style={popoverStyle(rect)}
       >
-        <TourNarration index={stepIndex} copy={copy} titleId={titleId} bodyId={bodyId} />
+        <TourNarration
+          index={stepIndex}
+          journey={journeyLabel(step)}
+          copy={copy}
+          titleId={titleId}
+          bodyId={bodyId}
+        />
         {startError === null ? null : <AlertLive>{startError}</AlertLive>}
         <TourFooter
           copy={copy}

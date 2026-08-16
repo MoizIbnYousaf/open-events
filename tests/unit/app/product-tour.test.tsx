@@ -245,6 +245,25 @@ describe('product tour', () => {
     )
   })
 
+  it('shows the current journey and a visual progress rail', async () => {
+    const { user } = mountTour()
+    toggleTour()
+    await screen.findByRole('dialog')
+
+    expect(screen.getByText('Overview journey')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Tour progress' })).toHaveAttribute(
+      'aria-valuenow',
+      '1',
+    )
+
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    expect(await screen.findByText('Organizer journey')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Tour progress' })).toHaveAttribute(
+      'aria-valuenow',
+      '2',
+    )
+  })
+
   it('traverses forward with Next and back with Back', async () => {
     const { user } = mountTour()
     toggleTour()

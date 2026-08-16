@@ -411,7 +411,11 @@ describe('transactional email outbox', () => {
   })
 
   async function seedDeliveryBudget(count: number, organizerKey: string | null): Promise<void> {
-    const at = '2026-08-15T12:00:00.000Z'
+    // Keep these accepted jobs inside the production rolling window no matter
+    // when the suite runs. A fixed competition-week timestamp made this test
+    // start passing or failing with the wall clock instead of the code.
+    const at = new Date(Date.now() - 60_000).toISOString()
+    const payloadExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
     await env.DB.prepare(
       `WITH RECURSIVE seq(n) AS (
          SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < ?
@@ -432,10 +436,10 @@ describe('transactional email outbox', () => {
          (id, captured_message_id, event_id, mode, status, recipient_fingerprint,
           key_version, nonce, ciphertext, payload_expires_at, attempts, created_at, updated_at)
        SELECT 'budget-job-' || n, 'budget-message-' || n, ?, 'resend-test', 'accepted',
-              'v1:budget-' || n, 'v1', NULL, NULL, '2026-08-16T12:00:00.000Z', 1, ?, ?
+              'v1:budget-' || n, 'v1', NULL, NULL, ?, 1, ?, ?
        FROM seq`,
     )
-      .bind(count, DEMO_CONF_2026_ID, at, at)
+      .bind(count, DEMO_CONF_2026_ID, payloadExpiresAt, at, at)
       .run()
     await env.DB.prepare(
       `WITH RECURSIVE seq(n) AS (
@@ -475,6 +479,7 @@ describe('transactional email outbox', () => {
   it('enforces the organizer event budget atomically with an ordinary message job', async () => {
     const organizerKey = `test:event:${DEMO_CONF_2026_ID}`
     await seedDeliveryBudget(100, organizerKey)
+    const createdAt = new Date().toISOString()
     await createCapturedMessageRepository(env.DB, {
       ...TEST_EMAIL_DELIVERY_CONFIG,
       mode: 'resend-test',
@@ -484,7 +489,7 @@ describe('transactional email outbox', () => {
       toEmail: 'delivered@resend.dev',
       subject: 'Reminder',
       body: 'Reminder body',
-      createdAt: '2026-08-15T12:00:01.000Z',
+      createdAt,
       kind: 'reminder',
       deliveryBudgetClass: 'organizer',
     })

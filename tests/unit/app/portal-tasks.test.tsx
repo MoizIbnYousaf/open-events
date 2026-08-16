@@ -91,6 +91,8 @@ const READINESS = {
       completedTasks: 1,
       percentComplete: 33,
       ready: false,
+      missingTaskKinds: ['submit_bio', 'submit_headshot'],
+      blockers: ['submit_bio', 'submit_headshot'],
     },
     {
       submissionId: 'submission-2',
@@ -265,8 +267,8 @@ describe('portal task queries', () => {
         outstandingCount: 2,
         percentComplete: 33,
         ready: false,
-        missingTaskKinds: [],
-        blockers: [],
+        missingTaskKinds: ['submit_bio', 'submit_headshot'],
+        blockers: ['submit_bio', 'submit_headshot'],
       },
       {
         submissionId: 'submission-2',
@@ -470,6 +472,20 @@ describe('organizer readiness', () => {
     expect(screen.getByText('1 complete')).toBeInTheDocument()
     expect(screen.getByText('3 complete')).toBeInTheDocument()
     expect(rendered).not.toContain('undefined')
+  })
+
+  it('opens with a real readiness pulse before the detailed table', async () => {
+    await renderReadiness(EVENT_SLUG)
+
+    const overview = await screen.findByTestId('readiness-overview')
+    expect(overview).toHaveTextContent('1 of 2 sessions ready')
+    expect(overview).toHaveTextContent('4 of 6 tasks complete')
+    expect(overview).toHaveTextContent('67%')
+    expect(overview).toHaveTextContent('Submit bio')
+    expect(screen.getByRole('progressbar', { name: 'Speaker task completion' })).toHaveAttribute(
+      'aria-valuenow',
+      '67',
+    )
   })
 
   it('makes every identity cell a drill-down to that submission', async () => {

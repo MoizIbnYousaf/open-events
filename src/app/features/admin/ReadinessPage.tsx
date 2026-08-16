@@ -36,6 +36,94 @@ interface ReadinessPageProps {
   readonly eventSlug: string
 }
 
+function blockerLabel(value: string): string {
+  const words = value.replaceAll('_', ' ')
+  return `${words.slice(0, 1).toUpperCase()}${words.slice(1)}`
+}
+
+function ReadinessOverview({
+  rows,
+  readyCount,
+}: {
+  readonly rows: readonly {
+    readonly totalTasks: number
+    readonly completedTasks: number
+    readonly blockers: readonly string[]
+  }[]
+  readonly readyCount: number
+}) {
+  const totalTasks = rows.reduce((total, row) => total + row.totalTasks, 0)
+  const completedTasks = rows.reduce((total, row) => total + row.completedTasks, 0)
+  const percentComplete = totalTasks === 0 ? 100 : Math.round((completedTasks / totalTasks) * 100)
+  const blockerCounts = new Map<string, number>()
+  for (const row of rows) {
+    for (const blocker of row.blockers) {
+      blockerCounts.set(blocker, (blockerCounts.get(blocker) ?? 0) + 1)
+    }
+  }
+  const topBlocker = [...blockerCounts.entries()].toSorted(
+    ([left, leftCount], [right, rightCount]) => rightCount - leftCount || left.localeCompare(right),
+  )[0]
+
+  return (
+    <Card data-testid="readiness-overview" data-tour="readiness-overview">
+      <CardContent className="grid gap-4">
+        <div className="grid gap-4 sm:grid-cols-3 sm:divide-x sm:divide-border">
+          <div className="grid gap-0.5">
+            <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              Task completion
+            </span>
+            <strong className="font-heading text-2xl leading-none font-semibold tabular-nums">
+              {percentComplete}%
+            </strong>
+            <span className="text-sm text-muted-foreground">
+              {completedTasks} of {totalTasks} tasks complete
+            </span>
+          </div>
+          <div className="grid gap-0.5 sm:pl-4">
+            <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              Sessions ready
+            </span>
+            <strong className="font-heading text-2xl leading-none font-semibold tabular-nums">
+              {readyCount}/{rows.length}
+            </strong>
+            <span className="text-sm text-muted-foreground">
+              {readyCount} of {rows.length} sessions ready
+            </span>
+          </div>
+          <div className="grid gap-0.5 sm:pl-4">
+            <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              Most common blocker
+            </span>
+            <strong className="font-heading text-base leading-snug font-medium">
+              {topBlocker === undefined ? 'No blockers' : blockerLabel(topBlocker[0])}
+            </strong>
+            <span className="text-sm text-muted-foreground">
+              {topBlocker === undefined
+                ? 'All tracked work is complete'
+                : `${topBlocker[1]} ${topBlocker[1] === 1 ? 'session' : 'sessions'} affected`}
+            </span>
+          </div>
+        </div>
+        <div
+          role="progressbar"
+          aria-label="Speaker task completion"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percentComplete}
+          className="h-1.5 overflow-hidden rounded-full bg-muted"
+        >
+          <div
+            aria-hidden="true"
+            className="h-full rounded-full bg-primary transition-[width] animation-duration-150 motion-reduce:transition-none"
+            style={{ width: `${percentComplete}%` }}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 /**
  * The expired-session branch, as its own component so the router hook it needs
  * is only ever called when the branch is actually rendered.
@@ -175,6 +263,7 @@ export default function ReadinessPage({ eventSlug }: ReadinessPageProps) {
            entirely. `bordered` draws the same frame on the element that
            actually scrolls, where nothing clips it. */
         <div className="grid gap-3">
+          <ReadinessOverview rows={rows} readyCount={readyCount} />
           <div className="flex flex-wrap items-center gap-2">
             <NativeSelect
               aria-label="Filter readiness by blocker"
@@ -185,7 +274,7 @@ export default function ReadinessPage({ eventSlug }: ReadinessPageProps) {
               <option value="all">All readiness work</option>
               {blockerOptions.map((blocker) => (
                 <option key={blocker} value={blocker}>
-                  {blocker.replaceAll('_', ' ')}
+                  {blockerLabel(blocker)}
                 </option>
               ))}
             </NativeSelect>

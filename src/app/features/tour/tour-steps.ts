@@ -203,7 +203,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: 'A single checklist of what each accepted speaker still owes: profile, headshot, materials. It tells you who to chase before the event.',
     route: '/admin/events/$slug/readiness',
     params: eventParams,
-    target: 'rail-readiness',
+    target: 'readiness-overview',
     requiresSession: 'organizer',
     access: 'organizer',
   },

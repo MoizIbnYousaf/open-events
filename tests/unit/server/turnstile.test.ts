@@ -87,7 +87,7 @@ describe('server-side Turnstile verification', () => {
     ).resolves.toBe(false)
   })
 
-  it('uses the official deterministic local test adapter only with loopback hosts', async () => {
+  it('uses the official deterministic adapter only for local and acceptance hosts', async () => {
     await expect(
       verifyTurnstile({
         token: TURNSTILE_DUMMY_TOKEN,
@@ -101,9 +101,27 @@ describe('server-side Turnstile verification', () => {
       verifyTurnstile({
         token: TURNSTILE_DUMMY_TOKEN,
         secret: TURNSTILE_ALWAYS_PASS_SECRET,
+        remoteAddress: '203.0.113.4',
+        expectedAction: 'public_start',
+        expectedHostnames: ['open-events-acceptance.speakerops.workers.dev'],
+      }),
+    ).resolves.toBe(true)
+    await expect(
+      verifyTurnstile({
+        token: TURNSTILE_DUMMY_TOKEN,
+        secret: TURNSTILE_ALWAYS_PASS_SECRET,
         remoteAddress: '127.0.0.1',
         expectedAction: 'public_start',
         expectedHostnames: ['openevents.engineer'],
+      }),
+    ).resolves.toBe(false)
+    await expect(
+      verifyTurnstile({
+        token: TURNSTILE_DUMMY_TOKEN,
+        secret: TURNSTILE_ALWAYS_PASS_SECRET,
+        remoteAddress: '203.0.113.4',
+        expectedAction: 'public_start',
+        expectedHostnames: ['open-events-acceptance.speakerops.workers.dev', 'openevents.engineer'],
       }),
     ).resolves.toBe(false)
   })

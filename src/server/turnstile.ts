@@ -1,6 +1,7 @@
 export const TURNSTILE_DUMMY_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX'
 export const TURNSTILE_ALWAYS_PASS_SECRET = '1x0000000000000000000000000000000AA'
 export const TURNSTILE_PUBLIC_START_ACTION = 'public_start'
+const TURNSTILE_ACCEPTANCE_HOST = 'open-events-acceptance.speakerops.workers.dev'
 
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 const MAX_TOKEN_LENGTH = 2048
@@ -33,15 +34,18 @@ export async function verifyTurnstile(options: VerifyTurnstileOptions): Promise<
     return false
   }
 
-  // Cloudflare's documented deterministic test pair. Keeping it local avoids
-  // a network dependency in unit/dev runs, and loopback-only host validation
-  // prevents the test secret from becoming a production bypass.
+  // Cloudflare's documented deterministic test pair. It is valid only for
+  // local development and the isolated acceptance Worker. Production hosts
+  // can never use this branch, even if the test secret is misconfigured.
   if (options.secret === TURNSTILE_ALWAYS_PASS_SECRET) {
-    const loopbackOnly = options.expectedHostnames.every(
-      (hostname) => hostname === 'localhost' || hostname === '127.0.0.1',
+    const testHostOnly = options.expectedHostnames.every(
+      (hostname) =>
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === TURNSTILE_ACCEPTANCE_HOST,
     )
     return (
-      loopbackOnly &&
+      testHostOnly &&
       (options.token === TURNSTILE_DUMMY_TOKEN || options.token.length === 0) &&
       options.expectedAction === TURNSTILE_PUBLIC_START_ACTION
     )

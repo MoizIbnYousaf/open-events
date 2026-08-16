@@ -296,7 +296,7 @@ describe('admin shell', () => {
   })
 
   it.each([
-    ['/', 'Run the whole programme in one place.'],
+    ['/', 'Your event, finally in sync.'],
     ['/admin', 'Admin sign in'],
     [`/admin/events/${EVENT_SLUG}`, 'Event settings'],
     [`/admin/events/${EVENT_SLUG}/taxonomies`, 'Taxonomies'],
@@ -348,13 +348,13 @@ describe('admin shell', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Run the whole programme in one place.',
+        name: 'Your event, finally in sync.',
       }),
     ).toBeInTheDocument()
     const h1s = screen.getAllByRole('heading', { level: 1 })
     expect(h1s).toHaveLength(1)
     expect(screen.getAllByRole('heading')[0]?.tagName).toBe('H1')
-    expect(h1s[0]).toHaveTextContent('Run the whole programme in one place.')
+    expect(h1s[0]).toHaveTextContent('Your event, finally in sync.')
     expect(h1s[0]).not.toHaveTextContent('Open Events')
     expect(document.body.textContent ?? '').toMatch(/DemoConf 2026/i)
   })

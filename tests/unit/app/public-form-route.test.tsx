@@ -181,7 +181,7 @@ describe('public form routes', () => {
     renderPage(<PublicStartPage />)
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Access your workspace' }),
+      await screen.findByRole('heading', { level: 1, name: 'Pick up exactly where you left off.' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'Speaker access' })).toBeInTheDocument()
     expect(screen.getByText('Request a link to begin your proposal.')).toBeInTheDocument()
@@ -264,7 +264,7 @@ describe('public form routes', () => {
     )
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Access your workspace' }),
+      await screen.findByRole('heading', { level: 1, name: 'Pick up exactly where you left off.' }),
     ).toBeInTheDocument()
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(PublicStartRoute).not.toBe(PublicCfpRoute)

@@ -8,6 +8,7 @@ const VISUAL_EXTENSIONS = new Set(['.avif', '.gif', '.jpeg', '.jpg', '.png', '.s
 export const APPROVED_VISUAL_ASSETS = Object.freeze([
   'public/apple-touch-icon.png',
   'public/favicon.svg',
+  'public/images/open-events-stage.png',
   'public/logo-lockup.svg',
   'public/logo.png',
   'public/logo.svg',

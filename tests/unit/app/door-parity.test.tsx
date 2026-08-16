@@ -82,10 +82,11 @@ describe('the two doors', () => {
   it('gives unified access room for role guidance and the email form', () => {
     renderSpeakerDoor()
 
-    const card = screen.getByText('Speaker access').closest('[data-slot="card"]')
-    expect(card).not.toBeNull()
-    expect(columnClasses(card)).toContain(START_MEASURE)
-    expect(columnClasses(card)).toContain('lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.82fr)]')
+    const emailColumn = screen.getByText('Speaker access').closest('#speaker-access')
+    const layout = emailColumn?.parentElement
+    expect(layout).not.toBeNull()
+    expect(layout).toHaveClass(START_MEASURE)
+    expect(layout).toHaveClass('lg:grid-cols-[minmax(0,1.05fr)_minmax(24rem,0.95fr)]')
   })
 
   it('gives both doors one full-width primary action', async () => {
@@ -100,7 +101,7 @@ describe('the two doors', () => {
   it('uses one page heading and one subordinate speaker heading', () => {
     renderSpeakerDoor()
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Access your workspace' }),
+      screen.getByRole('heading', { level: 1, name: 'Pick up exactly where you left off.' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'Speaker access' })).toBeInTheDocument()
   })

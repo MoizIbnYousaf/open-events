@@ -72,6 +72,7 @@ function pinnedBindings(ambient: AmbientEnv): Record<keyof ServerBindings, unkno
     SUBMITTER_SESSION_TTL_MS: String(DEFAULT_SUBMITTER_SESSION_TTL_MS),
     SUBMITTER_TOKEN_TTL_MS: String(DEFAULT_SUBMITTER_TOKEN_TTL_MS),
     PUBLIC_APP_URL: 'https://www.openevents.engineer',
+    TOUR_APP_URL: '',
     SUBMITTER_CAPABILITY_WRITER_MODE: 'purpose',
     SUBMITTER_CAPABILITY_LEGACY_READER_MODE: 'bounded',
     SUBMITTER_CAPABILITY_LEGACY_WRITER_CUTOFF: '',

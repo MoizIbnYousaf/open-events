@@ -110,10 +110,28 @@ async function holdAtTheOrganizerGate(user: ReturnType<typeof userEvent.setup>):
 
 beforeEach(() => {
   installStorage()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(
+        init?.method === 'DELETE'
+          ? new Response(null, { status: 204 })
+          : new Response(
+              JSON.stringify({
+                mode: 'ready',
+                expiresAt: '2026-08-16T07:00:00.000Z',
+                eventSlug: DEFAULT_EVENT_SLUG,
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            ),
+      ),
+    ),
+  )
 })
 
 afterEach(() => {
   Reflect.deleteProperty(window, 'localStorage')
+  vi.unstubAllGlobals()
   cleanup()
 })
 
@@ -131,12 +149,13 @@ describe('tour steps', () => {
   // cannot see, and every one of those steps has to say so in the data.
   it('marks every organizer rail step as session-gated and leaves the public loop open', () => {
     const gated = TOUR_STEPS.filter((step) => step.requiresSession !== undefined)
-    expect(new Set(gated.map((step) => step.id))).toEqual(
-      new Set(organizerDestinations(DEFAULT_EVENT_SLUG).map((destination) => destination.id)),
-    )
-    // The gate reads the rail hook as its evidence, so every gated step must
-    // have one to read.
-    for (const step of gated) expect(step.target).toMatch(/^rail-/)
+    const gatedIds = gated.map((step) => step.id)
+    for (const destination of organizerDestinations(DEFAULT_EVENT_SLUG)) {
+      expect(gatedIds).toContain(destination.id)
+    }
+    // Every gated step carries a real rendered hook. Rail destinations use
+    // the shared rail hook; deeper lifecycle workspaces own a page hook.
+    for (const step of gated) expect(step.target).toBeTruthy()
   })
 
   it('covers every organizer destination and the complete public and persona loop', () => {
@@ -149,6 +168,8 @@ describe('tour steps', () => {
     expect(ids).toEqual(
       expect.arrayContaining([
         'public-cfp',
+        'cfp-builder',
+        'submission-workspace',
         'start',
         'speaker-portal',
         'reviewer-queue',
@@ -204,7 +225,7 @@ describe('product tour', () => {
     // admin-signin declares a [data-tour] hook that this test never renders;
     // the popover must appear regardless.
     await user.click(screen.getByRole('button', { name: /^next$/i }))
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/organizer sign-in/i)
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/organizer workspace/i)
   })
 
   it('announces its progress politely as "Step N of M"', async () => {
@@ -230,7 +251,7 @@ describe('product tour', () => {
 
     expect(screen.getByRole('button', { name: /^back$/i })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: /^next$/i }))
-    expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer sign-in/i)
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer workspace/i)
 
     await user.click(screen.getByRole('button', { name: /^back$/i }))
     expect(screen.getByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
@@ -475,7 +496,7 @@ describe('product tour', () => {
 
       await user.click(screen.getByRole('button', { name: /back to sign-in/i }))
       await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith('/admin', undefined))
-      expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer sign-in/i)
+      expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer workspace/i)
       expect(screen.getByRole('status')).toHaveTextContent(
         `Step ${TOUR_SIGN_IN_STEP_INDEX + 1} of ${STEP_COUNT}`,
       )
@@ -494,12 +515,23 @@ describe('tour header affordance', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() =>
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
         Promise.resolve(
-          new Response(JSON.stringify({ error: { code: 'internal' } }), {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          }),
+          String(input) === '/api/tour/session'
+            ? init?.method === 'DELETE'
+              ? new Response(null, { status: 204 })
+              : new Response(
+                  JSON.stringify({
+                    mode: 'ready',
+                    expiresAt: '2026-08-16T07:00:00.000Z',
+                    eventSlug: DEFAULT_EVENT_SLUG,
+                  }),
+                  { status: 200, headers: { 'content-type': 'application/json' } },
+                )
+            : new Response(JSON.stringify({ error: { code: 'internal' } }), {
+                status: 500,
+                headers: { 'content-type': 'application/json' },
+              }),
         ),
       ),
     )

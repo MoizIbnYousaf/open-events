@@ -53,6 +53,8 @@ export type ServerBindings = Pick<
   /** Separate release-operator credential; acceptance only. */
   readonly ACCEPTANCE_RESET_SECRET?: string
   readonly PUBLIC_APP_URL?: string
+  /** Isolated acceptance origin used for the public guided tour. */
+  readonly TOUR_APP_URL?: string
   readonly SUBMITTER_CAPABILITY_WRITER_MODE?: string
   readonly SUBMITTER_CAPABILITY_LEGACY_READER_MODE?: string
   readonly SUBMITTER_CAPABILITY_LEGACY_WRITER_CUTOFF?: string

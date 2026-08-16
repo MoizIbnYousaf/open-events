@@ -41,6 +41,7 @@ import CfpSaveBar, { type SaveDenial } from './CfpSaveBar'
 import CfpSubmit from './CfpSubmit'
 import CfpStepper from './CfpStepper'
 import CfpStepRenderer from './CfpStepRenderer'
+import { isTourActive } from '../tour/tour-activity'
 
 interface CfpWizardProps {
   readonly form: FormDefinitionDto
@@ -106,7 +107,10 @@ export default function CfpWizard({ form }: CfpWizardProps) {
     },
     [steps, proposalPageIndex, hasTitleQuestion, form.elements],
   )
-  const draftQuery = useActiveDraft(form.formId)
+  // The public tour is deliberately anonymous at this stop. Its purpose is to
+  // show the published form, so it must not make a private draft probe that is
+  // guaranteed to return 401 and pollute an otherwise healthy walkthrough.
+  const draftQuery = useActiveDraft(form.formId, !isTourActive())
   const editorQuery = usePublicEditor(form.formId, form.versionId)
   const editor = editorQuery.data ?? defaultEditor(form.formId, form.versionId)
   const answers = editor.answers

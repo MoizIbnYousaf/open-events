@@ -23,6 +23,7 @@
     "RESOURCE_D1_ID": "4983b9bb-cc1c-4ef0-83a6-154b19496909",
     "RESOURCE_R2_NAME": "open-events-production-files",
     "PUBLIC_APP_URL": "https://www.openevents.engineer",
+    "TOUR_APP_URL": "https://open-events-acceptance.speakerops.workers.dev",
     // Final rollout: purpose-bound writers with time-bounded legacy readers.
     "SUBMITTER_CAPABILITY_WRITER_MODE": "purpose",
     "SUBMITTER_CAPABILITY_LEGACY_READER_MODE": "bounded",
@@ -108,6 +109,7 @@
         "RESOURCE_D1_ID": "8da9dc8c-7000-4052-b889-e7566514fe8f",
         "RESOURCE_R2_NAME": "open-events-acceptance-files",
         "PUBLIC_APP_URL": "https://open-events-acceptance.speakerops.workers.dev",
+        "TOUR_APP_URL": "https://open-events-acceptance.speakerops.workers.dev",
         "SUBMITTER_CAPABILITY_WRITER_MODE": "purpose",
         "SUBMITTER_CAPABILITY_LEGACY_READER_MODE": "bounded",
         "SUBMITTER_CAPABILITY_LEGACY_WRITER_CUTOFF": "2026-08-16T06:31:19.000Z",

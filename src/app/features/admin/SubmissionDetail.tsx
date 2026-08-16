@@ -185,7 +185,7 @@ export default function SubmissionDetail() {
 
   return (
     <AppShell slug={slug ?? ''}>
-      <div className="grid gap-4">
+      <div className="grid gap-4" data-tour="submission-workspace">
         <BackToList slug={slug ?? ''} />
         <PageHeader>
           <PageHeaderContent>

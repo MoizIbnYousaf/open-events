@@ -8,6 +8,7 @@ import { registerPublicRoutes } from './routes/public'
 import { registerSupportRoutes } from './routes/support'
 import { registerResendWebhookRoutes } from './routes/resend-webhook'
 import { registerAcceptanceResetRoutes } from './routes/acceptance-reset'
+import { registerTourRoutes } from './routes/tour'
 import { depsFromContext } from './container'
 import { runScheduledEmailDrain, scheduleEmailDrain } from './email-drain'
 
@@ -64,6 +65,7 @@ app.use('/api/*', async (context, next) => {
 registerPublicRoutes(app)
 registerResendWebhookRoutes(app)
 registerAcceptanceResetRoutes(app)
+registerTourRoutes(app)
 registerAdminRoutes(app)
 registerSupportRoutes(app)
 registerDevRoutes(app)

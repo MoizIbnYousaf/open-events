@@ -18,6 +18,8 @@ export interface TourStep {
   readonly params?: Readonly<Record<string, string>>
   /** A [data-tour] hook id; omitted for centered steps. */
   readonly target?: string
+  /** Session shape the destination expects while the tour is narrating it. */
+  readonly access: 'organizer' | 'public' | 'portal' | 'evaluation'
   /**
    * Set on steps whose surface only exists for a signed-in organizer. The tour
    * owns no session model and probes nothing: the mark simply tells the overlay
@@ -31,6 +33,8 @@ export interface TourStep {
 }
 
 const eventParams = { slug: DEFAULT_EVENT_SLUG } as const
+const showcaseFormId = 'f0000000-0000-4000-8000-000000000001'
+const showcaseSubmissionId = 'd0000000-0000-4000-8000-000000000807'
 
 /**
  * What the tour says instead of narrating an organizer screen that never
@@ -52,14 +56,16 @@ export const TOUR_STEPS: readonly TourStep[] = [
   {
     id: 'welcome',
     title: 'Welcome to Open Events',
-    body: 'Open Events runs a conference programme end to end: the call for papers, evaluation, agenda building, and the public schedule. This tour walks the whole loop in a few steps. The organizer half needs a signed-in session; the next step is where you get one.',
+    body: 'Open Events runs a conference programme end to end: the call for papers, evaluation, agenda building, and the public schedule. The tour opens a temporary DemoConf workspace so you can see every role without setup.',
+    access: 'organizer',
   },
   {
     id: 'admin-signin',
-    title: 'Organizer sign-in',
-    body: 'Organizers sign in here with the organizer secret. Everything under the admin surface is scoped to that session — sign in now and the tour follows you through it, or skip ahead to the public screens.',
+    title: 'Organizer workspace',
+    body: 'A normal organizer signs in before reaching this workspace. The tour has already opened a short-lived sandbox session, so the next steps can show the complete organizer flow with synthetic data.',
     route: '/admin',
     target: 'admin-signin',
+    access: 'organizer',
   },
   {
     id: 'event-settings',
@@ -69,6 +75,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-event-settings',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'events',
@@ -78,6 +85,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-events',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'taxonomies',
@@ -87,6 +95,17 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-taxonomies',
     requiresSession: 'organizer',
+    access: 'organizer',
+  },
+  {
+    id: 'cfp-builder',
+    title: 'CFP builder and versions',
+    body: 'Build the questions speakers answer, preview the flow, and publish an immutable version. New edits become a fresh draft, so existing submissions keep the form they were answered against.',
+    route: '/admin/events/$slug/forms/$formId',
+    params: { slug: DEFAULT_EVENT_SLUG, formId: showcaseFormId },
+    target: 'cfp-builder',
+    requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'submissions',
@@ -96,6 +115,17 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-submissions',
     requiresSession: 'organizer',
+    access: 'organizer',
+  },
+  {
+    id: 'submission-workspace',
+    title: 'Proposal review workspace',
+    body: 'Open a proposal to read its frozen answers, edit programme copy, inspect evaluations, decide its outcome, and send the speaker through onboarding.',
+    route: '/admin/events/$slug/submissions/$submissionId',
+    params: { slug: DEFAULT_EVENT_SLUG, submissionId: showcaseSubmissionId },
+    target: 'submission-workspace',
+    requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'speakers',
@@ -105,6 +135,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-speakers',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'messages',
@@ -114,6 +145,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-messages',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'evaluations',
@@ -123,6 +155,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-evaluations',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'agenda',
@@ -132,6 +165,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-agenda',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'embeds',
@@ -141,6 +175,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-embeds',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'files',
@@ -150,6 +185,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-files',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'orby',
@@ -159,6 +195,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-orby',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'readiness',
@@ -168,12 +205,14 @@ export const TOUR_STEPS: readonly TourStep[] = [
     params: eventParams,
     target: 'rail-readiness',
     requiresSession: 'organizer',
+    access: 'organizer',
   },
   {
     id: 'palette',
     title: 'Command menu',
     body: 'Every destination the visible navigation offers is also one keystroke away: press Cmd or Ctrl+K, or use this button. It only ever lists screens you could also reach by looking.',
     target: 'palette-trigger',
+    access: 'organizer',
   },
   {
     id: 'public-cfp',
@@ -182,6 +221,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     route: '/cfp/$eventSlug/$formSlug',
     params: { eventSlug: DEFAULT_EVENT_SLUG, formSlug: DEFAULT_FORM_SLUG },
     target: 'cfp-page',
+    access: 'public',
   },
   {
     id: 'start',
@@ -189,18 +229,23 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: 'Prospective speakers request a single-use CFP link here. Speaker portal and reviewer access use separate organizer-issued links, and a successful submission moves the primary speaker into the portal.',
     route: '/start',
     target: 'start-page',
+    access: 'public',
   },
   {
     id: 'speaker-portal',
-    title: 'Speaker access door',
-    body: 'This door explains how an invited speaker opens their private portal with an organizer-issued link. Without that link, it shows recovery guidance instead of protected speaker data.',
+    title: 'Speaker portal',
+    body: 'Accepted speakers use this private workspace to finish their profile, upload a headshot and materials, and complete the tasks the organizer assigned.',
     route: '/portal',
+    target: 'speaker-portal',
+    access: 'portal',
   },
   {
     id: 'reviewer-queue',
-    title: 'Reviewer access door',
-    body: 'This separate door explains how reviewers open assigned work with an issued link. A signed-out visitor sees access guidance, not the protected scoring queue.',
+    title: 'Reviewer queue',
+    body: 'Reviewers get a focused queue of assigned proposals. They can score each criterion, save notes, and recuse themselves when there is a conflict.',
     route: '/evaluations',
+    target: 'reviewer-queue',
+    access: 'evaluation',
   },
   {
     id: 'session-catalogue',
@@ -208,6 +253,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: 'Attendees can browse and search every published session outside the timetable view, then open the details that matter to them.',
     route: '/sessions/$eventSlug',
     params: { eventSlug: DEFAULT_EVENT_SLUG },
+    access: 'public',
   },
   {
     id: 'speaker-gallery',
@@ -215,6 +261,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: 'The public speaker directory connects each presenter to their published profile and sessions.',
     route: '/speakers/$eventSlug',
     params: { eventSlug: DEFAULT_EVENT_SLUG },
+    access: 'public',
   },
   {
     id: 'schedule',
@@ -223,6 +270,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     route: '/schedule/$eventSlug',
     params: { eventSlug: DEFAULT_EVENT_SLUG },
     target: 'schedule-page',
+    access: 'public',
   },
 ]
 

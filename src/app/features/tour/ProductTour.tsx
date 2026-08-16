@@ -8,16 +8,20 @@ import {
 } from 'react'
 
 import { Button } from '../../../components/ui/button'
+import { AlertLive } from '../../../components/ui/alert-live'
 import { StatusLive } from '../../../components/ui/status-live'
 import { SECTION_HEADING_CLASS } from '../../../components/ui/section-heading'
+import { endTourSession, startTourSession, type TourAccess } from '../../api/tour'
 import { setTourActive } from './tour-activity'
-import { TOUR_TOGGLE_EVENT } from './tour-events'
+import { consumePendingTourToggle, TOUR_TOGGLE_EVENT } from './tour-events'
 import { TOUR_ORGANIZER_HOLD, TOUR_SIGN_IN_STEP_INDEX, TOUR_STEPS } from './tour-steps'
 
 export { TOUR_TOGGLE_EVENT } from './tour-events'
 
 /** Set when the tour is finished or skipped. The tour NEVER auto-opens. */
 const TOUR_DONE_KEY = 'open-events:tour-done'
+/** Tab-scoped resume marker; authority itself remains in an HttpOnly cookie. */
+const TOUR_ACTIVE_KEY = 'open-events:tour-active'
 
 /** How long a step waits for its [data-tour] hook before rendering centered. */
 const TARGET_POLL_MS = 2000
@@ -94,6 +98,34 @@ function markTourDone(): void {
     // Storage can be unavailable (private mode, quota); losing the flag only
     // means the tour stays offerable, which is safe.
   }
+}
+
+function setTourResume(active: boolean): void {
+  try {
+    if (active) window.sessionStorage.setItem(TOUR_ACTIVE_KEY, 'true')
+    else window.sessionStorage.removeItem(TOUR_ACTIVE_KEY)
+  } catch {
+    // A storage-denied browser still gets the current uninterrupted tour. It
+    // simply cannot resume the overlay after a full document reload.
+  }
+}
+
+function shouldResumeTour(): boolean {
+  try {
+    return (
+      new URLSearchParams(window.location.search).get('tour') === '1' ||
+      window.sessionStorage.getItem(TOUR_ACTIVE_KEY) === 'true'
+    )
+  } catch {
+    return false
+  }
+}
+
+function clearTourQuery(): void {
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has('tour')) return
+  url.searchParams.delete('tour')
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
 }
 
 /**
@@ -182,12 +214,14 @@ function TourFooter({
   onSkip,
   onBack,
   onForward,
+  pending,
 }: {
   readonly copy: StepCopy
   readonly backDisabled: boolean
   readonly onSkip: () => void
   readonly onBack: () => void
   readonly onForward: () => void
+  readonly pending: boolean
 }): ReactElement {
   return (
     <div className="-mx-4 -mb-4 flex flex-wrap items-center gap-2 rounded-b-lg border-t border-border p-3">
@@ -195,10 +229,10 @@ function TourFooter({
         Skip tour
       </Button>
       <div className="ml-auto flex items-center gap-2">
-        <Button type="button" variant="outline" disabled={backDisabled} onClick={onBack}>
+        <Button type="button" variant="outline" disabled={backDisabled || pending} onClick={onBack}>
           {copy.backLabel}
         </Button>
-        <Button type="button" onClick={onForward}>
+        <Button type="button" pending={pending} disabled={pending} onClick={onForward}>
           {copy.forwardLabel}
         </Button>
       </div>
@@ -229,6 +263,8 @@ interface ProductTourProps {
 
 export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | null {
   const [open, setOpen] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+  const [transitioning, setTransitioning] = useState(false)
   const [stepIndex, setStepIndex] = useState(0)
   // The measured rect remembers which step it was measured FOR, so a step
   // change invalidates it by derivation instead of a synchronous reset.
@@ -250,6 +286,9 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
   // finalFocus.
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const hasOpenedRef = useRef(false)
+  const startingRef = useRef(false)
+  const autoStartRef = useRef(false)
+  const accessRef = useRef<(typeof TOUR_STEPS)[number]['access']>('public')
   useEffect(() => {
     openRef.current = open
   }, [open])
@@ -270,29 +309,91 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
   )
 
   const goToStep = useCallback(
-    (index: number) => {
-      navigateForStep(index)
-      setStepIndex(index)
+    async (index: number) => {
+      if (transitioning) return
+      const step = TOUR_STEPS[index]
+      if (step === undefined) return
+      setTransitioning(true)
+      setStartError(null)
+      try {
+        if (step.access !== accessRef.current) {
+          if (step.access !== 'public') {
+            const result = await startTourSession(step.access satisfies TourAccess)
+            if (result.mode === 'redirect') {
+              window.location.assign(result.url)
+              return
+            }
+          } else {
+            await endTourSession()
+          }
+          accessRef.current = step.access
+        }
+        navigateForStep(index)
+        setStepIndex(index)
+      } catch {
+        setStartError('That tour screen could not open. Try again.')
+      } finally {
+        setTransitioning(false)
+      }
     },
-    [navigateForStep],
+    [navigateForStep, transitioning],
   )
+
+  const beginTour = useCallback(async () => {
+    if (startingRef.current) return
+    startingRef.current = true
+    setStartError(null)
+    setStepIndex(0)
+    setHeldStep(null)
+    returnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    try {
+      const result = await startTourSession('organizer')
+      if (result.mode === 'redirect') {
+        window.location.assign(result.url)
+        return
+      }
+      accessRef.current = 'organizer'
+      setTourResume(true)
+      clearTourQuery()
+      setOpen(true)
+    } catch {
+      setStartError('The guided tour could not start. Try again.')
+      setOpen(true)
+    } finally {
+      startingRef.current = false
+    }
+  }, [])
+
+  const closeTour = useCallback((done: boolean) => {
+    if (done) markTourDone()
+    setTourResume(false)
+    accessRef.current = 'public'
+    setOpen(false)
+    void endTourSession().catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     function onToggle(): void {
+      consumePendingTourToggle()
       if (!openRef.current) {
-        setStepIndex(0)
-        setHeldStep(null)
-        navigateForStep(0)
-        returnFocusRef.current =
-          document.activeElement instanceof HTMLElement ? document.activeElement : null
+        void beginTour()
+        return
       }
-      setOpen((previous) => !previous)
+      closeTour(false)
     }
     window.addEventListener(TOUR_TOGGLE_EVENT, onToggle)
+    if (consumePendingTourToggle()) queueMicrotask(() => void beginTour())
     return () => {
       window.removeEventListener(TOUR_TOGGLE_EVENT, onToggle)
     }
-  }, [navigateForStep])
+  }, [beginTour, closeTour])
+
+  useEffect(() => {
+    if (autoStartRef.current || !shouldResumeTour()) return
+    autoStartRef.current = true
+    void beginTour()
+  }, [beginTour])
 
   useEffect(() => {
     if (!open) return
@@ -318,13 +419,13 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
         return
       }
       event.preventDefault()
-      setOpen(false)
+      closeTour(false)
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open])
+  }, [closeTour, open])
 
   // Navigate first, then chase the step's [data-tour] hook. The hook may take a
   // while to exist (the route is loading), so the popover renders centered from
@@ -441,10 +542,7 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
     if (previous !== null && previous.isConnected) previous.focus()
   }, [open])
 
-  const finish = useCallback(() => {
-    markTourDone()
-    setOpen(false)
-  }, [])
+  const finish = useCallback(() => closeTour(true), [closeTour])
 
   if (!open) return null
   const step = TOUR_STEPS[stepIndex]
@@ -456,7 +554,7 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
   const copy = stepCopy(step, held, lastStep)
 
   function goBack(): void {
-    goToStep(held ? Math.max(0, TOUR_SIGN_IN_STEP_INDEX) : Math.max(0, stepIndex - 1))
+    void goToStep(held ? Math.max(0, TOUR_SIGN_IN_STEP_INDEX) : Math.max(0, stepIndex - 1))
   }
 
   function goForward(): void {
@@ -479,12 +577,12 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
           )
           if (routeContext !== -1) navigateForStep(routeContext)
         }
-        setStepIndex(resume)
+        void goToStep(resume)
       }
       return
     }
     if (lastStep) finish()
-    else goToStep(stepIndex + 1)
+    else void goToStep(stepIndex + 1)
   }
 
   return (
@@ -514,12 +612,14 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
         style={popoverStyle(rect)}
       >
         <TourNarration index={stepIndex} copy={copy} titleId={titleId} bodyId={bodyId} />
+        {startError === null ? null : <AlertLive>{startError}</AlertLive>}
         <TourFooter
           copy={copy}
           backDisabled={!held && stepIndex === 0}
           onSkip={finish}
           onBack={goBack}
           onForward={goForward}
+          pending={transitioning}
         />
       </dialog>
     </>

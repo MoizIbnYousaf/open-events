@@ -125,7 +125,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
   // with an empty own-list and still has tasks and a headshot to upload. The
   // checklist and the uploader therefore sit outside the empty branch.
   return (
-    <div className={COLUMN}>
+    <div className={COLUMN} data-tour="speaker-portal">
       <Header />
       {data.length === 0 ? (
         <EmptyState

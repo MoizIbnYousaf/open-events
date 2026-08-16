@@ -577,7 +577,7 @@ function BuilderEditorScreen({
     if (getApiErrorCode(versionsQuery.error) === 'not_found') return <DeniedState />
     return (
       <AppShell slug={eventSlug ?? ''}>
-        <div className="grid gap-4">
+        <div className="grid gap-4" data-tour="cfp-builder">
           <PageHeader>
             <PageHeaderContent>
               <PageHeaderTitle>Form builder</PageHeaderTitle>
@@ -643,7 +643,7 @@ function BuilderEditorScreen({
 
   return (
     <AppShell slug={eventSlug ?? ''}>
-      <div className="grid gap-4">
+      <div className="grid gap-4" data-tour="cfp-builder">
         {/* The title, the dirty state and the three verbs that act on the
             draft live in one strip, so the operator never has to scroll to the
             bottom of a long form to find Save. */}

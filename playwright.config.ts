@@ -24,6 +24,7 @@ const ORGANIZER_SPECS = [
   '**/lifecycle-golden.spec.ts',
   '**/builder-link-hit-area.spec.ts',
   '**/live-read-only.spec.ts',
+  '**/tour-cold-start.spec.ts',
 ]
 
 export default defineConfig({

@@ -11,7 +11,7 @@ import {
   COMMAND_MENU_OPEN_EVENT,
   PALETTE_TRIGGER_TOUR_TARGET,
 } from '../features/command/CommandMenu'
-import { TOUR_TOGGLE_EVENT } from '../features/tour/tour-events'
+import { requestTourToggle } from '../features/tour/tour-events'
 
 const ClerkNavControls = lazy(() => import('../features/nav/ClerkNavControls'))
 const OrbyWidget = lazy(() => import('../features/orby/OrbyWidget'))
@@ -135,12 +135,7 @@ function Root() {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:ml-auto sm:flex-nowrap">
             {/* The tour's one visible door: it toggles the overlay and never
                 auto-opens, so a control in the header is what makes it real. */}
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-haspopup="dialog"
-              onClick={() => window.dispatchEvent(new CustomEvent(TOUR_TOGGLE_EVENT))}
-            >
+            <Button variant="ghost" size="sm" aria-haspopup="dialog" onClick={requestTourToggle}>
               Tour
             </Button>
             <nav aria-label="Site">

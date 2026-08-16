@@ -74,3 +74,4 @@ jobs:
         run: |
           pnpm e2e
           pnpm e2e:golden
+          pnpm e2e:tour

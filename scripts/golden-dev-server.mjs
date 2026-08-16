@@ -70,7 +70,9 @@ if (snapshot.existed) {
 }
 
 // Fresh D1 state before the Worker opens the database.
-execFileSync(process.execPath, [resolve(root, 'scripts', 'db-reset.mjs')], {
+const resetArgs = [resolve(root, 'scripts', 'db-reset.mjs')]
+if (process.env.OPEN_EVENTS_E2E_FIXTURE === 'showcase') resetArgs.push('--showcase')
+execFileSync(process.execPath, resetArgs, {
   cwd: root,
   stdio: 'inherit',
 })

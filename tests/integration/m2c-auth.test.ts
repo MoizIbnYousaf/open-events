@@ -3,7 +3,13 @@ import { env, reset } from 'cloudflare:test'
 
 import { createSha256TokenHasher } from '../../src/application'
 import { keyedLimitKey } from '../../src/server/rate-limit'
-import { applyMigrations, countRows, latestCapturedBody, seedDemoConf } from './m2b-helpers'
+import {
+  applyMigrations,
+  countRows,
+  latestCapturedBody,
+  seedDemoConf,
+  seedDemoConfProgramme,
+} from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
   bindings,
@@ -189,6 +195,135 @@ describe('organizer Clerk login', () => {
     expect(response.status).toBe(401)
     expect(JSON.stringify(await response.json())).not.toContain('not-a-jwt')
     expect(response.headers.get('set-cookie')).toBeNull()
+  })
+})
+
+describe('guided tour session', () => {
+  it('issues a short-lived organizer session only in the isolated acceptance sandbox', async () => {
+    const response = await app.request(
+      '/api/tour/session',
+      { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      mode: 'ready',
+      expiresAt: expect.any(String),
+      eventSlug: 'demo-conf-2026',
+    })
+    const cookie = response.headers.get('set-cookie')
+    expect(cookie).toContain('sp_session=')
+    expect(cookie).toContain('HttpOnly')
+    expect(cookie).toContain('SameSite=Strict')
+    const maxAge = Number(cookie?.match(/Max-Age=(\d+)/)?.[1])
+    expect(maxAge).toBeGreaterThanOrEqual(1798)
+    expect(maxAge).toBeLessThanOrEqual(1800)
+
+    const token = cookie?.match(/sp_session=([^;]+)/)?.[1] ?? ''
+    const admin = await app.request(
+      '/api/admin/events/demo-conf-2026',
+      { headers: { cookie: cookieHeader(token) } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    expect(admin.status).toBe(200)
+  })
+
+  it.each([
+    ['portal', '/api/public/profile'],
+    ['evaluation', '/api/public/evaluations'],
+  ] as const)(
+    'issues a fixture-proven %s session that opens its populated persona surface',
+    async (access, path) => {
+      await seedDemoConfProgramme(env.DB)
+      const response = await app.request(
+        '/api/tour/session',
+        {
+          method: 'POST',
+          headers: { origin: ALLOWED_ORIGIN, 'content-type': 'application/json' },
+          body: JSON.stringify({ access }),
+        },
+        bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+      )
+
+      expect(response.status).toBe(200)
+      const cookie = response.headers.get('set-cookie') ?? ''
+      const token = cookie.match(/sp_session=([^;]+)/)?.[1] ?? ''
+      expect(token).not.toBe('')
+
+      const persona = await app.request(
+        path,
+        { headers: { cookie: cookieHeader(token) } },
+        bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+      )
+      expect(persona.status).toBe(200)
+    },
+  )
+
+  it('rejects unknown tour roles without creating a session', async () => {
+    const before = await countRows(env.DB, 'sessions')
+    const response = await app.request(
+      '/api/tour/session',
+      {
+        method: 'POST',
+        headers: { origin: ALLOWED_ORIGIN, 'content-type': 'application/json' },
+        body: JSON.stringify({ access: 'superadmin' }),
+      },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect(await countRows(env.DB, 'sessions')).toBe(before)
+  })
+
+  it('redirects production visitors to the isolated tour sandbox without minting authority', async () => {
+    const before = await countRows(env.DB, 'sessions')
+    const response = await app.request(
+      '/api/tour/session',
+      { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
+      bindings({
+        DEPLOY_ENVIRONMENT: 'production',
+        TOUR_APP_URL: 'https://open-events-acceptance.speakerops.workers.dev',
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      mode: 'redirect',
+      url: 'https://open-events-acceptance.speakerops.workers.dev/?tour=1',
+    })
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect(await countRows(env.DB, 'sessions')).toBe(before)
+  })
+
+  it('fails closed outside the supported environments and on cross-origin requests', async () => {
+    const unsupported = await app.request(
+      '/api/tour/session',
+      { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
+      bindings({ DEPLOY_ENVIRONMENT: 'staging' }),
+    )
+    expect(unsupported.status).toBe(404)
+
+    const crossOrigin = await app.request(
+      '/api/tour/session',
+      { method: 'POST', headers: { origin: 'https://attacker.example' } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    expect(crossOrigin.status).toBe(403)
+    expect(crossOrigin.headers.get('set-cookie')).toBeNull()
+  })
+
+  it('ends tour authority with the shared hardened cookie expiry contract', async () => {
+    const response = await app.request(
+      '/api/tour/session',
+      { method: 'DELETE', headers: { origin: ALLOWED_ORIGIN } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('set-cookie')).toContain('sp_session=')
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
   })
 })
 

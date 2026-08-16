@@ -106,6 +106,7 @@ describe('integration bindings', () => {
       'SUBMITTER_TOKEN_TTL_MS',
       'TOKEN_REDEEM_SOURCE_RATE_LIMITER',
       'TOKEN_REDEEM_TOKEN_RATE_LIMITER',
+      'TOUR_APP_URL',
       'TURNSTILE_HOSTNAMES',
       'TURNSTILE_SECRET_KEY',
     ])
@@ -120,6 +121,7 @@ describe('integration bindings', () => {
     expect(resolved.LOCAL_DEV_MODE).toBe('false')
     expect(resolved.ALLOWED_ORIGINS).toBe('http://localhost:8787')
     expect(resolved.PUBLIC_APP_URL).toBe('https://www.openevents.engineer')
+    expect(resolved.TOUR_APP_URL).toBe('')
     expect(resolved.SUBMITTER_CAPABILITY_WRITER_MODE).toBe('purpose')
     expect(resolved.SUBMITTER_CAPABILITY_LEGACY_READER_MODE).toBe('bounded')
     expect(resolved.SUBMITTER_CAPABILITY_LEGACY_WRITER_CUTOFF).toBe('')

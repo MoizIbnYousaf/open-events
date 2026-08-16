@@ -36,13 +36,14 @@ export interface PublicEditorState {
   readonly coSpeakers: readonly CoSpeakerDraft[]
 }
 
-export function useActiveDraft(formId: string) {
+export function useActiveDraft(formId: string, enabled = true) {
   return useQuery({
     queryKey: publicDraftQueryKeys.activeDraft(formId),
     queryFn: () => getActiveDraft(formId),
     // A reload must always produce a new data reference so the wizard's
     // hydration effect (the query-completion signal) re-runs with server data.
     structuralSharing: false,
+    enabled,
   })
 }
 

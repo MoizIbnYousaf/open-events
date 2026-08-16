@@ -6,13 +6,17 @@ const ProductTour = lazy(() =>
 
 interface LazyProductTourProps {
   readonly onNavigate: (route: string, params?: Readonly<Record<string, string>>) => void
+  readonly onResume?: () => void
 }
 
 /** Keeps the full tour overlay and narration out of the first-paint bundle. */
-export default function LazyProductTour({ onNavigate }: LazyProductTourProps): ReactElement {
+export default function LazyProductTour({
+  onNavigate,
+  onResume,
+}: LazyProductTourProps): ReactElement {
   return (
     <Suspense fallback={null}>
-      <ProductTour onNavigate={onNavigate} />
+      <ProductTour onNavigate={onNavigate} onResume={onResume} />
     </Suspense>
   )
 }

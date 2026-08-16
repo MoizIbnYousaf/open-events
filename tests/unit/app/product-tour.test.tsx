@@ -21,6 +21,7 @@ import {
 
 const STEP_COUNT = TOUR_STEPS.length
 const DONE_KEY = 'open-events:tour-done'
+const PROGRESS_KEY = 'open-events:tour-progress'
 /** The gate waits out the tour's real 2s target poll, then re-checks at 400ms. */
 const TARGET_POLL_MS = 2000
 const HOLD_RECHECK_MS = 400
@@ -282,6 +283,92 @@ describe('product tour', () => {
     await user.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(window.localStorage.getItem(DONE_KEY)).toBeNull()
+    expect(JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? '{}')).toMatchObject({
+      stepId: 'welcome',
+      status: 'paused',
+    })
+  })
+
+  it('pauses at the current step and resumes there with fresh role access', async () => {
+    const { user } = mountTour()
+    toggleTour()
+    await screen.findByRole('dialog')
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(/event settings/i)
+
+    await user.click(screen.getByRole('button', { name: /pause tour/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? '{}')).toMatchObject({
+      stepId: 'event-settings',
+      status: 'paused',
+    })
+
+    toggleTour()
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/event settings/i)
+    expect(screen.getByRole('status')).toHaveTextContent(`Step 3 of ${STEP_COUNT}`)
+    expect(JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? '{}')).toMatchObject({
+      stepId: 'event-settings',
+      status: 'active',
+    })
+
+    const requests = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) => String(input) === '/api/tour/session')
+    const lastPost = requests.findLast(([, init]) => init?.method === 'POST')
+    expect(lastPost?.[1]?.body).toBe(JSON.stringify({ access: 'organizer' }))
+  })
+
+  it('keeps a paused checkpoint across remounts without auto-opening', async () => {
+    window.localStorage.setItem(
+      PROGRESS_KEY,
+      JSON.stringify({ version: 1, stepId: 'start', status: 'paused' }),
+    )
+    const first = mountTour()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    toggleTour()
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/speaker start/i)
+    expect(first.onNavigate).toHaveBeenCalledWith('/start', undefined)
+  })
+
+  it('waits for authority cleanup before an immediate resume', async () => {
+    let finishDelete: (() => void) | undefined
+    vi.mocked(fetch).mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        return new Promise<Response>((resolve) => {
+          finishDelete = () => resolve(new Response(null, { status: 204 }))
+        })
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            mode: 'ready',
+            expiresAt: '2026-08-16T07:00:00.000Z',
+            eventSlug: DEFAULT_EVENT_SLUG,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+    })
+
+    const { user } = mountTour()
+    toggleTour()
+    await screen.findByRole('dialog')
+    await user.click(screen.getByRole('button', { name: /pause tour/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    toggleTour()
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(
+      1,
+    )
+    finishDelete?.()
+
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(
+      2,
+    )
   })
 
   it('finishes with Done on the last step and records completion', async () => {
@@ -303,6 +390,7 @@ describe('product tour', () => {
       await user.click(screen.getByRole('button', { name: /^done$/i }))
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
       expect(window.localStorage.getItem(DONE_KEY)).toBe('true')
+      expect(window.localStorage.getItem(PROGRESS_KEY)).toBeNull()
     } finally {
       for (const rail of rails) rail.remove()
     }
@@ -316,6 +404,7 @@ describe('product tour', () => {
     await user.click(screen.getByRole('button', { name: /skip tour/i }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(window.localStorage.getItem(DONE_KEY)).toBe('true')
+    expect(window.localStorage.getItem(PROGRESS_KEY)).toBeNull()
   })
 
   it('moves focus to the popover on open and keeps it inside on step change', async () => {
@@ -562,5 +651,9 @@ describe('tour header affordance', () => {
 
     await user.click(screen.getByRole('button', { name: /^tour$/i }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(await screen.findByRole('button', { name: /resume tour/i })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /resume tour/i }))
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
   })
 })

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, createRootRoute, Outlet } from '@tanstack/react-router'
 
 import { Button } from '../../components/ui/button'
@@ -12,6 +12,7 @@ import {
   PALETTE_TRIGGER_TOUR_TARGET,
 } from '../features/command/CommandMenu'
 import { requestTourToggle } from '../features/tour/tour-events'
+import { hasPausedTourProgress, TOUR_PROGRESS_EVENT } from '../features/tour/tour-progress'
 
 const ClerkNavControls = lazy(() => import('../features/nav/ClerkNavControls'))
 const OrbyWidget = lazy(() => import('../features/orby/OrbyWidget'))
@@ -62,8 +63,23 @@ const SITE_LINK_CLASS = 'text-sm text-foreground'
  * icon-library names.
  */
 function Root() {
+  const [hasPausedTour, setHasPausedTour] = useState(false)
+
   useEffect(() => {
     document.documentElement.lang = 'en'
+  }, [])
+
+  useEffect(() => {
+    function syncTourProgress(): void {
+      setHasPausedTour(hasPausedTourProgress())
+    }
+    syncTourProgress()
+    window.addEventListener(TOUR_PROGRESS_EVENT, syncTourProgress)
+    window.addEventListener('storage', syncTourProgress)
+    return () => {
+      window.removeEventListener(TOUR_PROGRESS_EVENT, syncTourProgress)
+      window.removeEventListener('storage', syncTourProgress)
+    }
   }, [])
 
   return (
@@ -136,7 +152,7 @@ function Root() {
             {/* The tour's one visible door: it toggles the overlay and never
                 auto-opens, so a control in the header is what makes it real. */}
             <Button variant="ghost" size="sm" aria-haspopup="dialog" onClick={requestTourToggle}>
-              Tour
+              {hasPausedTour ? 'Resume tour' : 'Tour'}
             </Button>
             <nav aria-label="Site">
               {/* activeOptions.exact is load-bearing: Link matches by path

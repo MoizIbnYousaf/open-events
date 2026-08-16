@@ -23,6 +23,10 @@ function navigateFromTour(route: string, params?: Readonly<Record<string, string
   void router.navigate({ to: route, params } as Parameters<typeof router.navigate>[0])
 }
 
+function refreshAfterTourResume(): void {
+  void queryClient.invalidateQueries()
+}
+
 // The application shell. Everything that outlives a route lives here rather
 // than in the router's root route: the theme and the toast stack are owned by
 // the app, not by whichever route happens to be matched, so a router-level
@@ -37,7 +41,7 @@ function appTree(): ReactNode {
           <RouterProvider router={router} />
         </QueryClientProvider>
         <CommandMenu onNavigate={navigateFromCommand} floating={true} />
-        <LazyProductTour onNavigate={navigateFromTour} />
+        <LazyProductTour onNavigate={navigateFromTour} onResume={refreshAfterTourResume} />
         <Toaster />
       </ThemeProvider>
     </AppErrorBoundary>

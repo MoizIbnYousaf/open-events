@@ -14,6 +14,7 @@ import { SECTION_HEADING_CLASS } from '../../../components/ui/section-heading'
 import { endTourSession, startTourSession, type TourAccess } from '../../api/tour'
 import { setTourActive } from './tour-activity'
 import { consumePendingTourToggle, TOUR_TOGGLE_EVENT } from './tour-events'
+import { clearTourProgress, readTourProgress, writeTourProgress } from './tour-progress'
 import { TOUR_ORGANIZER_HOLD, TOUR_SIGN_IN_STEP_INDEX, TOUR_STEPS } from './tour-steps'
 
 export { TOUR_TOGGLE_EVENT } from './tour-events'
@@ -98,6 +99,15 @@ function markTourDone(): void {
     // Storage can be unavailable (private mode, quota); losing the flag only
     // means the tour stays offerable, which is safe.
   }
+}
+
+function savedStepIndex(): number {
+  const progress = readTourProgress()
+  if (progress === null) return 0
+  const index = TOUR_STEPS.findIndex((step) => step.id === progress.stepId)
+  if (index !== -1) return index
+  clearTourProgress()
+  return 0
 }
 
 function setTourResume(active: boolean): void {
@@ -211,6 +221,7 @@ function TourNarration({
 function TourFooter({
   copy,
   backDisabled,
+  onPause,
   onSkip,
   onBack,
   onForward,
@@ -218,6 +229,7 @@ function TourFooter({
 }: {
   readonly copy: StepCopy
   readonly backDisabled: boolean
+  readonly onPause: () => void
   readonly onSkip: () => void
   readonly onBack: () => void
   readonly onForward: () => void
@@ -225,7 +237,10 @@ function TourFooter({
 }): ReactElement {
   return (
     <div className="-mx-4 -mb-4 flex flex-wrap items-center gap-2 rounded-b-lg border-t border-border p-3">
-      <Button type="button" variant="ghost" onClick={onSkip}>
+      <Button type="button" variant="ghost" onClick={onPause}>
+        Pause tour
+      </Button>
+      <Button type="button" variant="ghost" className="px-2" onClick={onSkip}>
         Skip tour
       </Button>
       <div className="ml-auto flex items-center gap-2">
@@ -259,9 +274,10 @@ function TourFooter({
  */
 interface ProductTourProps {
   readonly onNavigate: (route: string, params?: Readonly<Record<string, string>>) => void
+  readonly onResume?: () => void
 }
 
-export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | null {
+export function ProductTour({ onNavigate, onResume }: ProductTourProps): ReactElement | null {
   const [open, setOpen] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
   const [transitioning, setTransitioning] = useState(false)
@@ -287,6 +303,7 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const hasOpenedRef = useRef(false)
   const startingRef = useRef(false)
+  const endingRef = useRef<Promise<void> | null>(null)
   const autoStartRef = useRef(false)
   const accessRef = useRef<(typeof TOUR_STEPS)[number]['access']>('public')
   useEffect(() => {
@@ -330,6 +347,7 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
         }
         navigateForStep(index)
         setStepIndex(index)
+        writeTourProgress(step.id, 'active')
       } catch {
         setStartError('That tour screen could not open. Try again.')
       } finally {
@@ -343,35 +361,64 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
     if (startingRef.current) return
     startingRef.current = true
     setStartError(null)
-    setStepIndex(0)
+    const savedProgress = readTourProgress()
+    const resumeIndex = savedStepIndex()
+    const resumeStep = TOUR_STEPS[resumeIndex] ?? TOUR_STEPS[0]
+    if (resumeStep === undefined) return
+    setStepIndex(resumeIndex)
     setHeldStep(null)
     returnFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
     try {
-      const result = await startTourSession('organizer')
-      if (result.mode === 'redirect') {
-        window.location.assign(result.url)
-        return
+      await endingRef.current
+      if (resumeStep.access === 'public') {
+        await endTourSession()
+      } else {
+        const result = await startTourSession(resumeStep.access satisfies TourAccess)
+        if (result.mode === 'redirect') {
+          window.location.assign(result.url)
+          return
+        }
       }
-      accessRef.current = 'organizer'
+      accessRef.current = resumeStep.access
+      if (savedProgress?.status === 'paused') onResume?.()
       setTourResume(true)
+      writeTourProgress(resumeStep.id, 'active')
       clearTourQuery()
+      navigateForStep(resumeIndex)
+      openRef.current = true
       setOpen(true)
     } catch {
       setStartError('The guided tour could not start. Try again.')
+      openRef.current = true
       setOpen(true)
     } finally {
       startingRef.current = false
     }
-  }, [])
+  }, [navigateForStep, onResume])
 
-  const closeTour = useCallback((done: boolean) => {
-    if (done) markTourDone()
-    setTourResume(false)
-    accessRef.current = 'public'
-    setOpen(false)
-    void endTourSession().catch(() => undefined)
-  }, [])
+  const closeTour = useCallback(
+    (disposition: 'pause' | 'complete') => {
+      const step = TOUR_STEPS[stepIndex]
+      if (disposition === 'complete') {
+        markTourDone()
+        clearTourProgress()
+      } else if (step !== undefined) {
+        writeTourProgress(step.id, 'paused')
+      }
+      setTourResume(false)
+      accessRef.current = 'public'
+      openRef.current = false
+      setOpen(false)
+      const ending = endTourSession()
+        .catch(() => undefined)
+        .finally(() => {
+          if (endingRef.current === ending) endingRef.current = null
+        })
+      endingRef.current = ending
+    },
+    [stepIndex],
+  )
 
   useEffect(() => {
     function onToggle(): void {
@@ -380,7 +427,7 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
         void beginTour()
         return
       }
-      closeTour(false)
+      closeTour('pause')
     }
     window.addEventListener(TOUR_TOGGLE_EVENT, onToggle)
     if (consumePendingTourToggle()) queueMicrotask(() => void beginTour())
@@ -419,7 +466,7 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
         return
       }
       event.preventDefault()
-      closeTour(false)
+      closeTour('pause')
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
@@ -542,7 +589,8 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
     if (previous !== null && previous.isConnected) previous.focus()
   }, [open])
 
-  const finish = useCallback(() => closeTour(true), [closeTour])
+  const finish = useCallback(() => closeTour('complete'), [closeTour])
+  const pause = useCallback(() => closeTour('pause'), [closeTour])
 
   if (!open) return null
   const step = TOUR_STEPS[stepIndex]
@@ -616,6 +664,7 @@ export function ProductTour({ onNavigate }: ProductTourProps): ReactElement | nu
         <TourFooter
           copy={copy}
           backDisabled={!held && stepIndex === 0}
+          onPause={pause}
           onSkip={finish}
           onBack={goBack}
           onForward={goForward}

@@ -77,3 +77,27 @@ test('a cold visitor completes every guided-tour step without credentials or den
   ])
   expect(pageErrors).toEqual([])
 })
+
+test('a visitor can pause, leave, and resume the exact tour step', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Tour', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+
+  await dialog.getByRole('button', { name: 'Next', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Next', exact: true }).click()
+  await expect(dialog).toHaveAccessibleName('Event settings')
+  await expect(dialog.getByRole('status').first()).toContainText(`Step 3 of ${TOUR_STEPS.length}`)
+
+  await dialog.getByRole('button', { name: 'Pause tour', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Resume tour', exact: true })).toBeVisible()
+  expect((await page.request.get('/api/admin/events/demo-conf-2026')).status()).toBe(401)
+
+  await page.reload()
+  await expect(dialog).toHaveCount(0)
+  await page.getByRole('button', { name: 'Resume tour', exact: true }).click()
+  await expect(dialog).toHaveAccessibleName('Event settings')
+  await expect(dialog.getByRole('status').first()).toContainText(`Step 3 of ${TOUR_STEPS.length}`)
+  await expect(page.locator('[data-tour="rail-event-settings"]').first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Access forbidden' })).toHaveCount(0)
+})

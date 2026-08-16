@@ -105,4 +105,14 @@ describe('the two doors', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'Speaker access' })).toBeInTheDocument()
   })
+
+  it('uses the conference-stage hero instead of agent branding', () => {
+    renderSpeakerDoor()
+
+    expect(
+      screen.getByRole('img', {
+        name: 'Conference speaker presenting on stage to a live audience',
+      }),
+    ).toHaveAttribute('src', '/images/open-events-stage.png')
+  })
 })

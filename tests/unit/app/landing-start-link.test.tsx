@@ -88,6 +88,16 @@ describe('landing page access link', () => {
     expect(startLink).toHaveAttribute('href', '/start')
   })
 
+  it('shows the conference-stage hero instead of agent branding', async () => {
+    await mountLanding()
+
+    expect(
+      await screen.findByRole('img', {
+        name: 'Conference speaker presenting on stage to a live audience',
+      }),
+    ).toHaveAttribute('src', '/images/open-events-stage.png')
+  })
+
   it('keeps the link reachable while the event is still loading', async () => {
     // A promise that never settles: the landing page holds its skeleton, and
     // the way in must not be behind it.

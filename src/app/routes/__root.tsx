@@ -154,7 +154,7 @@ function Root() {
             <Button variant="ghost" size="sm" aria-haspopup="dialog" onClick={requestTourToggle}>
               {hasPausedTour ? 'Resume tour' : 'Tour'}
             </Button>
-            <nav aria-label="Site">
+            <nav aria-label="Site" className="flex items-center gap-1">
               {/* activeOptions.exact is load-bearing: Link matches by path
                     prefix by default and sets aria-current="page" itself, so
                     without it this link claims to be the current page on every
@@ -174,7 +174,7 @@ function Root() {
                 className={linkVariants({
                   variant: 'quiet',
                   hit: true,
-                  className: 'ml-2 size-9 justify-center',
+                  className: 'size-9 justify-center',
                 })}
               >
                 <svg

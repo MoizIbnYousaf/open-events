@@ -242,6 +242,7 @@ describe('rendered navigation', () => {
     mountAt('/')
 
     const siteNav = await screen.findByRole('navigation', { name: 'Site' })
+    expect(siteNav).toHaveClass('flex', 'items-center')
     expect(within(siteNav).getByRole('link', { name: 'Organizer sign-in' })).toHaveAttribute(
       'href',
       '/admin',

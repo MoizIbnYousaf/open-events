@@ -358,7 +358,7 @@ npx wrangler d1 migrations apply <your-database> --remote
 npx wrangler d1 execute <your-database> --remote --file src/db/seed.sql
 # optional published programme:
 npx wrangler d1 execute <your-database> --remote --file src/db/seed-programme.sql
-npx wrangler deploy
+pnpm deploy:production
 ```
 
 Set `ALLOWED_ORIGINS` in `wrangler.jsonc` to the origin you deploy to. A mismatch refuses every authenticated write as cross-origin. Then set the organizer secret:
@@ -377,6 +377,7 @@ webhook at `/api/webhooks/resend`, and a valid `EMAIL_LIVE_VERIFIED_AT`
 receipt. Keep `EMAIL_DELIVERY_MODE=capture` until all three are ready.
 
 This repository's Worker is `open-events`. Production routes are `openevents.engineer` and `www.openevents.engineer`.
+The production deployment wrapper pins the public Turnstile widget key at build time and refuses an artifact with the wrong D1, R2, routes, or rate-limit namespaces.
 
 ### Capability rollout gate
 

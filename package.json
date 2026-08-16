@@ -24,6 +24,8 @@
     "e2e:acceptance": "LIVE_ALLOW_MUTATION=acceptance playwright test --config=playwright.live.config.ts",
     "deploy:acceptance:dry-run": "node scripts/deploy-acceptance.mjs",
     "deploy:acceptance": "node scripts/deploy-acceptance.mjs --deploy",
+    "deploy:production:dry-run": "node scripts/deploy-production.mjs",
+    "deploy:production": "node scripts/deploy-production.mjs --deploy",
     "ui:check": "node scripts/ui-check.mjs",
     "notices:check": "node scripts/notices-check.mjs",
     "perf:check": "node scripts/perf-check.mjs",

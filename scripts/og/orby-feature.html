@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Orby is live</title>
+    <style>
+      @font-face {
+        font-family: 'Inter Variable';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url('../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2')
+          format('woff2-variations');
+        unicode-range:
+          U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+          U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #080808;
+        color: #f5f5f5;
+        font-family:
+          'Inter Variable',
+          Inter,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        font-synthesis-weight: none;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .card {
+        position: relative;
+        width: 1200px;
+        height: 630px;
+        background: #080808;
+        overflow: hidden;
+      }
+
+      .wash {
+        position: absolute;
+        inset: 0 0 0 42%;
+        background:
+          linear-gradient(90deg, #080808 0%, rgb(8 8 8 / 0.28) 24%, rgb(8 8 8 / 0) 52%),
+          url('../../public/washes/mesh-dark.jpg') right center / cover no-repeat;
+        pointer-events: none;
+      }
+
+      .grain {
+        position: absolute;
+        inset: 0;
+        background: url('../../public/washes/grain-dark.jpg') center / cover no-repeat;
+        opacity: 0.18;
+        mix-blend-mode: overlay;
+        pointer-events: none;
+      }
+
+      .frame {
+        position: absolute;
+        inset: 28px;
+        border: 1px solid rgb(255 255 255 / 0.09);
+        border-radius: 4px;
+        pointer-events: none;
+      }
+
+      .inner {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: 1fr 380px;
+        align-items: stretch;
+        height: 100%;
+        padding: 64px 72px 52px;
+        gap: 48px;
+      }
+
+      .copy {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .mark {
+        width: 48px;
+        height: 48px;
+        flex: 0 0 48px;
+        border-radius: 12px;
+        background: #171717;
+        box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+      }
+
+      .name {
+        font-size: 20px;
+        font-weight: 560;
+        letter-spacing: -0.035em;
+        color: #fcfcfc;
+      }
+
+      .meta {
+        font-size: 11px;
+        font-weight: 450;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #929292;
+      }
+
+      .hero {
+        margin-top: auto;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        height: 22px;
+        padding: 0 9px;
+        margin-bottom: 16px;
+        border: 1px solid rgb(255 255 255 / 0.09);
+        border-radius: 999px;
+        background: rgb(18 18 18 / 0.8);
+        color: #d4d4d4;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .title {
+        font-size: 64px;
+        font-weight: 560;
+        letter-spacing: -0.045em;
+        line-height: 1.02;
+        color: #fcfcfc;
+      }
+
+      .rule {
+        width: 48px;
+        height: 2px;
+        margin: 24px 0 18px;
+        background: #1a72cd;
+      }
+
+      .lede {
+        max-width: 460px;
+        font-size: 20px;
+        font-weight: 400;
+        letter-spacing: -0.018em;
+        line-height: 1.35;
+        color: #c8c8c8;
+      }
+
+      .url {
+        margin-top: 36px;
+        color: #929292;
+        font-size: 14px;
+        font-weight: 450;
+      }
+
+      .stage {
+        align-self: center;
+        width: 360px;
+      }
+
+      .widget {
+        border: 1px solid rgb(255 255 255 / 0.09);
+        border-radius: 12px;
+        background: #121212;
+        box-shadow:
+          0 0 4px rgb(0 0 0 / 0.32),
+          0 0 24px rgb(0 0 0 / 0.48);
+        overflow: hidden;
+      }
+
+      .w-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        border-bottom: 1px solid rgb(255 255 255 / 0.09);
+      }
+
+      .w-title {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .w-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #929292;
+        font-size: 11px;
+      }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #22c55e;
+      }
+
+      .thread {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+      }
+
+      .bubble {
+        max-width: 78%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .user {
+        justify-self: end;
+        background: #1a72cd;
+        color: #fff;
+      }
+
+      .orby {
+        justify-self: start;
+        background: #1a1a1a;
+        color: #f5f5f5;
+      }
+
+      .when {
+        margin-top: 4px;
+        font-size: 10px;
+        opacity: 0.7;
+      }
+
+      .composer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        border-top: 1px solid rgb(255 255 255 / 0.09);
+      }
+
+      .field {
+        flex: 1;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid rgb(255 255 255 / 0.14);
+        background: rgb(255 255 255 / 0.04);
+      }
+
+      .send {
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 6px;
+        background: #1a72cd;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 28px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="wash" aria-hidden="true"></div>
+      <div class="grain" aria-hidden="true"></div>
+      <div class="frame" aria-hidden="true"></div>
+      <div class="inner">
+        <div class="copy">
+          <div class="brand">
+            <svg class="mark" viewBox="0 0 64 64" role="img" aria-label="Open Events">
+              <rect width="64" height="64" rx="16" fill="#171717" />
+              <path d="M18 18h28v7H27v3.5h16v7H27V39h19v7H18V18z" fill="#fff" />
+              <circle cx="51" cy="13" r="4.5" fill="#a3e635" />
+            </svg>
+            <div>
+              <div class="name">Open Events</div>
+              <div class="meta">New</div>
+            </div>
+          </div>
+          <div class="hero">
+            <span class="badge">Support</span>
+            <h1 class="title">Orby is live.</h1>
+            <div class="rule" aria-hidden="true"></div>
+            <p class="lede">In-app support. One thread. Replies as Orby.</p>
+            <p class="url">openevents.engineer</p>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="widget">
+            <div class="w-head">
+              <div class="w-title">Orby</div>
+              <div class="w-status"><span class="dot"></span>Connected</div>
+            </div>
+            <div class="thread">
+              <div class="bubble user">
+                When does the CFP close?
+                <div class="when">You · 10:30</div>
+              </div>
+              <div class="bubble orby">
+                It follows the published window. I can point you at the form.
+                <div class="when">Orby · 10:31</div>
+              </div>
+            </div>
+            <div class="composer">
+              <div class="field"></div>
+              <div class="send">Send</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

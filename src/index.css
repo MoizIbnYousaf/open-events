@@ -1,0 +1,264 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@clerk/themes/shadcn.css';
+@import '@fontsource-variable/inter';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Derived from the same class that drives the tokens. `light dark` told the
+     UA to paint native widgets per the OS while the token set stayed light, so
+     datetime, select, checkbox and file controls disagreed with the surface
+     behind them on any dark-preferring system. */
+  color-scheme: light;
+  font-family:
+    'Inter Variable',
+    Inter,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+
+  /* Near-monochrome neutral system with exactly ONE structural accent
+     (Open Events blue). Light mode reads canvas-dark → surface-light: the page
+     sits a step below white and cards/popovers rise to white. Depth is carried
+     by hairlines, never by shadow on resting surfaces. */
+  --background: #fcfcfc;
+  --foreground: #0d0d0d;
+  --card: #ffffff;
+  --card-foreground: #0d0d0d;
+  --popover: #ffffff;
+  --popover-foreground: #0d0d0d;
+  --primary: #0075de;
+  /* Hover DARKENS: an alpha-lightened fill drops white label text below AA
+     (0075de at 90% over the canvas reads 3.95:1), and the pointer parks on
+     buttons exactly when axe looks. 5.68:1 with white. */
+  --primary-hover: #0066c4;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f0;
+  --secondary-foreground: #0d0d0d;
+  --muted: #f0f0f0;
+  /* 5.2:1 on the canvas — metadata stays AA at 12px. */
+  --muted-foreground: #6b6b6b;
+  --accent: #f5f5f5;
+  --accent-foreground: #0d0d0d;
+  /* Destructive reads as red, not as a warm tint: 4.8:1 against white when it
+     carries a label. */
+  --destructive: #dc2626;
+  --destructive-hover: #b91c1c;
+  --destructive-foreground: #ffffff;
+
+  /* Borders are ALPHA so a hairline composes correctly over any fill it lands
+     on; the opaque twin exists for stacked rules where alpha would double up. */
+  --border: rgb(0 0 0 / 0.1);
+  --border-opaque: #e6e6e6;
+  --input: rgb(0 0 0 / 0.12);
+  --ring: #0075de;
+
+  /* Text-accent is a separate binding from the fill-accent: the same blue
+     cannot be both an accessible label colour on the canvas and a fill that
+     carries white text. 5.7:1 here. */
+  --link: #0064c0;
+
+  --radius: 0.5rem;
+
+  /* The rail's own canvas is the ONE sidebar token the product paints with;
+     shadcn's other eight shipped with the boilerplate and never had a caller. */
+  --sidebar: #ffffff;
+
+  /* Overlays float rather than drop: every layer is zero-offset, so the halo is
+     symmetric and the surface reads as suspended in air instead of pasted onto
+     the page. */
+  --popover-shadow:
+    0 0 3px rgb(0 0 0 / 0.04), 0 0 10px rgb(0 0 0 / 0.04), 0 0 24px rgb(0 0 0 / 0.05);
+  --scrim: rgb(0 0 0 / 0.2);
+
+  /* The single colour behind a table's scroll-edge shadow, flipped in and out
+     by the table primitive as the container scrolls. It reads as "there is more
+     here" and nothing else, so it is one soft black — deliberately weaker than
+     the popover halo, because an edge is a hint and an overlay is an event. */
+  --table-edge-shadow: rgb(0 0 0 / 0.14);
+
+  /* The tick a checked checkbox paints over its fill. It lives here, as a
+     token, because the control is a native <input> with its own appearance
+     stripped — there is no element inside it to hang a glyph on. Same 24-grid,
+     round-capped geometry as the icon set, thickened because it renders at
+     12px. The fill is the accent in both schemes, so one white tick serves
+     both. */
+  --control-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 12.75 6 6 9-13.5'/%3E%3C/svg%3E");
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+:root {
+  /* Shell measurements. The toolbar height and rail width appear in more than
+     one file (the toolbar sets its own height, the rail subtracts it from the
+     viewport, the shell grid reserves the rail column) — a token pair keeps
+     the copies structurally in step instead of conventionally. */
+  --navbar-height: 3.5rem;
+  --rail-width: 240px;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans:
+    'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-border-opaque: var(--border-opaque);
+  --color-link: var(--link);
+  --color-destructive: var(--destructive);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --color-scrim: var(--scrim);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --shadow-popover: var(--popover-shadow);
+
+  /* Motion. A bare `transition` is 100ms, one notch snappier than Tailwind's
+     150ms default, and exits are faster than entrances so dismissing never
+     feels like waiting. Entrance easing is the house curve; amplitudes stay
+     tiny (2% zoom, ≤8px translate). Overlays open in 150ms on the entrance
+     curve and close in 75ms — `duration-150` / `duration-75` at the call site,
+     because a bare duration has no theme namespace to name. */
+  --default-transition-duration: 100ms;
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Dark surfaces use a restrained neutral ladder with the Open Events accent. */
+  --background: #080808;
+  --foreground: #f5f5f5;
+  --card: #121212;
+  --card-foreground: #f5f5f5;
+  --popover: #121212;
+  --popover-foreground: #f5f5f5;
+  --primary: #1a72cd;
+  --primary-hover: #1668b8;
+  --primary-foreground: #ffffff;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #f5f5f5;
+  --muted: #1a1a1a;
+  /* 5.8:1 on #080808 at 12px. */
+  --muted-foreground: #929292;
+  --accent: #222222;
+  --accent-foreground: #f5f5f5;
+  --destructive: #f87171;
+  --destructive-hover: #ef5350;
+  --destructive-foreground: #080808;
+  --border: rgb(255 255 255 / 0.09);
+  --border-opaque: #2a2a2a;
+  --input: rgb(255 255 255 / 0.14);
+  --ring: #2383e2;
+  --link: #60a5fa;
+  --sidebar: #080808;
+  --popover-shadow:
+    0 0 4px rgb(0 0 0 / 0.32), 0 0 10px rgb(0 0 0 / 0.4), 0 0 24px rgb(0 0 0 / 0.48);
+  --scrim: rgb(0 0 0 / 0.7);
+  /* Heavier in dark: the canvas is already near-black, so the same alpha would
+     vanish into it. */
+  --table-edge-shadow: rgb(0 0 0 / 0.55);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+  html {
+    @apply bg-background;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* Inter carries every weight we use; faux-bolding a variable font makes
+       medium and semibold indistinguishable at 14px. */
+    font-synthesis-weight: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Alpha hairlines must not show the element's own fill bleeding through
+     them; clipping the background to the padding box is what keeps a 10%-black
+     border reading as a hairline instead of a smudge. */
+  *[class*='border'],
+  *[class*='ring'] {
+    background-clip: padding-box;
+  }
+}
+
+/**
+ * Focus must not scroll under the page toolbar.
+ *
+ * From `lg` up the PageHeader is sticky at the top of `#main`, which is the
+ * scrolling box. A browser scrolling a focused control into view aims for the
+ * edge of that box, so anything focused below the fold — a Status select, a row
+ * link, the first field of a form — landed UNDER the toolbar: measured at 101.6
+ * against a toolbar bottom of 113, and fully hidden at 57.1. The reader was
+ * standing on a control they could not see.
+ *
+ * `scroll-padding-top` is the box telling the browser where its usable top
+ * really is. The offset is the PAGE header's own height — it sits at top-0 of
+ * `#main`, not under the site toolbar, so `--navbar-height` (the same 3.5rem
+ * the row is drawn at) is the whole obstruction. Below `lg` the header is not
+ * sticky and nothing is in the way.
+ */
+@media (min-width: 1024px) {
+  #main {
+    scroll-padding-top: var(--navbar-height);
+  }
+}
+
+/**
+ * Reduced motion. Our conscious divergence from the reference product, which
+ * ships no guard at all: every transition and animation collapses to a single
+ * frame, so nothing moves for a visitor who asked for stillness.
+ *
+ * The duration is 1ms rather than `none`: overlay primitives wait for
+ * `animationend` before unmounting, and removing the animation outright would
+ * leave a dismissed dialog mounted forever.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

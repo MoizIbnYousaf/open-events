@@ -1,0 +1,62 @@
+# Local tooling/config noise — not project work
+.config/
+.codex/
+.claude/
+.local/
+.pi/
+.mastracode/
+.cache/
+.tanstack/
+tmp/
+.bash_history
+.bash_logout
+.bashrc
+.gitconfig
+.profile
+.hushlogin
+
+# Cloudflare local state
+.wrangler/
+
+# Secrets and env files
+.dev.vars*
+!.dev.vars.example
+*.env
+*.env.*
+!.env.example
+env
+
+# Agent notes
+notes/
+agent-notes.md
+
+# Logs, reports, screenshots
+*.log
+*.sock
+reports/
+screenshots/
+playwright-report/
+test-results/
+
+# Local working notes and scratch material (not part of the distributed project)
+/notes/
+/local/
+/docs-local/
+/reports/
+
+# Local-only private working context — never publish
+/project-goal/
+/research-understanding-plan/
+
+# Credentials
+*.pem
+*.key
+.netrc
+
+# Common build/editor noise
+node_modules/
+dist/
+.worktrees/
+__pycache__/
+*.pyc
+.DS_Store

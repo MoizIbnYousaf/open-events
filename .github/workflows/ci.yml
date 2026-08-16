@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      LOCAL_ADMIN_TOKEN: ci-golden-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Static source gates
+        run: |
+          pnpm format:check
+          pnpm lint
+          pnpm types:generate
+          git diff --exit-code -- generated/worker-configuration.d.ts
+          pnpm typecheck
+          pnpm ui:check
+          pnpm notices:check
+          pnpm assets:check
+      - name: Unit and Workers integration tests
+        run: pnpm test
+      - name: Showcase replay
+        run: |
+          pnpm db:reset:showcase
+          pnpm db:reset:showcase
+      - name: Production build and budgets
+        run: |
+          pnpm build
+          pnpm perf:check
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      LOCAL_ADMIN_TOKEN: ci-golden-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Browser smoke and lifecycle
+        run: |
+          pnpm e2e
+          pnpm e2e:golden

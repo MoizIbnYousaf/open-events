@@ -1,0 +1,42 @@
+# Local-only development values. Never commit real secrets.
+LOCAL_ADMIN_TOKEN=
+LOCAL_DEV_MODE=true
+DEPLOY_ENVIRONMENT=local
+BUILD_REVISION=local
+RESOURCE_D1_ID=local-d1
+RESOURCE_R2_NAME=local-r2
+# Acceptance-only release operator secret; generate independently and never
+# reuse LOCAL_ADMIN_TOKEN. It is not needed for local development.
+# ACCEPTANCE_RESET_SECRET=
+PUBLIC_APP_URL=http://localhost:5173
+SUBMITTER_CAPABILITY_WRITER_MODE=purpose
+SUBMITTER_CAPABILITY_LEGACY_READER_MODE=bounded
+# Set only during a bounded migration rollout, using an exact UTC instant.
+# SUBMITTER_CAPABILITY_LEGACY_WRITER_CUTOFF=2026-08-15T00:00:00.000Z
+# CSRF origin allowlist, comma separated. `pnpm dev` serves Vite on 5173; include
+# that origin or cookie-authenticated writes return 403. An empty value is an
+# explicit "allow nothing". Leave the line out entirely only if you want the
+# fallback origins (http://localhost:8787 and http://127.0.0.1:8787).
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+# Privacy-preserving limiter keys. Use a distinct random secret per environment.
+RATE_LIMIT_KEY_SECRET=replace-with-at-least-16-random-characters
+RATE_LIMIT_ENVIRONMENT=local
+# Cloudflare's documented localhost-only always-pass test secret.
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+TURNSTILE_HOSTNAMES=localhost,127.0.0.1
+# Encrypted transactional outbox. Generate the key with `openssl rand -base64 32`.
+EMAIL_DELIVERY_MODE=capture
+EMAIL_PAYLOAD_KEY_VERSION=v1
+EMAIL_PAYLOAD_KEY_V1=
+EMAIL_LIVE_VERIFIED_AT=
+# Provider modes additionally require RESEND_API_KEY and EMAIL_FROM.
+# RESEND_API_KEY=
+# RESEND_WEBHOOK_SECRET=
+# EMAIL_FROM=
+# Optional TTL overrides (ms, within frozen maxima); committed defaults apply when empty:
+# ORGANIZER_SESSION_TTL_MS=7200000
+# SUBMITTER_SESSION_TTL_MS=28800000
+# SUBMITTER_TOKEN_TTL_MS=86400000
+# Orby replies through OpenRouter. Empty means a human answers from the desk.
+# OPENROUTER_API_KEY=
+# OPENROUTER_MODEL=openai/gpt-5.6-luna

@@ -1,0 +1,19 @@
+-- A reviewer can declare a conflict of interest on something they were given
+-- to read, and stop being asked for an opinion they should not give.
+--
+-- ADDITIVE, deliberately. `evaluation_assignments` carries indexes and is the
+-- target of foreign keys from both score tables, so a rebuild would take those
+-- indexes with it and disturb rows that recorded real reviews — the lesson
+-- migration 0015 wrote down and 0018 had to apply again. One nullable column
+-- costs none of that.
+--
+-- The recusal is a TIME, not a flag, because "when did they step back" is a
+-- question a programme chair asks and a boolean cannot answer. NULL means they
+-- are still reading it, which is what every existing row means.
+--
+-- The assignment is kept rather than deleted. Deleting it would lose the fact
+-- that this reviewer was ever asked, so an organizer sharing the round out
+-- again would hand them the same proposal, and the conflict they declared
+-- would have to be declared once more. It is also the row both score tables
+-- point at; removing it would take any answer already recorded with it.
+ALTER TABLE evaluation_assignments ADD COLUMN recused_at TEXT;

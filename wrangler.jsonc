@@ -1,0 +1,180 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "open-events",
+  "main": "src/server/index.ts",
+  "account_id": "5486d9f25ff36866b6e50c23d8759d88",
+  "workers_dev": true,
+  "compatibility_date": "2026-08-08",
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Every browser route passes through the Worker so CSP, framing,
+    // referrer, and no-sniff headers are applied to static HTML too.
+    "run_worker_first": true,
+  },
+  "routes": [
+    { "pattern": "openevents.engineer", "custom_domain": true },
+    { "pattern": "www.openevents.engineer", "custom_domain": true },
+  ],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://openevents.engineer,https://www.openevents.engineer,https://open-events.speakerops.workers.dev",
+    "LOCAL_DEV_MODE": "false",
+    "DEPLOY_ENVIRONMENT": "production",
+    "RESOURCE_D1_ID": "4983b9bb-cc1c-4ef0-83a6-154b19496909",
+    "RESOURCE_R2_NAME": "open-events-production-files",
+    "PUBLIC_APP_URL": "https://www.openevents.engineer",
+    // Final rollout: purpose-bound writers with time-bounded legacy readers.
+    "SUBMITTER_CAPABILITY_WRITER_MODE": "purpose",
+    "SUBMITTER_CAPABILITY_LEGACY_READER_MODE": "bounded",
+    "SUBMITTER_CAPABILITY_LEGACY_WRITER_CUTOFF": "2026-08-16T06:31:19.000Z",
+    "ORGANIZER_SESSION_TTL_MS": "7200000",
+    "SUBMITTER_SESSION_TTL_MS": "28800000",
+    "SUBMITTER_TOKEN_TTL_MS": "86400000",
+    "OPENROUTER_MODEL": "openai/gpt-5.6-luna",
+    "RATE_LIMIT_ENVIRONMENT": "production",
+    "TURNSTILE_HOSTNAMES": "openevents.engineer,www.openevents.engineer",
+    "EMAIL_DELIVERY_MODE": "resend-live",
+    "EMAIL_FROM": "Open Events <notifications@openevents.engineer>",
+    "EMAIL_PAYLOAD_KEY_VERSION": "v1",
+    "EMAIL_LIVE_VERIFIED_AT": "2026-08-16T06:15:54.000Z",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "open-events-production",
+      "database_id": "4983b9bb-cc1c-4ef0-83a6-154b19496909",
+      "migrations_dir": "./migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "open-events-production-files",
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "START_RECIPIENT_RATE_LIMITER",
+      "namespace_id": "1101",
+      "simple": { "limit": 3, "period": 60 },
+    },
+    {
+      "name": "START_SOURCE_RATE_LIMITER",
+      "namespace_id": "1102",
+      "simple": { "limit": 10, "period": 60 },
+    },
+    {
+      "name": "ADMIN_LOGIN_RATE_LIMITER",
+      "namespace_id": "1103",
+      "simple": { "limit": 5, "period": 60 },
+    },
+    {
+      "name": "TOKEN_REDEEM_SOURCE_RATE_LIMITER",
+      "namespace_id": "1104",
+      "simple": { "limit": 20, "period": 60 },
+    },
+    {
+      "name": "TOKEN_REDEEM_TOKEN_RATE_LIMITER",
+      "namespace_id": "1105",
+      "simple": { "limit": 5, "period": 60 },
+    },
+    {
+      "name": "ORGANIZER_SEND_RATE_LIMITER",
+      "namespace_id": "1106",
+      "simple": { "limit": 30, "period": 60 },
+    },
+    {
+      "name": "RESEND_WEBHOOK_RATE_LIMITER",
+      "namespace_id": "1107",
+      "simple": { "limit": 120, "period": 60 },
+    },
+  ],
+  "triggers": { "crons": ["*/2 * * * *"] },
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "env": {
+    "acceptance": {
+      "name": "open-events-acceptance",
+      "workers_dev": true,
+      "routes": [],
+      "assets": {
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": true,
+      },
+      "vars": {
+        "ALLOWED_ORIGINS": "https://open-events-acceptance.speakerops.workers.dev",
+        "LOCAL_DEV_MODE": "false",
+        "DEPLOY_ENVIRONMENT": "acceptance",
+        "RESOURCE_D1_ID": "8da9dc8c-7000-4052-b889-e7566514fe8f",
+        "RESOURCE_R2_NAME": "open-events-acceptance-files",
+        "PUBLIC_APP_URL": "https://open-events-acceptance.speakerops.workers.dev",
+        "SUBMITTER_CAPABILITY_WRITER_MODE": "purpose",
+        "SUBMITTER_CAPABILITY_LEGACY_READER_MODE": "bounded",
+        "SUBMITTER_CAPABILITY_LEGACY_WRITER_CUTOFF": "2026-08-16T06:31:19.000Z",
+        "ORGANIZER_SESSION_TTL_MS": "7200000",
+        "SUBMITTER_SESSION_TTL_MS": "28800000",
+        "SUBMITTER_TOKEN_TTL_MS": "86400000",
+        "OPENROUTER_MODEL": "openai/gpt-5.6-luna",
+        "RATE_LIMIT_ENVIRONMENT": "acceptance",
+        "TURNSTILE_HOSTNAMES": "open-events-acceptance.speakerops.workers.dev",
+        "EMAIL_DELIVERY_MODE": "capture",
+        "EMAIL_FROM": "",
+        "EMAIL_PAYLOAD_KEY_VERSION": "v1",
+        "EMAIL_LIVE_VERIFIED_AT": "",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "open-events-acceptance",
+          "database_id": "8da9dc8c-7000-4052-b889-e7566514fe8f",
+          "migrations_dir": "./migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "FILES",
+          "bucket_name": "open-events-acceptance-files",
+        },
+      ],
+      "ratelimits": [
+        {
+          "name": "START_RECIPIENT_RATE_LIMITER",
+          "namespace_id": "2101",
+          "simple": { "limit": 3, "period": 60 },
+        },
+        {
+          "name": "START_SOURCE_RATE_LIMITER",
+          "namespace_id": "2102",
+          "simple": { "limit": 10, "period": 60 },
+        },
+        {
+          "name": "ADMIN_LOGIN_RATE_LIMITER",
+          "namespace_id": "2103",
+          "simple": { "limit": 5, "period": 60 },
+        },
+        {
+          "name": "TOKEN_REDEEM_SOURCE_RATE_LIMITER",
+          "namespace_id": "2104",
+          "simple": { "limit": 20, "period": 60 },
+        },
+        {
+          "name": "TOKEN_REDEEM_TOKEN_RATE_LIMITER",
+          "namespace_id": "2105",
+          "simple": { "limit": 5, "period": 60 },
+        },
+        {
+          "name": "ORGANIZER_SEND_RATE_LIMITER",
+          "namespace_id": "2106",
+          "simple": { "limit": 30, "period": 60 },
+        },
+        {
+          "name": "RESEND_WEBHOOK_RATE_LIMITER",
+          "namespace_id": "2107",
+          "simple": { "limit": 120, "period": 60 },
+        },
+      ],
+      "triggers": { "crons": ["*/2 * * * *"] },
+      "observability": { "enabled": true, "head_sampling_rate": 1 },
+    },
+  },
+}

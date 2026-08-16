@@ -416,7 +416,10 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     const startProposal = async (title: string, email: string, withCoSpeaker: boolean) => {
       await speakerPage.goto('/start')
       await expect(
-        speakerPage.getByRole('heading', { level: 1, name: 'Access your workspace' }),
+        speakerPage.getByRole('heading', {
+          level: 1,
+          name: 'Pick up exactly where you left off.',
+        }),
       ).toBeVisible()
       await speakerPage.getByLabel('Email').fill(email)
       await speakerPage.getByRole('button', { name: 'Request a link' }).click()

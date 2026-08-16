@@ -196,7 +196,7 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     // 1. Real /start browser UI.
     await speakerPage.goto('/start')
     await expect(
-      speakerPage.getByRole('heading', { level: 1, name: 'Access your workspace' }),
+      speakerPage.getByRole('heading', { level: 1, name: 'Pick up exactly where you left off.' }),
     ).toBeVisible()
     await speakerPage.getByLabel('Email').fill(EMAIL)
     await speakerPage.getByRole('button', { name: 'Request a link' }).click()

@@ -32,6 +32,19 @@ const UNPLACED: AgendaSessionDto = {
   assignment: 'unassigned',
 }
 
+const PLACED: AgendaSessionDto = {
+  ...UNPLACED,
+  start: '2026-05-13T09:00:00.000Z',
+  end: '2026-05-13T10:00:00.000Z',
+  roomId: ROOM_MAIN.id,
+  roomLabel: ROOM_MAIN.label,
+  trackId: TRACK_TALKS.id,
+  trackLabel: TRACK_TALKS.label,
+  position: 0,
+  status: 'published',
+  assignment: 'scheduled',
+}
+
 /** A real-length conference title: 86 characters, no line to break on. */
 const LONG_TITLE =
   'Designing for the dark: a visual coherence talk across every organizer surface we ship'
@@ -124,6 +137,7 @@ describe('agenda drag board', () => {
     const scroller = container.querySelector('[data-slot="table-container"]')
     expect(scroller).toHaveClass('ring-1', 'ring-border', 'rounded-lg')
     expect(scroller).toHaveClass('focus-visible:ring-2')
+    expect(scroller).toHaveClass('max-h-[38rem]', 'overflow-y-auto')
     expect(scroller).toHaveAttribute('tabindex', '0')
     expect(scroller?.parentElement?.className ?? '').not.toContain('overflow-hidden')
     // The caption override still lands on the table, not on the new frame.
@@ -136,5 +150,52 @@ describe('agenda drag board', () => {
     expect(screen.getByLabelText('Main hall at 09:00')).toBeInTheDocument()
     expect(screen.queryByLabelText('Main hall at 08:00')).toBeNull()
     expect(screen.queryByLabelText('Workshop A at 08:00')).toBeNull()
+  })
+
+  it('keeps the calendar rails visible and gives scheduled sessions useful visual context', () => {
+    const { container } = render(
+      <AgendaDndBoard
+        board={{ ...BOARD, sessions: [PLACED] }}
+        day="2026-05-13"
+        onPlace={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('[data-slot="table-header"]')).toHaveAttribute('data-sticky')
+    expect(screen.getByRole('columnheader', { name: 'Time' })).toHaveAttribute('data-pinned')
+    expect(screen.getByRole('rowheader', { name: '09:00' })).toHaveAttribute('data-pinned')
+
+    const session = screen.getByRole('button', { name: PLACED.title })
+    expect(session).toHaveTextContent('09:00–10:00')
+    expect(session).toHaveTextContent(TRACK_TALKS.label)
+    expect(
+      screen.getByRole('button', { name: `View details for ${PLACED.title}` }),
+    ).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('opens and closes an inline session detail without leaving the board', async () => {
+    const user = userEvent.setup()
+    render(
+      <AgendaDndBoard
+        board={{ ...BOARD, sessions: [PLACED] }}
+        day="2026-05-13"
+        onPlace={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: `View details for ${PLACED.title}` }))
+
+    const details = screen.getByRole('region', { name: 'Selected session details' })
+    expect(details).toHaveTextContent(PLACED.title)
+    expect(details).toHaveTextContent('Main hall')
+    expect(details).toHaveTextContent('Published')
+    expect(
+      screen.getByRole('button', { name: `View details for ${PLACED.title}` }),
+    ).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Close details' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'Selected session details' })).toBeNull()
+    })
   })
 })

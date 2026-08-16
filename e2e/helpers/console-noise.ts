@@ -3,6 +3,7 @@ export const CONSOLE_NOISE_PATTERNS: readonly RegExp[] = [
   /^\[vite\]/,
   /Download the React DevTools/i,
   /Clerk has been loaded with development keys/i,
+  /^Failed to execute 'postMessage' on 'DOMWindow': The target origin provided \('https:\/\/challenges\.cloudflare\.com'\) does not match the recipient window's origin /,
 ]
 
 export function isConsoleNoise(text: string): boolean {

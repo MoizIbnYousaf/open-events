@@ -11,7 +11,17 @@ describe('e2e console noise filter', () => {
     ).toBe(true)
     expect(isConsoleNoise('[vite] connecting...')).toBe(true)
     expect(
+      isConsoleNoise(
+        "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://challenges.cloudflare.com') does not match the recipient window's origin ('https://open-events-acceptance.speakerops.workers.dev').",
+      ),
+    ).toBe(true)
+    expect(
       isConsoleNoise("Can't perform a React state update on a component that hasn't mounted yet."),
+    ).toBe(false)
+    expect(
+      isConsoleNoise(
+        "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://evil.example') does not match the recipient window's origin ('https://www.openevents.engineer').",
+      ),
     ).toBe(false)
   })
 })

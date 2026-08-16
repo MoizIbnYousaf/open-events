@@ -74,7 +74,7 @@ export function PublicStartPage() {
         <img
           src="/images/open-events-stage.png"
           alt="Conference speaker presenting on stage to a live audience"
-          className="absolute inset-0 h-full w-full object-cover object-[38%_center]"
+          className="absolute inset-0 h-full w-full object-cover object-[28%_center]"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/10" />
         <div className="relative grid gap-7">

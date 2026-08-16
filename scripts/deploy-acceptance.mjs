@@ -88,6 +88,29 @@ function run(command, args, options = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
+function releaseRevision(root) {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' })
+  const revision = result.stdout?.trim() ?? ''
+  if (result.status !== 0 || !/^[0-9a-f]{40}$/.test(revision)) {
+    throw new Error('could not resolve the exact Git revision for the acceptance release')
+  }
+  return revision
+}
+
+export function acceptanceDeployArgs(revision, deploy) {
+  if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error('invalid acceptance build revision')
+  return [
+    'deploy',
+    '--env',
+    'acceptance',
+    '--var',
+    `BUILD_REVISION:${revision}`,
+    '--message',
+    `Release ${revision.slice(0, 12)}`,
+    ...(deploy ? [] : ['--dry-run']),
+  ]
+}
+
 const isMain =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 
@@ -97,6 +120,7 @@ if (isMain) {
     throw new Error('unknown acceptance deployment option')
   }
   const root = resolve(import.meta.dirname, '..')
+  const revision = releaseRevision(root)
   // A Playwright hard stop can leave the wrapper-owned file behind; recover
   // its snapshot first. Any genuine developer file then blocks the release.
   restoreDevVars(root)
@@ -112,9 +136,5 @@ if (isMain) {
   )
   const receipt = validateBuiltAcceptanceConfig(builtConfig)
   console.log(`acceptance deploy preflight passed for ${receipt.worker}`)
-  run(
-    'pnpm',
-    ['exec', 'wrangler', 'deploy', '--env', 'acceptance', ...(deploy ? [] : ['--dry-run'])],
-    { cwd: root },
-  )
+  run('pnpm', ['exec', 'wrangler', ...acceptanceDeployArgs(revision, deploy)], { cwd: root })
 }

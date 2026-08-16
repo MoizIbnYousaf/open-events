@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 
 import {
   acceptanceBuildEnv,
+  acceptanceDeployArgs,
   assertNoBuiltDevVars,
   assertNoLocalDevVars,
   validateBuiltAcceptanceConfig,
@@ -35,6 +36,21 @@ function valid() {
 }
 
 describe('acceptance deploy artifact preflight', () => {
+  it('stamps the exact release revision into Wrangler', () => {
+    const revision = '44726e558b6bdc827ce4ae2f86caa8a4c7b3f1a5'
+    expect(acceptanceDeployArgs(revision, true)).toEqual([
+      'deploy',
+      '--env',
+      'acceptance',
+      '--var',
+      `BUILD_REVISION:${revision}`,
+      '--message',
+      'Release 44726e558b6b',
+    ])
+    expect(acceptanceDeployArgs(revision, false)).toContain('--dry-run')
+    expect(() => acceptanceDeployArgs('stale', true)).toThrow('invalid acceptance build revision')
+  })
+
   it('pins the acceptance build to Cloudflare test Turnstile without inheriting production', () => {
     expect(
       acceptanceBuildEnv({

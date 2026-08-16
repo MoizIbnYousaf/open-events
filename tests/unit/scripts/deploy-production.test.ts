@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   productionBuildEnv,
+  productionDeployArgs,
   validateBuiltProductionConfig,
 } from '../../../scripts/deploy-production.mjs'
 
@@ -27,6 +28,20 @@ function valid() {
 }
 
 describe('production deploy artifact preflight', () => {
+  it('stamps the exact release revision into Wrangler', () => {
+    const revision = '44726e558b6bdc827ce4ae2f86caa8a4c7b3f1a5'
+    expect(productionDeployArgs(revision, true)).toEqual([
+      'deploy',
+      '--env=',
+      '--var',
+      `BUILD_REVISION:${revision}`,
+      '--message',
+      'Release 44726e558b6b',
+    ])
+    expect(productionDeployArgs(revision, false)).toContain('--dry-run')
+    expect(() => productionDeployArgs('stale', true)).toThrow('invalid production build revision')
+  })
+
   it('pins the public Turnstile site key and cannot inherit acceptance routing', () => {
     expect(
       productionBuildEnv({

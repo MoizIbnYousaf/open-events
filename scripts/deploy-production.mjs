@@ -76,6 +76,28 @@ function run(command, args, options = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
+function releaseRevision(root) {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' })
+  const revision = result.stdout?.trim() ?? ''
+  if (result.status !== 0 || !/^[0-9a-f]{40}$/.test(revision)) {
+    throw new Error('could not resolve the exact Git revision for the production release')
+  }
+  return revision
+}
+
+export function productionDeployArgs(revision, deploy) {
+  if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error('invalid production build revision')
+  return [
+    'deploy',
+    '--env=',
+    '--var',
+    `BUILD_REVISION:${revision}`,
+    '--message',
+    `Release ${revision.slice(0, 12)}`,
+    ...(deploy ? [] : ['--dry-run']),
+  ]
+}
+
 const isMain =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 
@@ -85,6 +107,7 @@ if (isMain) {
     throw new Error('unknown production deployment option')
   }
   const root = resolve(import.meta.dirname, '..')
+  const revision = releaseRevision(root)
   assertNoDevVars(root)
   run('pnpm', ['clean'], { cwd: root })
   run('pnpm', ['build'], { cwd: root, env: productionBuildEnv() })
@@ -93,7 +116,5 @@ if (isMain) {
   )
   const receipt = validateBuiltProductionConfig(builtConfig)
   console.log(`production deploy preflight passed for ${receipt.worker}`)
-  run('pnpm', ['exec', 'wrangler', 'deploy', '--env=', ...(deploy ? [] : ['--dry-run'])], {
-    cwd: root,
-  })
+  run('pnpm', ['exec', 'wrangler', ...productionDeployArgs(revision, deploy)], { cwd: root })
 }

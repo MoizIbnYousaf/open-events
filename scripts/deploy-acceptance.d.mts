@@ -11,3 +11,4 @@ export function acceptanceBuildEnv(
 ): Record<string, string | undefined>
 export function assertNoLocalDevVars(root: string): void
 export function assertNoBuiltDevVars(root: string): void
+export function acceptanceDeployArgs(revision: string, deploy: boolean): string[]

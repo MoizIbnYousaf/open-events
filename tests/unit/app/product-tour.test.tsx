@@ -295,7 +295,7 @@ describe('product tour', () => {
     await screen.findByRole('dialog')
     await user.click(screen.getByRole('button', { name: /^next$/i }))
     await user.click(screen.getByRole('button', { name: /^next$/i }))
-    expect(screen.getByRole('dialog')).toHaveAccessibleName(/event settings/i)
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(/event overview/i)
 
     await user.click(screen.getByRole('button', { name: /pause tour/i }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -305,7 +305,7 @@ describe('product tour', () => {
     })
 
     toggleTour()
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/event settings/i)
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/event overview/i)
     expect(screen.getByRole('status')).toHaveTextContent(`Step 3 of ${STEP_COUNT}`)
     expect(JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? '{}')).toMatchObject({
       stepId: 'event-settings',
@@ -497,10 +497,10 @@ describe('product tour', () => {
 
       // Signing in makes the rail render. The hold is not a dead end: the tour
       // picks the step back up by itself.
-      const rail = mountTourTarget('rail-event-settings')
+      const rail = mountTourTarget('event-overview')
       try {
         await waitFor(
-          () => expect(screen.getByRole('dialog')).toHaveAccessibleName(/event settings/i),
+          () => expect(screen.getByRole('dialog')).toHaveAccessibleName(/event overview/i),
           { timeout: GATE_TIMEOUT },
         )
         expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument()
@@ -527,7 +527,7 @@ describe('product tour', () => {
         await user.click(screen.getByRole('button', { name: /^next$/i }))
 
         await new Promise((resolve) => setTimeout(resolve, TARGET_POLL_MS + HOLD_RECHECK_MS * 3))
-        expect(screen.getByRole('dialog')).toHaveAccessibleName(/event settings/i)
+        expect(screen.getByRole('dialog')).toHaveAccessibleName(/event overview/i)
 
         // The query settles into a denied state: the skeleton goes, no rail
         // arrives, and only now is that an answer.

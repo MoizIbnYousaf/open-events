@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -172,6 +172,27 @@ describe('event config screen', () => {
     expect(screen.getByLabelText('Timezone')).toHaveValue('Europe/Berlin')
     expect(screen.getByLabelText('Website')).toHaveValue('https://example.test/demo-conf-2026')
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+  })
+
+  it('opens with a compact event overview and direct paths into the programme desks', async () => {
+    await mountConfig()
+
+    const overview = await screen.findByRole('region', { name: 'Event overview' })
+    expect(overview).toHaveTextContent('Draft')
+    expect(overview).toHaveTextContent('1 published form')
+    expect(overview).toHaveTextContent('Call for papers')
+    expect(within(overview).getByRole('link', { name: 'Review submissions' })).toHaveAttribute(
+      'href',
+      '/admin/events/demo-conf-2026/submissions',
+    )
+    expect(within(overview).getByRole('link', { name: 'Track speaker readiness' })).toHaveAttribute(
+      'href',
+      '/admin/events/demo-conf-2026/readiness',
+    )
+    expect(within(overview).getByRole('link', { name: 'Build the agenda' })).toHaveAttribute(
+      'href',
+      '/admin/events/demo-conf-2026/agenda',
+    )
   })
 
   // TA6-S2: two levels of structure need two spacing signals. At 12px between

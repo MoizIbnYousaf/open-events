@@ -638,7 +638,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     enterStage('portal onboarding')
     await speakerPage.goto('/portal')
     await expect(
-      speakerPage.getByRole('heading', { level: 1, name: 'Your submissions' }),
+      speakerPage.getByRole('heading', { level: 1, name: 'Speaker portal' }),
     ).toBeVisible()
     await expect(
       speakerPage.getByText('Requires a saved bio in “Your profile” below.'),

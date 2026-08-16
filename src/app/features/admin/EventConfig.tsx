@@ -188,6 +188,7 @@ function EventConfigScreen() {
         <EventConfigForm
           key={configQuery.data.id}
           dto={configQuery.data}
+          forms={formsQuery.data ?? []}
           save={save}
           navigateToLogin={() => void navigate({ to: '/admin' })}
         />
@@ -582,6 +583,7 @@ function ManageLinks({ slug }: { readonly slug: string }) {
 
 interface EventConfigFormProps {
   readonly dto: AdminEventConfigDto
+  readonly forms: readonly FormSummaryDto[]
   readonly save: ReturnType<typeof useUpdateEventConfig>
   readonly navigateToLogin: () => void
 }
@@ -591,7 +593,7 @@ type SaveState =
   | { readonly kind: 'denied' }
   | { readonly kind: 'error'; readonly message: string }
 
-function EventConfigForm({ dto, save, navigateToLogin }: EventConfigFormProps) {
+function EventConfigForm({ dto, forms, save, navigateToLogin }: EventConfigFormProps) {
   const {
     register,
     control,
@@ -695,6 +697,7 @@ function EventConfigForm({ dto, save, navigateToLogin }: EventConfigFormProps) {
         </PageHeaderActions>
       </PageHeader>
       {summaryMessage !== null ? <AlertLive>{summaryMessage}</AlertLive> : null}
+      <EventOverview dto={dto} forms={forms} />
       <Card>
         <CardHeader>
           <SectionTitle>Details</SectionTitle>
@@ -814,6 +817,81 @@ function EventConfigForm({ dto, save, navigateToLogin }: EventConfigFormProps) {
       </Card>
     </form>
   )
+}
+
+function EventOverview({
+  dto,
+  forms,
+}: {
+  readonly dto: AdminEventConfigDto
+  readonly forms: readonly FormSummaryDto[]
+}) {
+  const publishedForms = forms.filter((form) => form.publishedVersionId !== null)
+  const primaryForm = publishedForms[0]
+  const [now] = useState(() => Date.now())
+  const cfpState =
+    primaryForm === undefined
+      ? 'No published form'
+      : primaryForm.opensAt !== null && new Date(primaryForm.opensAt).getTime() > now
+        ? 'Scheduled'
+        : primaryForm.closesAt !== null && new Date(primaryForm.closesAt).getTime() < now
+          ? 'Closed'
+          : 'Open now'
+  const formCount = `${publishedForms.length} published form${publishedForms.length === 1 ? '' : 's'}`
+
+  return (
+    <section
+      role="region"
+      aria-label="Event overview"
+      data-tour="event-overview"
+      className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:p-4"
+    >
+      <div className="grid gap-2 sm:grid-cols-3">
+        <OverviewFact label="Event status" value={capitalize(dto.status)} />
+        <OverviewFact label="Submission forms" value={formCount} />
+        <OverviewFact label="Call for papers" value={cfpState} />
+      </div>
+      <nav aria-label="Event workflow" className="grid gap-2 sm:grid-cols-3">
+        <OverviewLink slug={dto.slug} path="submissions" label="Review submissions" />
+        <OverviewLink slug={dto.slug} path="readiness" label="Track speaker readiness" />
+        <OverviewLink slug={dto.slug} path="agenda" label="Build the agenda" />
+      </nav>
+    </section>
+  )
+}
+
+function OverviewFact({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div className="grid gap-0.5 rounded-md border bg-background px-3 py-2.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium">{value}</span>
+    </div>
+  )
+}
+
+function OverviewLink({
+  slug,
+  path,
+  label,
+}: {
+  readonly slug: EventSlug
+  readonly path: 'submissions' | 'readiness' | 'agenda'
+  readonly label: string
+}) {
+  return (
+    <Link
+      to={`/admin/events/$slug/${path}`}
+      params={{ slug }}
+      className="flex min-h-10 items-center justify-between rounded-md border bg-background px-3 text-sm font-medium text-link outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {label}
+      <span aria-hidden="true">&#8594;</span>
+    </Link>
+  )
+}
+
+function capitalize(value: string): string {
+  return value.length === 0 ? value : `${value[0]?.toUpperCase()}${value.slice(1)}`
 }
 
 function buildPatch(

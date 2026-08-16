@@ -18,6 +18,7 @@ const SUBMISSIONS = {
       id: 'submission-1',
       title: 'A talk about integration',
       status: 'pending',
+      decision: 'accepted',
       accepted: true,
       inviteAvailable: true,
       formSlug: 'cfp',
@@ -103,13 +104,35 @@ describe('portal composition', () => {
     expect(screen.queryByText('Unable to load your tasks.')).not.toBeInTheDocument()
   })
 
+  it('presents the portal as a navigable workspace with a useful overview', async () => {
+    mountPortal()
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Speaker portal' }),
+    ).toBeInTheDocument()
+    const overview = await screen.findByRole('region', { name: 'Portal overview' })
+    expect(overview).toHaveTextContent('1 proposal')
+    expect(overview).toHaveTextContent('1 accepted')
+
+    const navigation = screen.getByRole('navigation', { name: 'Speaker portal sections' })
+    expect(navigation).toBeInTheDocument()
+    expect(navigation).toHaveTextContent('Proposals')
+    expect(navigation).toHaveTextContent('Tasks')
+    expect(navigation).toHaveTextContent('Profile')
+    expect(navigation).toHaveTextContent('Files')
+    expect(screen.getByText('A talk about integration').closest('section')).toHaveAttribute(
+      'id',
+      'portal-proposals',
+    )
+  })
+
   it('keeps a single page-owned h1 across every composed section', async () => {
     mountPortal()
 
     await screen.findByText('Submit your speaker bio')
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
-    expect(headings[0]).toHaveTextContent('Your submissions')
+    expect(headings[0]).toHaveTextContent('Speaker portal')
   })
 
   // V7-M2 / V7-N4, unpinned until now (RV3 NEW-3). A speaker who has just

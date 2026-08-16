@@ -40,11 +40,11 @@ interface PortalPageProps {
   readonly onUnauthenticated: () => void
 }
 
-const HEADING = 'Your submissions'
+const HEADING = 'Speaker portal'
 const SUBHEADING = 'Your proposals, your onboarding tasks and the profile organizers see.'
 
 /** The measure the whole speaker journey reads at. */
-const COLUMN = 'mx-auto grid w-full max-w-[47rem] gap-5'
+const COLUMN = 'mx-auto grid w-full max-w-[64rem] gap-5'
 
 /**
  * REQ-006 speaker portal: the signed-in speaker's own submissions. The page
@@ -57,7 +57,7 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
   const unauthenticated = data === null
 
   useEffect(() => {
-    document.title = 'Your submissions — Open Events'
+    document.title = 'Speaker portal — Open Events'
   }, [])
 
   useEffect(() => {
@@ -127,41 +127,102 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
   return (
     <div className={COLUMN} data-tour="speaker-portal">
       <Header />
-      {data.length === 0 ? (
-        <EmptyState
-          icon={<DocumentStackIcon size={20} />}
-          title="Submit your first proposal"
-          description="No submissions yet. Proposals you submit appear here; any onboarding tasks assigned to you are listed below."
-        />
-      ) : (
-        <Card>
-          <ul aria-label={HEADING} className="divide-y divide-border">
-            {data.map((submission) => (
-              <li
-                key={submission.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5"
-              >
-                <div className="grid min-w-0 flex-1 gap-0.5">
-                  <span className="truncate text-sm font-medium">{submission.title}</span>
-                  <InviteLink submission={submission} />
-                </div>
-                <ProposalDisclosure submission={submission} onUnauthenticated={onUnauthenticated} />
-                {/* Where a proposal stands is a lifecycle state, so the chip
-                    carries the marker that says so — the one channel that
-                    still separates a state from a plain value once colour has
-                    been spent on a single accent. */}
-                <DecisionBadge decision={resolveDecision(submission)} />
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-      <TasksPanel />
-      <AssignmentsPanel />
-      <ProfileEditor />
-      <HeadshotUploader />
-      <DocumentUploader />
+      <PortalOverview submissions={data} />
+      <PortalSections />
+      <section id="portal-proposals" className="scroll-mt-24">
+        {data.length === 0 ? (
+          <EmptyState
+            icon={<DocumentStackIcon size={20} />}
+            title="Submit your first proposal"
+            description="No submissions yet. Proposals you submit appear here; any onboarding tasks assigned to you are listed below."
+          />
+        ) : (
+          <Card>
+            <ul aria-label="Your submissions" className="divide-y divide-border">
+              {data.map((submission) => (
+                <li
+                  key={submission.id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5"
+                >
+                  <div className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="truncate text-sm font-medium">{submission.title}</span>
+                    <InviteLink submission={submission} />
+                  </div>
+                  <ProposalDisclosure
+                    submission={submission}
+                    onUnauthenticated={onUnauthenticated}
+                  />
+                  <DecisionBadge decision={resolveDecision(submission)} />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </section>
+      <div id="portal-tasks" className="grid scroll-mt-24 gap-5 lg:grid-cols-2">
+        <TasksPanel />
+        <AssignmentsPanel />
+      </div>
+      <div id="portal-profile" className="scroll-mt-24">
+        <ProfileEditor />
+      </div>
+      <div id="portal-files" className="grid scroll-mt-24 gap-5 lg:grid-cols-2">
+        <HeadshotUploader />
+        <DocumentUploader />
+      </div>
     </div>
+  )
+}
+
+function PortalOverview({ submissions }: { readonly submissions: readonly PortalSubmission[] }) {
+  const accepted = submissions.filter((submission) => resolveDecision(submission) === 'accepted')
+  return (
+    <section role="region" aria-label="Portal overview" className="grid gap-2 sm:grid-cols-3">
+      <PortalFact
+        label="Proposals"
+        value={`${submissions.length} proposal${submissions.length === 1 ? '' : 's'}`}
+      />
+      <PortalFact label="Accepted" value={`${accepted.length} accepted`} />
+      <PortalFact
+        label="Next up"
+        value={accepted.length > 0 ? 'Onboarding is ready' : 'Awaiting a programme decision'}
+      />
+    </section>
+  )
+}
+
+function PortalFact({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <Card>
+      <CardContent className="grid gap-0.5 py-3">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-sm font-medium">{value}</span>
+      </CardContent>
+    </Card>
+  )
+}
+
+function PortalSections() {
+  return (
+    <nav
+      aria-label="Speaker portal sections"
+      className="flex flex-wrap gap-1 rounded-lg border bg-muted/20 p-1"
+    >
+      {[
+        ['Proposals', '#portal-proposals'],
+        ['Tasks', '#portal-tasks'],
+        ['Profile', '#portal-profile'],
+        ['Files', '#portal-files'],
+      ].map(([label, href]) => (
+        <a
+          key={href}
+          href={href}
+          className="inline-flex min-h-9 items-center rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {label}
+        </a>
+      ))}
+    </nav>
   )
 }
 

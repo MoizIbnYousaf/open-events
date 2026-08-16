@@ -161,7 +161,7 @@ describe('speaker portal', () => {
   it('keeps the loading state heading-owned with a polite status, cleared after ready', async () => {
     fetchHandler = () => new Promise<Response>(() => undefined)
     renderPage()
-    expect(screen.getByRole('heading', { level: 1, name: /your submissions/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /speaker portal/i })).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i)
   })
 
@@ -181,7 +181,7 @@ describe('speaker portal', () => {
     }
     renderPage()
     expect(await screen.findByText(/no submissions yet/i)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1, name: /your submissions/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /speaker portal/i })).toBeInTheDocument()
   })
 
   it('renders one accessible row per submission with title and current status', async () => {

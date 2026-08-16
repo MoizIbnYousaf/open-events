@@ -180,7 +180,10 @@ describe('public form routes', () => {
     const user = userEvent.setup()
     renderPage(<PublicStartPage />)
 
-    expect(await screen.findByText('Start')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Access your workspace' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Speaker access' })).toBeInTheDocument()
     expect(screen.getByText('Request a link to begin your proposal.')).toBeInTheDocument()
     const email = screen.getByLabelText(/email/i)
     expect(email).toBeInTheDocument()
@@ -260,7 +263,9 @@ describe('public form routes', () => {
       </QueryClientProvider>,
     )
 
-    expect(await screen.findByText('Start')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Access your workspace' }),
+    ).toBeInTheDocument()
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(PublicStartRoute).not.toBe(PublicCfpRoute)
 

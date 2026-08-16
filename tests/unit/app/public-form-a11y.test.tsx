@@ -172,12 +172,12 @@ describe('public form accessibility', () => {
     expect(main).toHaveAttribute('tabindex', '-1')
   })
 
-  it('renders exactly one page h1 on the start surface (Start becomes the h1)', () => {
+  it('renders exactly one page h1 on the standalone speaker access form', () => {
     renderInProvider(<StartForm eventSlug={EVENT_SLUG} formSlug={FORM_SLUG} />)
 
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
-    expect(headings[0]).toHaveTextContent('Start')
+    expect(headings[0]).toHaveTextContent('Speaker access')
     expect(headings[0]).not.toHaveTextContent('Open Events')
   })
 

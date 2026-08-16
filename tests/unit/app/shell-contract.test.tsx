@@ -214,8 +214,11 @@ describe('root shell', () => {
     expect(wayOut).toHaveAttribute('href', '/')
     expect(wayOut.className).toContain('bg-primary')
     expect(screen.queryByRole('button', { name: 'Go to the start' })).toBeNull()
-    // Two: the site header's, and the card's own audience-specific way out.
-    expect(screen.getAllByRole('link', { name: 'Organizer sign-in' })).toHaveLength(2)
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/start')
+    expect(screen.getByRole('link', { name: 'Organizer sign-in' })).toHaveAttribute(
+      'href',
+      '/admin',
+    )
     // …and the console is clean while it does it. This surface used to render
     // its way out as an anchor THROUGH the Button primitive, and Base UI
     // assumes a native <button> unless told otherwise, so the judged 404
@@ -263,7 +266,7 @@ describe('root shell', () => {
     // C0 §2 gives chrome two sizes. TextLink sets none, and neither does the
     // toolbar row, so this link inherited 16px and was the only 16px text in
     // the product — in the 56px strip every single page shows.
-    const [siteLink] = screen.getAllByRole('link', { name: 'Organizer sign-in' })
+    const siteLink = screen.getByRole('link', { name: 'Sign in' })
     expect(siteLink?.className).toContain('text-sm')
   })
 

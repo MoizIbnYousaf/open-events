@@ -27,7 +27,7 @@ test('a cold visitor completes every guided-tour step without credentials or den
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'Tour', exact: true }).click()
+  await page.getByRole('button', { name: 'Take the tour', exact: true }).click()
   const dialog = page.getByRole('dialog')
 
   for (const [index, step] of TOUR_STEPS.entries()) {
@@ -80,7 +80,7 @@ test('a cold visitor completes every guided-tour step without credentials or den
 
 test('a visitor can pause, leave, and resume the exact tour step', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Tour', exact: true }).click()
+  await page.getByRole('button', { name: 'Take the tour', exact: true }).click()
   const dialog = page.getByRole('dialog')
 
   await dialog.getByRole('button', { name: 'Next', exact: true }).click()

@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, useRouterState } from '@tanstack/react-router'
 
 import { ShaderWash, washKindForPath } from '../../components/ui/shader-wash'
+import { cn } from '../../lib/utils'
 import SpeakerNav from '../features/public/SpeakerNav'
 
 import type {} from '../routeTree.gen'
@@ -27,7 +28,12 @@ function PublicShell() {
     // between the portal, the call for papers and the schedule.
     <div className="relative">
       {wash !== null ? <ShaderWash kind={wash} /> : null}
-      <div className="relative mx-auto w-full max-w-3xl px-4 py-4 md:py-6 lg:px-6 lg:py-8">
+      <div
+        className={cn(
+          'relative mx-auto w-full px-4 py-4 md:py-6 lg:px-6 lg:py-8',
+          pathname === '/start' ? 'max-w-6xl' : 'max-w-3xl',
+        )}
+      >
         <div className="grid min-w-0 gap-4 md:gap-6">
           <SpeakerNav />
           <Outlet />

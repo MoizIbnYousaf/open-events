@@ -28,7 +28,7 @@ import { PublicStartPage } from '../../../src/app/features/public/PublicStartPag
 
 /** `max-w-[30rem] px-4` and `max-w-md` both land the card itself at 28rem. */
 const ADMIN_MEASURE = 'max-w-[30rem]'
-const START_MEASURE = 'max-w-md'
+const START_MEASURE = 'max-w-6xl'
 
 afterEach(cleanup)
 
@@ -79,12 +79,13 @@ describe('the two doors', () => {
     expect(classes).toContain('px-4')
   })
 
-  it('lays the speaker door out at the same measure', () => {
+  it('gives unified access room for role guidance and the email form', () => {
     renderSpeakerDoor()
 
-    const card = screen.getByText('Start').closest('[data-slot="card"]')
+    const card = screen.getByText('Speaker access').closest('[data-slot="card"]')
     expect(card).not.toBeNull()
     expect(columnClasses(card)).toContain(START_MEASURE)
+    expect(columnClasses(card)).toContain('lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.82fr)]')
   })
 
   it('gives both doors one full-width primary action', async () => {
@@ -96,15 +97,11 @@ describe('the two doors', () => {
     expect(screen.getByRole('button', { name: 'Request a link' })).toHaveClass('w-full')
   })
 
-  it('titles both doors with the same primitive at the same size', async () => {
-    renderAdminDoor()
-    const organizerTitle = await screen.findByText('Admin sign in')
-    const organizerClasses = organizerTitle.className
-    cleanup()
-
+  it('uses one page heading and one subordinate speaker heading', () => {
     renderSpeakerDoor()
-    // One door's hand-written h1 used to be 16px/500 against the other's
-    // 20px/600, so the two entrances wore two different grammars.
-    expect(screen.getByText('Start').className).toBe(organizerClasses)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Access your workspace' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Speaker access' })).toBeInTheDocument()
   })
 })

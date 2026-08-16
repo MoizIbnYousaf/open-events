@@ -24,9 +24,10 @@ type StartValues = z.infer<typeof startSchema>
 interface StartFormProps {
   readonly eventSlug: string
   readonly formSlug: string
+  readonly embedded?: boolean
 }
 
-export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
+export default function StartForm({ eventSlug, formSlug, embedded = false }: StartFormProps) {
   const {
     register,
     handleSubmit,
@@ -112,18 +113,24 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
   // this is the single node that speaks.
   const summary = errorMessage ?? errors.email?.message ?? null
 
-  return (
-    <Card className="py-4" data-tour="start-page">
-      <CardHeader>
+  const content = (
+    <>
+      <CardHeader className={embedded ? 'px-0' : undefined}>
         {/* The organizer door (`/admin`) and this one are meant to read as
             one family, and a comment over there says so. They did not: that
             card's title was a `PageHeaderTitle` at 20px/600 and this one was a
             hand-written h1 at 16px/500. Same primitive, same size, one door
             grammar. */}
-        <PageHeaderTitle>Start</PageHeaderTitle>
+        {embedded ? (
+          <h2 className="font-heading text-2xl leading-tight font-semibold text-foreground">
+            Speaker access
+          </h2>
+        ) : (
+          <PageHeaderTitle>Speaker access</PageHeaderTitle>
+        )}
         <CardDescription>Request a link to begin your proposal.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4">
+      <CardContent className={`grid gap-4 ${embedded ? 'px-0' : ''}`}>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
           <Field invalid={errors.email !== undefined}>
             <FieldLabel htmlFor="start-email">Email</FieldLabel>
@@ -187,6 +194,20 @@ export default function StartForm({ eventSlug, formSlug }: StartFormProps) {
           </div>
         </form>
       </CardContent>
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <div className="grid gap-5" data-tour="start-page">
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <Card className="py-4" data-tour="start-page">
+      {content}
     </Card>
   )
 }

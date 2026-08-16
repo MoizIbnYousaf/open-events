@@ -238,15 +238,12 @@ describe('rendered navigation', () => {
     )
   })
 
-  it('offers the organizer sign-in from the site shell without adding a heading', async () => {
+  it('offers unified sign-in from the site shell without adding a heading', async () => {
     mountAt('/')
 
     const siteNav = await screen.findByRole('navigation', { name: 'Site' })
     expect(siteNav).toHaveClass('flex', 'items-center')
-    expect(within(siteNav).getByRole('link', { name: 'Organizer sign-in' })).toHaveAttribute(
-      'href',
-      '/admin',
-    )
+    expect(within(siteNav).getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/start')
     expect(within(siteNav).getByRole('link', { name: 'Open Events on GitHub' })).toHaveAttribute(
       'href',
       'https://github.com/MoizIbnYousaf/open-events',
@@ -294,13 +291,13 @@ describe('rendered navigation', () => {
     expect(screen.queryByRole('link', { name: 'Evaluations' })).toBeNull()
   })
 
-  it('never marks the organizer sign-in link as the current page inside /admin', async () => {
+  it('never marks the public sign-in link as the current page inside /admin', async () => {
     mountAt(`/admin/events/${EVENT_SLUG}/submissions`)
 
     const siteNav = await screen.findByRole('navigation', { name: 'Site' })
     // Link matches by path prefix by default, so /admin would otherwise claim
     // to be the current page on every organizer screen.
-    expect(within(siteNav).getByRole('link', { name: 'Organizer sign-in' })).not.toHaveAttribute(
+    expect(within(siteNav).getByRole('link', { name: 'Sign in' })).not.toHaveAttribute(
       'aria-current',
     )
     const current = Array.from(document.querySelectorAll('[aria-current="page"]')).map(

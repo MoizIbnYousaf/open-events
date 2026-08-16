@@ -12,8 +12,9 @@ import { linkVariants } from '../../../components/ui/link-variants'
 import { PageHeader, PageHeaderContent, PageHeaderTitle } from '../../../components/ui/page-header'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
-import { DEFAULT_EVENT_SLUG, DEFAULT_FORM_SLUG } from '../../lib/default-event'
+import { DEFAULT_EVENT_SLUG } from '../../lib/default-event'
 import { useLandingEvent } from '../../queries/public-event'
+import { requestTourToggle } from '../tour/tour-events'
 import SpeakerNav from './SpeakerNav'
 
 const STATUS_LABELS: Record<EventDto['status'], string> = {
@@ -108,13 +109,13 @@ function RoleCards() {
         </span>
       </Link>
       <Link
-        to="/portal"
+        to="/start"
         className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="text-[11px] font-medium tracking-[0.06em] text-link">SPEAKER</span>
-        <span className="text-base font-semibold text-foreground">One next task</span>
+        <span className="text-base font-semibold text-foreground">Email access</span>
         <span className="text-[13px] leading-5 text-muted-foreground">
-          Upload a headshot. Confirm travel. Done.
+          Start a proposal or recover your speaker link.
         </span>
       </Link>
     </div>
@@ -142,23 +143,17 @@ function StepStrip() {
 
 function FrontActions() {
   return (
-    <div className="flex flex-wrap items-center gap-2.5 px-5 pb-6 sm:px-10">
-      <Link
-        to="/cfp/$eventSlug/$formSlug"
-        params={{ eventSlug: DEFAULT_EVENT_SLUG, formSlug: DEFAULT_FORM_SLUG }}
-        className={buttonVariants()}
-      >
-        Submit a talk
-      </Link>
+    <div className="flex flex-wrap items-center gap-2.5 px-5 pb-7 sm:px-10">
+      <Button onClick={requestTourToggle}>Take the tour</Button>
       <Link
         to="/schedule/$eventSlug"
         params={{ eventSlug: DEFAULT_EVENT_SLUG }}
         className={buttonVariants({ variant: 'outline' })}
       >
-        See the programme
+        Open DemoConf 2026
       </Link>
-      <Link to="/start" className={`text-xs text-muted-foreground ${linkVariants()}`}>
-        Starting a proposal? Request your CFP link
+      <Link to="/start" className={`text-sm text-muted-foreground ${linkVariants()}`}>
+        Sign in
       </Link>
     </div>
   )
@@ -168,13 +163,11 @@ function FrontFrame({ children }: { readonly children: ReactNode }) {
   return (
     <div className="relative flex flex-col">
       {children}
-      <RoleCards />
-      <div className="h-7" />
+      <FrontActions />
       <StepStrip />
-      <div className="pt-4">
-        <FrontActions />
-      </div>
-      <div className="px-5 pb-8 sm:px-10">
+      <div className="h-7" />
+      <RoleCards />
+      <div className="px-5 pt-5 pb-8 sm:px-10">
         <SpeakerNav />
       </div>
     </div>
@@ -255,18 +248,21 @@ export default function LandingEventState() {
   const event = eventQuery.data
   return (
     <FrontFrame>
-      <div className="flex max-w-[880px] flex-col gap-4 px-5 pt-12 pb-7 sm:px-10">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs font-medium tracking-[0.06em] text-link">{heroEyebrow(event)}</p>
+      <div className="flex max-w-[980px] flex-col gap-5 px-5 pt-14 pb-7 sm:px-10 sm:pt-20 sm:pb-9">
+        <h1 className={`${HERO_TITLE_CLASS} sm:max-w-[980px] sm:text-[64px] sm:leading-[68px]`}>
+          Run the whole programme in one place.
+        </h1>
+        <p className="max-w-[880px] text-base leading-[26px] text-muted-foreground">
+          Call for papers, review, speaker onboarding, and the published agenda.
+        </p>
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <span className="text-xs font-medium tracking-[0.06em] text-link">
+            {heroEyebrow(event)}
+          </span>
           <Badge dot variant={STATUS_VARIANTS[event.status]}>
             {STATUS_LABELS[event.status]}
           </Badge>
         </div>
-        <h1 className={HERO_TITLE_CLASS}>Run the whole programme in one place.</h1>
-        <p className="max-w-[880px] text-base leading-[26px] text-muted-foreground">
-          Call for papers, review, speaker onboarding, and the published agenda. CFP authors can
-          request a proposal link; organizers issue private links for speakers and reviewers.
-        </p>
       </div>
     </FrontFrame>
   )

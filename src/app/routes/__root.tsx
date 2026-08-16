@@ -152,7 +152,7 @@ function Root() {
             {/* The tour's one visible door: it toggles the overlay and never
                 auto-opens, so a control in the header is what makes it real. */}
             <Button variant="ghost" size="sm" aria-haspopup="dialog" onClick={requestTourToggle}>
-              {hasPausedTour ? 'Resume tour' : 'Tour'}
+              {hasPausedTour ? 'Resume tour' : 'Take the tour'}
             </Button>
             <nav aria-label="Site" className="flex items-center gap-1">
               {/* activeOptions.exact is load-bearing: Link matches by path
@@ -160,11 +160,11 @@ function Root() {
                     without it this link claims to be the current page on every
                     /admin/* organizer screen. */}
               <Link
-                to="/admin"
+                to="/start"
                 activeOptions={{ exact: true }}
                 className={linkVariants({ hit: true, className: SITE_LINK_CLASS })}
               >
-                Organizer sign-in
+                Sign in
               </Link>
               <a
                 href="https://github.com/MoizIbnYousaf/open-events"

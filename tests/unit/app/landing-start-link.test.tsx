@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -78,11 +78,13 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('landing page CFP start link', () => {
-  it('routes "Request your CFP link" to /start', async () => {
+describe('landing page access link', () => {
+  it('routes "Sign in" to the unified access page', async () => {
     await mountLanding()
 
-    const startLink = await screen.findByRole('link', { name: /request your cfp link/i })
+    const startLink = within(await screen.findByRole('main')).getByRole('link', {
+      name: 'Sign in',
+    })
     expect(startLink).toHaveAttribute('href', '/start')
   })
 
@@ -99,7 +101,7 @@ describe('landing page CFP start link', () => {
       'aria-busy',
       'true',
     )
-    expect(screen.getByRole('link', { name: /request your cfp link/i })).toHaveAttribute(
+    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Sign in' })).toHaveAttribute(
       'href',
       '/start',
     )
@@ -134,7 +136,7 @@ describe('landing page CFP start link', () => {
     await mountLanding()
 
     await screen.findByRole('heading', { level: 1, name: 'Event not found' })
-    expect(screen.getByRole('link', { name: /request your cfp link/i })).toHaveAttribute(
+    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Sign in' })).toHaveAttribute(
       'href',
       '/start',
     )

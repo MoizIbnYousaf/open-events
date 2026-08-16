@@ -415,7 +415,9 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     //    deterministic conflict partner for step 8).
     const startProposal = async (title: string, email: string, withCoSpeaker: boolean) => {
       await speakerPage.goto('/start')
-      await expect(speakerPage.getByRole('heading', { level: 1, name: 'Start' })).toBeVisible()
+      await expect(
+        speakerPage.getByRole('heading', { level: 1, name: 'Access your workspace' }),
+      ).toBeVisible()
       await speakerPage.getByLabel('Email').fill(email)
       await speakerPage.getByRole('button', { name: 'Request a link' }).click()
       await expect(speakerPage.getByText(/no inbox message will arrive/i)).toBeVisible()

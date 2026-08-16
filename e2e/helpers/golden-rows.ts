@@ -1,6 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
+import {
+  decryptMailPayload,
+  fingerprintMailRecipient,
+} from '../../src/application/security/mail-payload'
+
 export interface GoldenRowCounts {
   readonly submissions: number
   readonly contributors: number
@@ -51,12 +56,20 @@ function runRowCount(extraArgs: readonly string[]): unknown {
 }
 
 /** Reads the acceptance captured-mail outbox without exposing it through an HTTP route. */
-export function capturedMessages(email: string): readonly { readonly body: string }[] {
+export async function capturedMessages(
+  email: string,
+): Promise<readonly { readonly body: string }[]> {
   if (process.env.LIVE_ALLOW_MUTATION !== 'acceptance') {
     throw new Error('capturedMessages is reserved for guarded acceptance runs')
   }
+  const keyMaterialBase64 = process.env.LIVE_EMAIL_PAYLOAD_KEY_V1
+  if (keyMaterialBase64 === undefined) {
+    throw new Error('LIVE_EMAIL_PAYLOAD_KEY_V1 is required for an acceptance lifecycle run')
+  }
+  const payloadKey = { keyVersion: 'v1', keyMaterialBase64 }
+  const fingerprint = await fingerprintMailRecipient(email, payloadKey)
   const repoRoot = resolve(import.meta.dirname, '..', '..')
-  const escapedEmail = email.replaceAll("'", "''")
+  const escapedFingerprint = fingerprint.replaceAll("'", "''")
   const stdout = execFileSync(
     'pnpm',
     [
@@ -70,13 +83,44 @@ export function capturedMessages(email: string): readonly { readonly body: strin
       '--remote',
       '--json',
       '--command',
-      `SELECT body FROM captured_messages WHERE to_email = '${escapedEmail}' ORDER BY created_at`,
+      `SELECT j.id AS job_id, j.captured_message_id, j.mode, j.key_version,
+              j.nonce, j.ciphertext, j.payload_expires_at
+       FROM email_delivery_jobs j
+       WHERE j.recipient_fingerprint = '${escapedFingerprint}'
+       ORDER BY j.created_at`,
     ],
     { cwd: repoRoot, encoding: 'utf8' },
   )
-  const parsed = JSON.parse(stdout) as Array<{ results?: Array<{ body?: unknown }> }>
-  return (parsed[0]?.results ?? []).flatMap((row) =>
-    typeof row.body === 'string' ? [{ body: row.body }] : [],
+  const parsed = JSON.parse(stdout) as Array<{
+    results?: Array<{
+      job_id: string
+      captured_message_id: string
+      mode: 'capture' | 'resend-test' | 'resend-live'
+      key_version: string
+      nonce: string
+      ciphertext: string
+      payload_expires_at: string
+    }>
+  }>
+  return Promise.all(
+    (parsed[0]?.results ?? []).map(async (row) => {
+      const payload = await decryptMailPayload(
+        {
+          jobId: row.job_id,
+          messageId: row.captured_message_id,
+          mode: row.mode,
+          recipientFingerprint: fingerprint,
+          recipientLabel: 'acceptance-test-recipient',
+          auditBody: 'acceptance-test-audit',
+          keyVersion: row.key_version,
+          nonce: row.nonce,
+          ciphertext: row.ciphertext,
+          expiresAt: row.payload_expires_at,
+        },
+        payloadKey,
+      )
+      return { body: payload.body }
+    }),
   )
 }
 

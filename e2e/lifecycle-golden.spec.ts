@@ -422,7 +422,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
 
       let capturedBody: readonly { readonly body: string }[]
       if (process.env.LIVE_ALLOW_MUTATION === 'acceptance') {
-        capturedBody = capturedMessages(email)
+        capturedBody = await capturedMessages(email)
       } else {
         const captured = await adminPage.request.get(`/api/dev/captured?email=${email}`)
         expect(captured.status()).toBe(200)
@@ -541,7 +541,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
 
     let evaluatorLinks: readonly { readonly body: string }[]
     if (process.env.LIVE_ALLOW_MUTATION === 'acceptance') {
-      evaluatorLinks = capturedMessages(EVALUATOR_EMAIL)
+      evaluatorLinks = await capturedMessages(EVALUATOR_EMAIL)
     } else {
       const evaluatorInbox = await adminPage.request.get(
         `/api/dev/captured?email=${EVALUATOR_EMAIL}`,
@@ -617,7 +617,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     ).toBeVisible()
     let featuredInbox: readonly { readonly body: string }[]
     if (process.env.LIVE_ALLOW_MUTATION === 'acceptance') {
-      featuredInbox = capturedMessages(SPEAKER_EMAIL)
+      featuredInbox = await capturedMessages(SPEAKER_EMAIL)
     } else {
       const captured = await adminPage.request.get(`/api/dev/captured?email=${SPEAKER_EMAIL}`)
       expect(captured.status()).toBe(200)

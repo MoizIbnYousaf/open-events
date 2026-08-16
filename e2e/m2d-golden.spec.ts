@@ -229,7 +229,7 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     // for the plan's dev-only captured-link exception.
     let capturedBody: readonly { readonly body: string }[]
     if (process.env.LIVE_ALLOW_MUTATION === 'acceptance') {
-      capturedBody = capturedMessages(EMAIL)
+      capturedBody = await capturedMessages(EMAIL)
     } else {
       const captured = await organizerPage.request.get(`/api/dev/captured?email=${EMAIL}`)
       expect(captured.status()).toBe(200)

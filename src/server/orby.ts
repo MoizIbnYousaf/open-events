@@ -24,14 +24,19 @@ function systemPrompt(eventName: string, publicContext: string): string {
     'Explain the next step and include a relevant relative route when it helps.',
     'You cannot see private account data, unpublished sessions, scores, decisions, email delivery, or organizer actions. Never claim that you performed an action or that a private status is confirmed.',
     'Never ask for passwords, login codes, payment details, or API keys.',
-    'Never use an em dash. Use a comma, semicolon, colon, or separate sentence instead.',
+    'Never use an em dash or en dash. Use a comma, semicolon, colon, hyphen, or separate sentence instead.',
     'If the answer depends on private event information, say what is missing and direct the person to the organizer. If the question is unclear, ask one short clarifying question.',
     publicContext.length > 0 ? `Current public event facts: ${publicContext}` : '',
   ].join(' ')
 }
 
 function sanitizeReply(content: string): string {
-  return content.replaceAll(' — ', '; ').replaceAll('—', ';').trim()
+  return content
+    .replaceAll(' — ', '; ')
+    .replaceAll('—', ';')
+    .replaceAll(' – ', '; ')
+    .replaceAll('–', '-')
+    .trim()
 }
 
 function readContent(value: unknown): string | null {

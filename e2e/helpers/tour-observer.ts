@@ -32,7 +32,8 @@ export function observeTour(page: Page): TourObserver {
     if (
       errorText === 'net::ERR_ABORTED' ||
       errorText === 'NS_BINDING_ABORTED' ||
-      errorText === 'cancelled'
+      errorText === 'cancelled' ||
+      errorText === 'Load request cancelled'
     ) {
       return
     }

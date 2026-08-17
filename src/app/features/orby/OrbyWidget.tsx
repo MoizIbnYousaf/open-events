@@ -152,7 +152,7 @@ export default function OrbyWidget() {
               <div ref={listRef} className="grid max-h-80 gap-2 overflow-y-auto px-3 py-3">
                 {chat.messages.length === 0 ? (
                   <p className="text-[13px] text-muted-foreground">
-                    {`Say hello. ${ORBY_NAME} will pick this up.`}
+                    {`Ask about the CFP, speaker access, reviews, or the schedule.`}
                   </p>
                 ) : (
                   chat.messages.map((message) => <MessageRow key={message.id} message={message} />)
@@ -186,7 +186,7 @@ export default function OrbyWidget() {
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] text-muted-foreground">Enter to send</p>
                   <Button type="submit" size="sm" disabled={send.isPending || draft.trim() === ''}>
-                    Send
+                    {send.isPending ? 'Thinking…' : 'Send'}
                   </Button>
                 </div>
               </form>

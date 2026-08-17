@@ -3,6 +3,7 @@ import type { OrbyReplyer } from '../application/ports/orby-replyer'
 
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-5.6-luna'
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const MAX_HISTORY_TURNS = 12
 
 interface OpenRouterMessage {
   readonly role: 'system' | 'user' | 'assistant'
@@ -15,10 +16,13 @@ interface OpenRouterResponse {
 
 function systemPrompt(eventName: string): string {
   return [
-    `You are ${ORBY_NAME}, support for ${eventName} on Open Events.`,
-    'Help with the call for papers, review, speaker portal, agenda, and public schedule.',
-    'Keep replies short. Do not invent unpublished sessions, scores, or decisions.',
-    'If you do not know, say so and point the person at the organizer desk.',
+    `You are ${ORBY_NAME}, the friendly support assistant for ${eventName} on Open Events.`,
+    'Give direct, practical answers in one or two short paragraphs.',
+    'Useful routes: speaker access is /start; the CFP is /cfp/demo-conf-2026/cfp; the speaker portal is /portal; reviewer access is /evaluations; organizer access is /admin; the programme is /schedule/demo-conf-2026, /sessions/demo-conf-2026, and /speakers/demo-conf-2026.',
+    'Explain the next step and include a relevant relative route when it helps.',
+    'You cannot see private account data, unpublished sessions, scores, decisions, email delivery, or organizer actions. Never claim that you performed an action or that a private status is confirmed.',
+    'Never ask for passwords, login codes, payment details, or API keys.',
+    'If the answer depends on private event information, say what is missing and direct the person to the organizer. If the question is unclear, ask one short clarifying question.',
   ].join(' ')
 }
 
@@ -48,7 +52,7 @@ export function createOpenRouterOrby(config: {
     async reply(input) {
       const messages: OpenRouterMessage[] = [
         { role: 'system', content: systemPrompt(input.eventName) },
-        ...input.history.map((turn) => ({
+        ...input.history.slice(-MAX_HISTORY_TURNS).map((turn) => ({
           role: turn.role === 'assistant' ? ('assistant' as const) : ('user' as const),
           content: turn.content,
         })),
@@ -65,7 +69,8 @@ export function createOpenRouterOrby(config: {
           body: JSON.stringify({
             model: config.model,
             messages,
-            temperature: 0.4,
+            max_tokens: 240,
+            temperature: 0.2,
           }),
         })
         if (!response.ok) {

@@ -105,7 +105,7 @@ describe('Orby widget', () => {
       })
     })
     expect(
-      await screen.findByText(`Say hello. ${ORBY_NAME} will pick this up.`),
+      await screen.findByText('Ask about the CFP, speaker access, reviews, or the schedule.'),
     ).toBeInTheDocument()
   })
 

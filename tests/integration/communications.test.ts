@@ -135,10 +135,18 @@ async function makePortalFixture(cookie: string): Promise<string> {
   return cookie
 }
 
-async function organizerRequest(method: string, path: string, token: string) {
+async function organizerRequest(method: string, path: string, token: string, body?: unknown) {
   return app.request(
     path,
-    { method, headers: { cookie: cookieHeader(token), origin: ALLOWED_ORIGIN } },
+    {
+      method,
+      headers: {
+        cookie: cookieHeader(token),
+        origin: ALLOWED_ORIGIN,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    },
     bindings(),
   )
 }
@@ -164,6 +172,25 @@ async function setup({ accept = true }: { accept?: boolean } = {}): Promise<{
       token,
     )
     if (accepted.status !== 200) throw new Error(`accept failed with ${accepted.status}`)
+    const room = await env.DB.prepare(
+      "SELECT id FROM taxonomy_items WHERE event_id = ? AND kind = 'room' ORDER BY position LIMIT 1",
+    )
+      .bind(DEMO_CONF_2026_ID)
+      .first<{ id: string }>()
+    if (room === null) throw new Error('seed has no room')
+    const placed = await organizerRequest(
+      'PUT',
+      `/api/admin/events/demo-conf-2026/agenda/${submitted.id}`,
+      token,
+      {
+        day: '2026-05-14',
+        roomId: room.id,
+        trackId: null,
+        start: '2026-05-14T10:00:00.000Z',
+        end: '2026-05-14T11:00:00.000Z',
+      },
+    )
+    if (placed.status !== 200) throw new Error(`place failed with ${placed.status}`)
   }
   return { organizer: token, submitter: submitted.portalCookie, submissionId: submitted.id }
 }
@@ -451,9 +478,10 @@ describe('calendar invite ownership boundary', () => {
     expect(lines[0]).toBe('BEGIN:VCALENDAR')
     expect(lines).toContain('BEGIN:VEVENT')
     expect(lines).toContain(`UID:${submissionId}@open-events`)
-    expect(lines).toContain('DTSTART:20260513T080000Z')
-    expect(lines).toContain('DTEND:20260515T170000Z')
+    expect(lines).toContain('DTSTART:20260514T100000Z')
+    expect(lines).toContain('DTEND:20260514T110000Z')
     expect(lines).toContain('SUMMARY:Rust\\, C++\\; a workshop')
+    expect(lines).toContain('LOCATION:Main hall')
   })
 
   it('returns 404 for a submitter who does not own the submission', async () => {

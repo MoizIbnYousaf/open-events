@@ -466,8 +466,8 @@ export async function handleEditOwnSubmission(context: ServerContext): Promise<R
  * 'pending', so the decision record — read back through the actor-scoped
  * onboarding read — is the only thing that can tell an accepted proposal from
  * a rejected one from one still under review. The DTO drops the organizer-only
- * routing outcome, and `inviteAvailable` tells the portal whether the .ics can
- * actually be rendered for this event right now.
+ * routing outcome, and `calendarEvent` carries the authorized scheduled-session
+ * facts shared by provider links and `.ics`.
  */
 export async function handleListOwnSubmissions(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -476,20 +476,23 @@ export async function handleListOwnSubmissions(context: ServerContext): Promise<
   if (actor === null) return forbiddenResponse(context)
   const submissions = await deps.submit.listOwn(actor)
   const decisions = await deps.onboarding.listOwnDecisions(actor)
-  const inviteAvailable = await deps.communications.isInviteAvailable(actor)
+  const acceptedIds = submissions
+    .filter((submission) => decisions.get(submission.id)?.outcome === 'accepted')
+    .map((submission) => submission.id)
+  const calendarEvents = await deps.communications.calendarEvents(actor, acceptedIds)
+  const rows = submissions.map((submission) => {
+    const decision = decisions.get(submission.id) ?? null
+    const outcome: SubmissionOutcome = decision?.outcome ?? 'pending'
+    const calendarEvent = calendarEvents.get(submission.id) ?? null
+    return toOwnSubmissionListItemDto(
+      submission,
+      outcome,
+      decision?.decidedAt ?? null,
+      calendarEvent,
+    )
+  })
   return context.json({
-    submissions: submissions.map((submission) => {
-      const decision = decisions.get(submission.id) ?? null
-      // `listOwnDecisions` already folds the legacy acceptance backfill in, so
-      // anything still missing here is genuinely undecided.
-      const outcome: SubmissionOutcome = decision?.outcome ?? 'pending'
-      return toOwnSubmissionListItemDto(
-        submission,
-        outcome,
-        decision?.decidedAt ?? null,
-        outcome === 'accepted' && inviteAvailable,
-      )
-    }),
+    submissions: rows,
   })
 }
 

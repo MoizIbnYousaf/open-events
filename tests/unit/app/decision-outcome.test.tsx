@@ -32,6 +32,7 @@ const BASE: PortalSubmission = {
   accepted: false,
   decision: 'pending',
   inviteAvailable: false,
+  calendarEvent: null,
   formSlug: 'cfp',
   version: 1,
   coSpeakerCount: 0,
@@ -131,7 +132,22 @@ describe('speaker-visible outcome', () => {
   })
 
   it('reads Accepted for an accepted proposal', async () => {
-    serve([{ ...BASE, decision: 'accepted', accepted: true, inviteAvailable: true }])
+    serve([
+      {
+        ...BASE,
+        decision: 'accepted',
+        accepted: true,
+        inviteAvailable: true,
+        calendarEvent: {
+          uid: 'submission-1@open-events',
+          title: BASE.title,
+          start: '2026-05-14T10:00:00.000Z',
+          end: '2026-05-14T11:00:00.000Z',
+          location: 'Main Hall',
+          description: '',
+        },
+      },
+    ])
     renderPortal()
     const row = await onlyRow()
     expect(row).toHaveTextContent(/accepted/i)

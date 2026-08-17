@@ -7,7 +7,6 @@ import { Button } from '../../../components/ui/button'
 import { Card, CardContent } from '../../../components/ui/card'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { DocumentStackIcon } from '../../../components/ui/icons'
-import { TextLink } from '../../../components/ui/link'
 import {
   PageHeader,
   PageHeaderContent,
@@ -34,6 +33,7 @@ import DocumentUploader from './DocumentUploader'
 import HeadshotUploader from './HeadshotUploader'
 import ProfileEditor from './ProfileEditor'
 import TasksPanel from './TasksPanel'
+import CalendarActions from './CalendarActions'
 
 interface PortalPageProps {
   /** Called once when the API reports no session; the route sends them to /start. */
@@ -436,19 +436,16 @@ function InviteLink({ submission }: { readonly submission: PortalSubmission }) {
   if (!submission.inviteAvailable) {
     return (
       <span className="text-xs text-muted-foreground">
-        The calendar invite becomes available once the organizer sets the event dates.
+        Calendar actions become available once the organizer schedules this session.
       </span>
     )
   }
+  if (submission.calendarEvent === null) return null
   return (
-    <TextLink
-      hit
-      className="text-xs"
-      href={`/api/public/invite/${encodeURIComponent(submission.id)}.ics`}
-      download
-    >
-      Download the calendar invite
-    </TextLink>
+    <CalendarActions
+      event={submission.calendarEvent}
+      icsHref={`/api/public/invite/${encodeURIComponent(submission.id)}.ics`}
+    />
   )
 }
 

@@ -30,8 +30,10 @@ import {
   InMemoryContactRepository,
   InMemoryEventRepository,
   InMemoryFormVersionRepository,
+  InMemoryAgendaRepository,
   InMemoryProgrammeRepository,
   InMemorySubmissionRepository,
+  InMemoryTaxonomyRepository,
 } from '../helpers/in-memory-repositories'
 import { InMemorySpeakerTaskRepository } from '../helpers/in-memory-onboarding'
 import { createInMemoryRoleAccessIssuer } from '../helpers/role-access-issuer'
@@ -59,10 +61,12 @@ function buildHarness({
   accepted = true,
   decision = accepted ? 'accepted' : null,
   event = eventFixture,
+  placement = 'scheduled',
 }: {
   accepted?: boolean
   decision?: SubmissionDecisionOutcome | null
   event?: Event
+  placement?: 'scheduled' | 'unassigned' | null
 } = {}) {
   const versions = new InMemoryFormVersionRepository([createVersion()])
   const submissions = new InMemorySubmissionRepository(
@@ -86,6 +90,42 @@ function buildHarness({
   const contacts = new InMemoryContactRepository([ownerContact])
   const messages = new InMemoryCapturedMessageRepository()
   const tasks = new InMemorySpeakerTaskRepository([], accepted ? [ACCEPTANCE] : [])
+  const agenda = new InMemoryAgendaRepository(
+    placement === null
+      ? []
+      : [
+          {
+            eventId: EVENT_ID,
+            submissionId: SUBMISSION_ID,
+            trackId: null,
+            roomId: placement === 'scheduled' ? 'room-main' : null,
+            day: '2026-05-14',
+            start: '2026-05-14T10:00:00.000Z',
+            end: '2026-05-14T11:00:00.000Z',
+            position: placement === 'scheduled' ? 0 : null,
+            status: 'draft',
+            assignment: placement,
+            speakerIds: [ownerContact.id],
+            createdAt: FIXED_NOW,
+            updatedAt: FIXED_NOW,
+          },
+        ],
+  )
+  const taxonomies = new InMemoryTaxonomyRepository([
+    [
+      EVENT_ID,
+      [
+        {
+          id: 'room-main',
+          eventId: EVENT_ID,
+          kind: 'room',
+          key: 'main-hall',
+          label: 'Main Hall',
+          position: 0,
+        },
+      ],
+    ],
+  ])
   const service = new CommunicationsService(
     submissions,
     events,
@@ -97,6 +137,9 @@ function buildHarness({
     },
     'https://www.openevents.engineer',
     createInMemoryRoleAccessIssuer(messages),
+    null,
+    agenda,
+    taxonomies,
   )
   return { service, messages, contacts }
 }
@@ -143,7 +186,7 @@ describe('renderAcceptanceTemplate', () => {
   it('never claims an attachment the captured message cannot carry', () => {
     expect(ACCEPTANCE_BODY_TEMPLATE).not.toMatch(/attach/i)
     expect(ACCEPTANCE_BODY_TEMPLATE).toMatch(/portal/i)
-    expect(ACCEPTANCE_BODY_TEMPLATE).toMatch(/calendar invite/i)
+    expect(ACCEPTANCE_BODY_TEMPLATE).toMatch(/calendar actions/i)
   })
 
   // The message is the only thing an accepted speaker is handed, so naming a
@@ -155,19 +198,26 @@ describe('renderAcceptanceTemplate', () => {
   })
 })
 
-describe('CommunicationsService.isInviteAvailable', () => {
-  it('is true only while the event still has configured dates', async () => {
-    const dated = buildHarness()
-    await expect(dated.service.isInviteAvailable(ownerActor)).resolves.toBe(true)
+describe('CommunicationsService.calendarEvent', () => {
+  it('is available only after the accepted session has a real agenda placement', async () => {
+    const scheduled = buildHarness()
+    await expect(scheduled.service.calendarEvent(ownerActor, SUBMISSION_ID)).resolves.toMatchObject(
+      {
+        start: '2026-05-14T10:00:00.000Z',
+        end: '2026-05-14T11:00:00.000Z',
+        location: 'Main Hall',
+      },
+    )
 
-    const undated = buildHarness({ event: { ...eventFixture, dates: null } })
-    await expect(undated.service.isInviteAvailable(ownerActor)).resolves.toBe(false)
+    const unassigned = buildHarness({ placement: 'unassigned' })
+    await expect(unassigned.service.calendarEvent(ownerActor, SUBMISSION_ID)).resolves.toBeNull()
   })
 
-  it('is false for an unknown event rather than throwing', async () => {
+  it('is null for an unknown submission or another event', async () => {
     const { service } = buildHarness()
 
-    await expect(service.isInviteAvailable(crossEventActor)).resolves.toBe(false)
+    await expect(service.calendarEvent(ownerActor, 'missing')).resolves.toBeNull()
+    await expect(service.calendarEvent(crossEventActor, SUBMISSION_ID)).resolves.toBeNull()
   })
 })
 
@@ -340,16 +390,22 @@ describe('CommunicationsService.listHistory', () => {
 })
 
 describe('CommunicationsService.buildInvite', () => {
-  it('renders the owning submitter an ics carrying the stable UID and the event dates', async () => {
+  it('renders the owning submitter an ics carrying the stable UID and scheduled session slot', async () => {
     const { service } = buildHarness()
 
     const ics = await service.buildInvite(ownerActor, SUBMISSION_ID)
 
     expect(ics).not.toBeNull()
     expect(ics ?? '').toContain(`UID:${buildInviteUid(SUBMISSION_ID)}`)
-    expect(ics ?? '').toContain('DTSTART:20260513T080000Z')
-    expect(ics ?? '').toContain('DTEND:20260515T170000Z')
+    expect(ics ?? '').toContain('DTSTART:20260514T100000Z')
+    expect(ics ?? '').toContain('DTEND:20260514T110000Z')
     expect(ics ?? '').toContain('SUMMARY:Workshop proposal')
+  })
+
+  it('returns null until the accepted session is scheduled', async () => {
+    const { service } = buildHarness({ placement: 'unassigned' })
+
+    await expect(service.buildInvite(ownerActor, SUBMISSION_ID)).resolves.toBeNull()
   })
 
   it('stamps DTSTAMP from the service clock', async () => {

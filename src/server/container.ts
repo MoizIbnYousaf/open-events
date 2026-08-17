@@ -273,6 +273,8 @@ export function buildServerDeps(
       publicAppOrigin,
       session,
       createProgrammeRepository(db),
+      createAgendaRepository(db),
+      createTaxonomyRepository(db),
     ),
     support: new SupportService(
       events,

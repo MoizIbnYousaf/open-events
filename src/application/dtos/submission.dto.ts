@@ -1,6 +1,7 @@
 import { isSubmissionEditable } from '../../domain/invariants/cfp'
 import type { SessionContentStatus } from '../../domain/embed'
 import type {
+  CalendarEventDetails,
   AnswerMap,
   CfpForm,
   ContactId,
@@ -88,11 +89,12 @@ export interface SubmissionListItemDto {
 export interface OwnSubmissionListItemDto extends Omit<SubmissionListItemDto, 'routing'> {
   readonly accepted: boolean
   /**
-   * Whether the calendar invite can actually be rendered right now. The invite
-   * route answers 409 for an event with no configured dates, so a surface that
-   * offers a download must gate on this and not on `accepted` alone.
+   * Whether the accepted session has a real agenda placement and the calendar
+   * invite can therefore be rendered without inventing a time or room.
    */
   readonly inviteAvailable: boolean
+  /** Authorized scheduled-session facts shared by provider links and `.ics`. */
+  readonly calendarEvent: CalendarEventDetails | null
   /**
    * The programme's verdict as the speaker is entitled to see it, and
    * 'pending' while the proposal is still under review — always a word, never
@@ -214,7 +216,7 @@ export function toOwnSubmissionListItemDto(
   item: SubmissionListItemDto,
   decision: SubmissionOutcome,
   decidedAt: UtcInstant | null,
-  inviteAvailable: boolean,
+  calendarEvent: CalendarEventDetails | null,
 ): OwnSubmissionListItemDto {
   return {
     id: item.id,
@@ -228,7 +230,8 @@ export function toOwnSubmissionListItemDto(
     createdAt: item.createdAt,
     submittedAt: item.submittedAt,
     accepted: decision === 'accepted',
-    inviteAvailable,
+    inviteAvailable: calendarEvent !== null,
+    calendarEvent,
     decision,
     decidedAt,
   }

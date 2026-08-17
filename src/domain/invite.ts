@@ -26,6 +26,8 @@ export interface CalendarInviteInput {
   readonly startsAt: UtcInstant
   readonly endsAt: UtcInstant
   readonly dtstamp: UtcInstant
+  readonly location?: string
+  readonly description?: string
 }
 
 /** Stable, submission-derived UID: `<submissionId>@open-events`. */
@@ -109,8 +111,13 @@ export function buildCalendarInvite(input: CalendarInviteInput): string {
     `DTSTART:${dtstart}`,
     `DTEND:${dtend}`,
     `SUMMARY:${escapeCalendarText(input.title)}`,
-    'END:VEVENT',
-    'END:VCALENDAR',
   ]
+  if (input.location !== undefined && input.location !== '') {
+    contentLines.push(`LOCATION:${escapeCalendarText(input.location)}`)
+  }
+  if (input.description !== undefined && input.description !== '') {
+    contentLines.push(`DESCRIPTION:${escapeCalendarText(input.description)}`)
+  }
+  contentLines.push('END:VEVENT', 'END:VCALENDAR')
   return `${contentLines.map(foldCalendarLine).join(CRLF)}${CRLF}`
 }

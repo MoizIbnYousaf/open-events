@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useServerMutation } from '../../../adapters/tanstack-react-query'
 import type { SubmissionDetailDto } from '../../application'
-import type { AnswerMap, SubmissionStatus } from '../../domain'
+import type { AnswerMap, CalendarEventDetails, SubmissionStatus } from '../../domain'
 import { ApiClientError, requestJson } from '../api/admin-events'
 
 /**
@@ -39,11 +39,11 @@ export interface PortalSubmission {
   readonly accepted: boolean
   readonly decision: SubmissionOutcome
   /**
-   * Whether the invite route can render an .ics right now. Acceptance alone is
-   * not enough: an event with no configured dates answers 409, and a
-   * `download` anchor would save that error envelope to disk as the .ics.
+   * Whether the accepted session has a real agenda placement and the invite
+   * route can render an .ics without inventing a time or room.
    */
   readonly inviteAvailable: boolean
+  readonly calendarEvent: CalendarEventDetails | null
   readonly formSlug: string
   readonly version: number
   readonly coSpeakerCount: number

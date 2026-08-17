@@ -116,6 +116,35 @@ async function decide(
   )
 }
 
+async function schedule(cookie: string, submissionId: string): Promise<void> {
+  const room = await env.DB.prepare(
+    "SELECT id FROM taxonomy_items WHERE event_id = ? AND kind = 'room' ORDER BY position LIMIT 1",
+  )
+    .bind(DEMO_CONF_2026_ID)
+    .first<{ id: string }>()
+  if (room === null) throw new Error('seed has no room')
+  const response = await app.request(
+    `/api/admin/events/demo-conf-2026/agenda/${submissionId}`,
+    {
+      method: 'PUT',
+      headers: {
+        cookie: cookieHeader(cookie),
+        origin: ALLOWED_ORIGIN,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        day: '2026-05-14',
+        roomId: room.id,
+        trackId: null,
+        start: '2026-05-14T10:00:00.000Z',
+        end: '2026-05-14T11:00:00.000Z',
+      }),
+    },
+    bindings(),
+  )
+  expect(response.status).toBe(200)
+}
+
 /** A speaker with one submitted proposal; returns their cookie and its id. */
 async function speakerWithSubmission(): Promise<{ cookie: string; submissionId: string }> {
   const cookie = await submitterCookie(env.DB)
@@ -725,6 +754,7 @@ describe('a rejection reaches everything an acceptance reached', () => {
 
     const organizer = await organizerCookie()
     await decide(organizer, undecided.submissionId, { decision: 'accepted' })
+    await schedule(organizer, undecided.submissionId)
     expect(await invite(undecided.cookie, undecided.submissionId)).toBe(200)
 
     // A saved .ics keeps claiming its appointment long after any screen would

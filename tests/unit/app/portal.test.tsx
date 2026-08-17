@@ -41,6 +41,7 @@ const SUBMISSIONS_ENVELOPE = {
       // the server states it on every row.
       decision: 'pending',
       inviteAvailable: false,
+      calendarEvent: null,
       formSlug: 'cfp',
       version: 1,
       coSpeakerCount: 1,
@@ -53,6 +54,14 @@ const SUBMISSIONS_ENVELOPE = {
       accepted: true,
       decision: 'accepted',
       inviteAvailable: true,
+      calendarEvent: {
+        uid: 'submission-2@open-events',
+        title: 'Base UI in production',
+        start: '2026-05-14T10:00:00.000Z',
+        end: '2026-05-14T11:00:00.000Z',
+        location: 'Main Hall',
+        description: '',
+      },
       formSlug: 'cfp',
       version: 1,
       coSpeakerCount: 0,
@@ -61,9 +70,11 @@ const SUBMISSIONS_ENVELOPE = {
   ],
 } as const
 
-/** Accepted, but the organizer has cleared the event dates: no .ics exists. */
-const UNDATED_ENVELOPE = {
-  submissions: [{ ...SUBMISSIONS_ENVELOPE.submissions[1], inviteAvailable: false }],
+/** Accepted, but the organizer has not scheduled the session: no calendar action exists. */
+const UNSCHEDULED_ENVELOPE = {
+  submissions: [
+    { ...SUBMISSIONS_ENVELOPE.submissions[1], inviteAvailable: false, calendarEvent: null },
+  ],
 } as const
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -344,7 +355,7 @@ describe('speaker portal', () => {
     }
     renderPage()
     const list = await screen.findByRole('list', { name: /your submissions/i })
-    const links = within(list).getAllByRole('link', { name: /calendar invite/i })
+    const links = within(list).getAllByRole('link', { name: /iCalendar file/i })
     expect(links).toHaveLength(1)
     expect(links[0]).toHaveAttribute('href', '/api/public/invite/submission-2.ics')
   })
@@ -356,14 +367,14 @@ describe('speaker portal', () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
       if (method === 'GET' && url === PORTAL_URL) {
-        return jsonResponse(UNDATED_ENVELOPE)
+        return jsonResponse(UNSCHEDULED_ENVELOPE)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
     renderPage()
     const list = await screen.findByRole('list', { name: /your submissions/i })
-    expect(within(list).queryByRole('link', { name: /calendar invite/i })).toBeNull()
-    expect(within(list).getByText(/event dates/i)).toBeInTheDocument()
+    expect(within(list).queryByRole('link', { name: /iCalendar file/i })).toBeNull()
+    expect(within(list).getByText(/organizer schedules this session/i)).toBeInTheDocument()
   })
 
   it('keeps exactly one page-owned h1 on the composed portal', async () => {

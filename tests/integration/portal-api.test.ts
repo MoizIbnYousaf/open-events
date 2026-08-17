@@ -48,24 +48,38 @@ beforeEach(async () => {
   await seedDemoConf(env.DB)
 })
 
-/** Clears the event dates through the real organizer configuration route. */
-async function clearEventDates(): Promise<void> {
+/** Places or retracts a session through the real organizer agenda routes. */
+async function setScheduled(submissionId: string, scheduled: boolean): Promise<void> {
   const { token } = await loginOrganizer()
   if (token === null) throw new Error('organizer login set no cookie')
+  const room = await env.DB.prepare(
+    "SELECT id FROM taxonomy_items WHERE kind = 'room' ORDER BY position LIMIT 1",
+  ).first<{ id: string }>()
+  if (room === null) throw new Error('seed has no room')
   const response = await app.request(
-    '/api/admin/events/demo-conf-2026',
+    `/api/admin/events/demo-conf-2026/agenda/${submissionId}`,
     {
-      method: 'PATCH',
+      method: scheduled ? 'PUT' : 'DELETE',
       headers: {
         cookie: cookieHeader(token),
         origin: ALLOWED_ORIGIN,
-        'content-type': 'application/json',
+        ...(scheduled ? { 'content-type': 'application/json' } : {}),
       },
-      body: JSON.stringify({ dates: null }),
+      ...(scheduled
+        ? {
+            body: JSON.stringify({
+              day: '2026-05-14',
+              roomId: room.id,
+              trackId: null,
+              start: '2026-05-14T10:00:00.000Z',
+              end: '2026-05-14T11:00:00.000Z',
+            }),
+          }
+        : {}),
     },
     bindings(),
   )
-  if (response.status !== 200) throw new Error(`clearing dates failed with ${response.status}`)
+  if (response.status !== 200) throw new Error(`agenda update failed with ${response.status}`)
 }
 
 async function acceptAsOrganizer(submissionId: string): Promise<void> {
@@ -196,6 +210,7 @@ describe('speaker portal API', () => {
       [
         'accepted',
         'coSpeakerCount',
+        'calendarEvent',
         'createdAt',
         'decidedAt',
         'decision',
@@ -212,32 +227,49 @@ describe('speaker portal API', () => {
     )
   })
 
-  // The portal renders a `download` anchor from inviteAvailable. The invite
-  // route answers 409 JSON without event dates, and the browser would save that
-  // error body as the .ics — so the flag must follow the event configuration.
-  it('withdraws calendar-invite availability when the event dates are cleared', async () => {
+  it('exposes calendar facts only while the accepted session is scheduled', async () => {
     const ada = await submitterCookie(env.DB)
     const accepted = await submitAs(ada, 'Accepted talk with an invite')
     await acceptAsOrganizer(accepted.id)
+    await setScheduled(accepted.id, true)
 
     const dated = (await (await listOwn(accepted.portalCookie)).json()) as {
-      submissions: ReadonlyArray<{ id: string; accepted: boolean; inviteAvailable: boolean }>
+      submissions: ReadonlyArray<{
+        id: string
+        accepted: boolean
+        inviteAvailable: boolean
+        calendarEvent: { start: string; end: string; location: string } | null
+      }>
     }
     expect(dated.submissions[0]).toMatchObject({ accepted: true, inviteAvailable: true })
+    expect(dated.submissions[0]?.calendarEvent).toMatchObject({
+      start: '2026-05-14T10:00:00.000Z',
+      end: '2026-05-14T11:00:00.000Z',
+      location: 'Main hall',
+    })
 
-    await clearEventDates()
+    await setScheduled(accepted.id, false)
 
     const undated = (await (await listOwn(accepted.portalCookie)).json()) as {
-      submissions: ReadonlyArray<{ id: string; accepted: boolean; inviteAvailable: boolean }>
+      submissions: ReadonlyArray<{
+        id: string
+        accepted: boolean
+        inviteAvailable: boolean
+        calendarEvent: unknown
+      }>
     }
-    expect(undated.submissions[0]).toMatchObject({ accepted: true, inviteAvailable: false })
+    expect(undated.submissions[0]).toMatchObject({
+      accepted: true,
+      inviteAvailable: false,
+      calendarEvent: null,
+    })
 
     const invite = await app.request(
       `/api/public/invite/${accepted.id}.ics`,
       { headers: { cookie: cookieHeader(accepted.portalCookie) } },
       bindings(),
     )
-    expect(invite.status).toBe(409)
+    expect(invite.status).toBe(404)
   })
 
   it('never leaks another speaker submissions', async () => {

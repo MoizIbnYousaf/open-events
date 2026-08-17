@@ -9,6 +9,7 @@ import {
   UNTRACKED_GROUP_LABEL,
   type AgendaPlacement,
 } from '../../../domain/agenda'
+import { buildInviteUid } from '../../../domain/invite'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
@@ -46,6 +47,7 @@ import {
   sessionsOnDay,
   writePersonalSchedule,
 } from './schedule-agenda'
+import CalendarActions from './CalendarActions'
 
 interface PublicSchedulePageProps {
   readonly eventSlug?: string
@@ -380,6 +382,17 @@ function ScheduleViews({
                       )
                       .join(' · ')}
                   </p>
+                  <CalendarActions
+                    event={{
+                      uid: buildInviteUid(session.submissionId),
+                      title: session.title,
+                      start: session.start,
+                      end: session.end,
+                      location: session.room,
+                      description: session.description ?? '',
+                    }}
+                    icsHref={`/api/public/events/${encodeURIComponent(eventSlug)}/schedule.ics?ids=${encodeURIComponent(session.submissionId)}`}
+                  />
                 </div>
                 <Button
                   type="button"

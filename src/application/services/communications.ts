@@ -1,6 +1,8 @@
 import type { CapturedMessage } from '../../domain/confirmation'
 import type { Event, EventId } from '../../domain/event'
-import { buildCalendarInvite } from '../../domain/invite'
+import { buildCalendarInvite, buildInviteUid } from '../../domain/invite'
+import type { CalendarEventDetails } from '../../domain/calendar-links'
+import { answerText } from '../../domain/programme'
 import type { ProposalSubmission, SubmissionId, SubmissionOutcome } from '../../domain/submission'
 import {
   assertActorCanMutate,
@@ -22,6 +24,8 @@ import type { EventRepository } from '../ports/event-repository'
 import type { SpeakerTaskRepository } from '../ports/speaker-task-repository'
 import type { SubmissionRepository } from '../ports/submission-repository'
 import type { ProgrammeRepository } from '../ports/programme-repository'
+import type { AgendaRepository } from '../ports/agenda-repository'
+import type { TaxonomyRepository } from '../ports/taxonomy-repository'
 import type { RoleAccessIssuer } from '../ports/role-access-issuer'
 import { CONFIRMATION_BODY_TEMPLATE, CONFIRMATION_SUBJECT_TEMPLATE } from './confirmation-email'
 
@@ -41,8 +45,8 @@ export const ACCEPTANCE_BODY_TEMPLATE = [
   '',
   'Great news: your proposal "{{title}}" has been accepted for {{eventName}}.',
   '',
-  'Open your speaker portal at {{portalLink}} to download the calendar invite',
-  'for {{eventName}} and to work through your onboarding checklist.',
+  'Open your speaker portal at {{portalLink}} to work through your onboarding',
+  'checklist. Calendar actions appear there once your session is scheduled.',
   '',
   'Thank you,',
   'The {{eventName}} programme team',
@@ -58,7 +62,7 @@ export const REMINDER_BODY_TEMPLATE = [
   'A quick reminder about your accepted proposal "{{title}}" for {{eventName}}.',
   '',
   'Open your speaker portal at {{portalLink}} to finish your onboarding',
-  'checklist and download the calendar invite for {{eventName}}.',
+  'checklist. Calendar actions appear there once your session is scheduled.',
   '',
   'Thank you,',
   'The {{eventName}} programme team',
@@ -163,6 +167,8 @@ export class CommunicationsService {
   readonly #clock: Clock
   readonly #roleAccessIssuer: RoleAccessIssuer
   readonly #programme: ProgrammeRepository | null
+  readonly #agenda: AgendaRepository | null
+  readonly #taxonomies: TaxonomyRepository | null
 
   constructor(
     submissions: SubmissionRepository,
@@ -174,6 +180,8 @@ export class CommunicationsService {
     _publicAppOrigin: string,
     roleAccessIssuer: RoleAccessIssuer,
     programme: ProgrammeRepository | null = null,
+    agenda: AgendaRepository | null = null,
+    taxonomies: TaxonomyRepository | null = null,
   ) {
     this.#submissions = submissions
     this.#events = events
@@ -183,6 +191,8 @@ export class CommunicationsService {
     this.#clock = clock
     this.#roleAccessIssuer = roleAccessIssuer
     this.#programme = programme
+    this.#agenda = agenda
+    this.#taxonomies = taxonomies
   }
 
   async getConfirmationTemplate(
@@ -475,7 +485,7 @@ export class CommunicationsService {
   }
 
   /**
-   * Renders the .ics for the OWNING submitter of an ACCEPTED proposal only;
+   * Renders the .ics for the OWNING submitter of an ACCEPTED, SCHEDULED proposal only;
    * every other actor (a different speaker, another event, an unknown id) gets
    * null so the route answers an indistinguishable 404.
    *
@@ -487,37 +497,73 @@ export class CommunicationsService {
    * to put in a diary.
    */
   async buildInvite(actor: SubmitterActor, submissionId: SubmissionId): Promise<string | null> {
-    assertSubmitterCapability(actor, 'portal')
-    const submission = await this.#submissions.findById(submissionId)
-    if (submission === null) return null
-    if (submission.eventId !== actor.eventId || submission.ownerContactId !== actor.contactId) {
-      return null
-    }
-    if ((await this.#standingDecision(submission)) !== 'accepted') return null
-    const event = await this.#requireEvent(submission)
-    if (event.dates === null) {
-      throw new ApplicationError('conflict', 'Event dates are not configured')
-    }
+    const event = await this.calendarEvent(actor, submissionId)
+    if (event === null) return null
     return buildCalendarInvite({
-      submissionId: submission.id,
-      title: submission.title,
-      startsAt: event.dates.startsAt,
-      endsAt: event.dates.endsAt,
+      submissionId,
+      title: event.title,
+      startsAt: event.start,
+      endsAt: event.end,
       dtstamp: this.#clock.now(),
+      location: event.location,
+      description: event.description,
     })
   }
 
-  /**
-   * Whether an invite can be rendered at all for the actor's event. `buildInvite`
-   * throws `conflict` for a dateless event, and a `download` link would save
-   * that error envelope to disk as the .ics — so speaker-facing surfaces read
-   * this first and offer no link they cannot honour. An unknown event is not
-   * available rather than an error: this is a presentation fact, not a gate.
-   */
-  async isInviteAvailable(actor: SubmitterActor): Promise<boolean> {
+  async calendarEvent(
+    actor: SubmitterActor,
+    submissionId: SubmissionId,
+  ): Promise<CalendarEventDetails | null> {
+    return (await this.calendarEvents(actor, [submissionId])).get(submissionId) ?? null
+  }
+
+  async calendarEvents(
+    actor: SubmitterActor,
+    acceptedSubmissionIds: readonly SubmissionId[],
+  ): Promise<ReadonlyMap<SubmissionId, CalendarEventDetails>> {
     assertSubmitterCapability(actor, 'portal')
-    const event = await this.#events.findById(actor.eventId)
-    return event !== null && event.dates !== null
+    if (this.#agenda === null || this.#taxonomies === null) return new Map()
+    const requested = new Set(acceptedSubmissionIds)
+    const [submissions, placements, taxonomy, decisions, acceptances] = await Promise.all([
+      this.#submissions.listByOwner(actor.eventId, actor.contactId),
+      this.#agenda.listByEvent(actor.eventId),
+      this.#taxonomies.listByEvent(actor.eventId),
+      this.#submissions.listDecisionsByOwner(actor.eventId, actor.contactId),
+      this.#acceptances.listAcceptancesByEvent(actor.eventId),
+    ])
+    const submissionById = new Map(submissions.map((submission) => [submission.id, submission]))
+    const decisionById = new Map(decisions.map((decision) => [decision.submissionId, decision]))
+    const acceptedLegacyIds = new Set(acceptances.map((acceptance) => acceptance.submissionId))
+    const roomLabels = new Map(
+      taxonomy.filter((item) => item.kind === 'room').map((item) => [item.id, item.label]),
+    )
+    const result = new Map<SubmissionId, CalendarEventDetails>()
+    for (const placement of placements) {
+      if (
+        !requested.has(placement.submissionId) ||
+        placement.assignment !== 'scheduled' ||
+        placement.roomId === null
+      ) {
+        continue
+      }
+      const submission = submissionById.get(placement.submissionId)
+      const room = roomLabels.get(placement.roomId)
+      if (submission === undefined || room === undefined) continue
+      const decision = decisionById.get(submission.id)
+      const accepted =
+        decision?.outcome === 'accepted' ||
+        (decision === undefined && acceptedLegacyIds.has(submission.id))
+      if (!accepted) continue
+      result.set(submission.id, {
+        uid: buildInviteUid(submission.id),
+        title: submission.title,
+        start: placement.start,
+        end: placement.end,
+        location: room,
+        description: answerText(submission.answers.abstract),
+      })
+    }
+    return result
   }
 
   async #render(

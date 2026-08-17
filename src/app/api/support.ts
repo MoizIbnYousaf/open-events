@@ -27,11 +27,24 @@ export function identifySupport(input: {
 export function sendSupportMessage(input: {
   readonly eventSlug: string
   readonly content: string
+  readonly pagePath: string
 }): Promise<SupportMessageDto> {
   return requestJson<SupportMessageDto>('/api/support-chat/messages', {
     method: 'POST',
     body: JSON.stringify(input),
   })
+}
+
+export function askOrganizerOrby(input: {
+  readonly eventSlug: string
+  readonly pagePath: string
+  readonly content: string
+  readonly history: readonly { readonly role: 'user' | 'assistant'; readonly content: string }[]
+}): Promise<{ readonly content: string }> {
+  return requestJson<{ readonly content: string }>(
+    `/api/admin/events/${input.eventSlug}/orby/ask`,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
 }
 
 export function markSupportRead(eventSlug: string): Promise<SupportChatDto> {

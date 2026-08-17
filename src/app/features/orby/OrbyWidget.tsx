@@ -10,6 +10,7 @@ import { cn } from '../../../lib/utils'
 import { DEFAULT_EVENT_SLUG } from '../../lib/default-event'
 import {
   useIdentifySupport,
+  useAskOrganizerOrby,
   useMarkSupportRead,
   useSendSupportMessage,
   useSupportSession,
@@ -27,8 +28,8 @@ function formatTime(value: string): string {
   return Number.isNaN(parsed) ? value : timeFmt.format(new Date(parsed))
 }
 
-function isAdminSurface(pathname: string): boolean {
-  return pathname === '/admin' || pathname.startsWith('/admin/') || pathname.startsWith('/embed/')
+function isEmbedSurface(pathname: string): boolean {
+  return pathname.startsWith('/embed/')
 }
 
 function MessageRow({ message }: { readonly message: SupportMessageDto }) {
@@ -57,19 +58,22 @@ function MessageRow({ message }: { readonly message: SupportMessageDto }) {
 
 export default function OrbyWidget() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const hidden = isAdminSurface(pathname)
+  const hidden = isEmbedSurface(pathname)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [organizerMessages, setOrganizerMessages] = useState<SupportMessageDto[]>([])
   const listRef = useRef<HTMLDivElement>(null)
   const session = useSupportSession(DEFAULT_EVENT_SLUG, open && !hidden, !hidden)
   const identify = useIdentifySupport(DEFAULT_EVENT_SLUG)
   const send = useSendSupportMessage(DEFAULT_EVENT_SLUG)
+  const organizerAsk = useAskOrganizerOrby(DEFAULT_EVENT_SLUG)
   const markRead = useMarkSupportRead(DEFAULT_EVENT_SLUG)
 
   const role = session.data?.role
   const chat = session.data?.chat ?? null
+  const messages = role === 'organizer' ? organizerMessages : (chat?.messages ?? [])
   const unread = chat?.unreadCount ?? 0
   const connected = session.isSuccess && !session.isError
 
@@ -81,9 +85,9 @@ export default function OrbyWidget() {
   useEffect(() => {
     const node = listRef.current
     if (node !== null) node.scrollTop = node.scrollHeight
-  }, [chat?.messages.length, open])
+  }, [messages.length, open])
 
-  if (hidden || role === 'organizer') return null
+  if (hidden) return null
 
   const badge = unread > 9 ? '9+' : String(unread)
 
@@ -119,7 +123,7 @@ export default function OrbyWidget() {
               Close
             </Button>
           </header>
-          {session.data?.needsIdentity === true || chat === null ? (
+          {role !== 'organizer' && (session.data?.needsIdentity === true || chat === null) ? (
             <form
               className="grid gap-3 p-3"
               onSubmit={(event) => {
@@ -157,12 +161,12 @@ export default function OrbyWidget() {
           ) : (
             <>
               <div ref={listRef} className="grid max-h-80 gap-2 overflow-y-auto px-3 py-3">
-                {chat.messages.length === 0 ? (
+                {messages.length === 0 ? (
                   <p className="text-[13px] text-muted-foreground">
                     {`Ask about the CFP, speaker access, reviews, or the schedule.`}
                   </p>
                 ) : (
-                  chat.messages.map((message) => <MessageRow key={message.id} message={message} />)
+                  messages.map((message) => <MessageRow key={message.id} message={message} />)
                 )}
               </div>
               <form
@@ -170,10 +174,50 @@ export default function OrbyWidget() {
                 onSubmit={(event) => {
                   event.preventDefault()
                   const content = draft.trim()
-                  if (content.length === 0 || send.isPending) return
-                  send.mutate(content, { onSuccess: () => setDraft('') })
+                  if (content.length === 0 || send.isPending || organizerAsk.isPending) return
+                  if (role === 'organizer') {
+                    const createdAt = new Date().toISOString()
+                    const userMessage: SupportMessageDto = {
+                      id: crypto.randomUUID(),
+                      content,
+                      senderType: 'user',
+                      senderName: 'You',
+                      readAt: null,
+                      createdAt,
+                    }
+                    const history = organizerMessages.map((message) => ({
+                      role:
+                        message.senderType === 'admin' ? ('assistant' as const) : ('user' as const),
+                      content: message.content,
+                    }))
+                    setOrganizerMessages((current) => [...current, userMessage])
+                    setDraft('')
+                    organizerAsk.mutate(
+                      { content, pagePath: pathname, history },
+                      {
+                        onSuccess: (answer) => {
+                          setOrganizerMessages((current) => [
+                            ...current,
+                            {
+                              id: crypto.randomUUID(),
+                              content: answer.content,
+                              senderType: 'admin',
+                              senderName: ORBY_NAME,
+                              readAt: new Date().toISOString(),
+                              createdAt: new Date().toISOString(),
+                            },
+                          ])
+                        },
+                      },
+                    )
+                    return
+                  }
+                  send.mutate({ content, pagePath: pathname }, { onSuccess: () => setDraft('') })
                 }}
               >
+                {organizerAsk.isError ? (
+                  <AlertLive>Orby could not answer just now.</AlertLive>
+                ) : null}
                 <label className="sr-only" htmlFor="orby-draft">
                   Message
                 </label>
@@ -192,8 +236,12 @@ export default function OrbyWidget() {
                 />
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] text-muted-foreground">Enter to send</p>
-                  <Button type="submit" size="sm" disabled={send.isPending || draft.trim() === ''}>
-                    {send.isPending ? 'Thinking…' : 'Send'}
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={send.isPending || organizerAsk.isPending || draft.trim() === ''}
+                  >
+                    {send.isPending || organizerAsk.isPending ? 'Thinking…' : 'Send'}
                   </Button>
                 </div>
               </form>

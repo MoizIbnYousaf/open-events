@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   archiveSupportChat,
+  askOrganizerOrby,
   fetchSupportSession,
   getSupportChat,
   identifySupport,
@@ -42,10 +43,21 @@ export function useIdentifySupport(eventSlug: string) {
 export function useSendSupportMessage(eventSlug: string) {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (content: string) => sendSupportMessage({ eventSlug, content }),
+    mutationFn: (input: { readonly content: string; readonly pagePath: string }) =>
+      sendSupportMessage({ eventSlug, ...input }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: supportKeys.session(eventSlug) })
     },
+  })
+}
+
+export function useAskOrganizerOrby(eventSlug: string) {
+  return useMutation({
+    mutationFn: (input: {
+      readonly pagePath: string
+      readonly content: string
+      readonly history: readonly { readonly role: 'user' | 'assistant'; readonly content: string }[]
+    }) => askOrganizerOrby({ eventSlug, ...input }),
   })
 }
 

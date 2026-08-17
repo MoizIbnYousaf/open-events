@@ -10,7 +10,7 @@ describe('Orby OpenRouter adapter', () => {
   it('stays quiet when no key is configured', async () => {
     const orby = selectOrbyReplyer({})
     await expect(
-      orby.reply({ eventName: 'DemoConf 2026', publicContext: '', history: [] }),
+      orby.reply({ eventName: 'DemoConf 2026', publicContext: '', pagePath: '/', history: [] }),
     ).resolves.toBeNull()
   })
 
@@ -31,6 +31,7 @@ describe('Orby OpenRouter adapter', () => {
     const reply = await orby.reply({
       eventName: 'DemoConf 2026',
       publicContext: 'Venue: DemoConf Convention Center. CFP status: open.',
+      pagePath: '/schedule/demo-conf-2026',
       history: [{ role: 'user', content: 'Is the CFP open?' }],
     })
     expect(reply).toBe('The CFP is open; submit 13-15 May.')
@@ -53,6 +54,7 @@ describe('Orby OpenRouter adapter', () => {
     expect(body.messages[0]?.content).not.toContain('—')
     expect(body.messages[0]?.content).not.toContain('–')
     expect(body.messages[0]?.content).toContain('DemoConf Convention Center')
+    expect(body.messages[0]?.content).toContain('currently viewing /schedule/demo-conf-2026')
     expect(body.max_tokens).toBe(240)
     expect(body.temperature).toBe(0.2)
     expect(init.headers).toMatchObject({
@@ -73,6 +75,7 @@ describe('Orby OpenRouter adapter', () => {
     await orby.reply({
       eventName: 'DemoConf 2026',
       publicContext: '',
+      pagePath: '/',
       history: Array.from({ length: 20 }, (_, index) => ({
         role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
         content: `Turn ${index + 1}`,
@@ -90,7 +93,7 @@ describe('Orby OpenRouter adapter', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 401 })))
     const orby = createOpenRouterOrby({ apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })
     await expect(
-      orby.reply({ eventName: 'DemoConf 2026', publicContext: '', history: [] }),
+      orby.reply({ eventName: 'DemoConf 2026', publicContext: '', pagePath: '/', history: [] }),
     ).resolves.toBeNull()
   })
 })

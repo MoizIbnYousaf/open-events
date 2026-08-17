@@ -9,6 +9,7 @@ export interface OrbyReplyer {
     readonly eventName: string
     /** Public, server-authored event facts only. Never include private submissions or identities. */
     readonly publicContext: string
+    readonly pagePath: string
     readonly history: readonly OrbyTurn[]
   }): Promise<string | null>
 }

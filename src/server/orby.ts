@@ -14,7 +14,7 @@ interface OpenRouterResponse {
   readonly choices?: readonly { readonly message?: { readonly content?: unknown } }[]
 }
 
-function systemPrompt(eventName: string, publicContext: string): string {
+function systemPrompt(eventName: string, publicContext: string, pagePath: string): string {
   return [
     `You are ${ORBY_NAME}, the complete Open Events assistant. ${eventName} is the current active event being managed in Open Events.`,
     'Help attendees, submitters, speakers, reviewers, and organizers understand the product and complete their next step.',
@@ -22,6 +22,7 @@ function systemPrompt(eventName: string, publicContext: string): string {
     'Give direct, practical answers in one or two short paragraphs.',
     'Useful routes: speaker access is /start; the CFP is /cfp/demo-conf-2026/cfp; the speaker portal is /portal; reviewer access is /evaluations; organizer access is /admin; the programme is /schedule/demo-conf-2026, /sessions/demo-conf-2026, and /speakers/demo-conf-2026.',
     'Explain the next step and include a relevant relative route when it helps.',
+    `The person is currently viewing ${pagePath || '/'}. Start with help relevant to that page when possible.`,
     'You cannot see private account data, unpublished sessions, scores, decisions, email delivery, or organizer actions. Never claim that you performed an action or that a private status is confirmed.',
     'Never ask for passwords, login codes, payment details, or API keys.',
     'Never use an em dash or en dash. Use a comma, semicolon, colon, hyphen, or separate sentence instead.',
@@ -64,7 +65,10 @@ export function createOpenRouterOrby(config: {
   return {
     async reply(input) {
       const messages: OpenRouterMessage[] = [
-        { role: 'system', content: systemPrompt(input.eventName, input.publicContext) },
+        {
+          role: 'system',
+          content: systemPrompt(input.eventName, input.publicContext, input.pagePath),
+        },
         ...input.history.slice(-MAX_HISTORY_TURNS).map((turn) => ({
           role: turn.role === 'assistant' ? ('assistant' as const) : ('user' as const),
           content: turn.content,

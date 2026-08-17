@@ -109,8 +109,8 @@ describe('Orby widget', () => {
     ).toBeInTheDocument()
   })
 
-  it('stays off the organizer desk', async () => {
+  it('appears on the organizer desk', async () => {
     await mountAt('/admin')
-    expect(screen.queryByRole('button', { name: `Chat with ${ORBY_NAME}` })).toBeNull()
+    expect(await screen.findByRole('button', { name: `Chat with ${ORBY_NAME}` })).toBeVisible()
   })
 })

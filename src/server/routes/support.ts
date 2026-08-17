@@ -123,6 +123,7 @@ async function handleSendOwn(context: ServerContext): Promise<Response> {
       contactId: subject.contactId,
       guestToken: readSupportGuestToken(context),
       content: typeof body.content === 'string' ? body.content : '',
+      pagePath: typeof body.pagePath === 'string' ? body.pagePath.slice(0, 256) : '/',
     })
     return context.json(message)
   } catch (error) {
@@ -131,6 +132,45 @@ async function handleSendOwn(context: ServerContext): Promise<Response> {
         context,
         error.code,
         error.code === 'unauthorized' ? 401 : error.code === 'not_found' ? 404 : 400,
+      )
+    }
+    throw error
+  }
+}
+
+async function handleOrganizerAsk(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = context.get('actor')
+  if (!(actor instanceof OrganizerActor)) return unauthorizedResponse(context)
+  const body = await readJsonBody(context)
+  const slug = requireSlug(context)
+  if (body === null) return validationFailedResponse(context)
+  if (slug === null) return notFoundResponse(context)
+  const history = Array.isArray(body.history)
+    ? body.history.flatMap((turn) => {
+        if (!isRecord(turn)) return []
+        const role = turn.role
+        const content = turn.content
+        if ((role !== 'user' && role !== 'assistant') || typeof content !== 'string') return []
+        return [{ role: role as 'user' | 'assistant', content: content.slice(0, 2_000) }]
+      })
+    : []
+  try {
+    const content = await deps.support.answerOrganizer({
+      actor,
+      eventSlug: slug,
+      pagePath: typeof body.pagePath === 'string' ? body.pagePath.slice(0, 256) : '/',
+      content: typeof body.content === 'string' ? body.content : '',
+      history,
+    })
+    return context.json({ content })
+  } catch (error) {
+    if (error instanceof ApplicationError) {
+      return toErrorResponse(
+        context,
+        error.code,
+        error.code === 'not_found' ? 404 : error.code === 'internal' ? 503 : 400,
       )
     }
     throw error
@@ -292,6 +332,13 @@ export function registerSupportRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleGetAdmin,
+  )
+  app.post(
+    '/api/admin/events/:slug/orby/ask',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleOrganizerAsk,
   )
   app.post(
     '/api/admin/events/:slug/support/chats/:id/messages',

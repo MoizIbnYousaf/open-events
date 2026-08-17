@@ -48,6 +48,35 @@ beforeEach(async () => {
 })
 
 describe('Orby support API', () => {
+  it('keeps organizer page-aware questions behind organizer access', async () => {
+    const anonymous = await app.request(
+      `/api/admin/events/${SLUG}/orby/ask`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: ORIGIN },
+        body: JSON.stringify({ content: 'What is this page?', pagePath: `/admin/events/${SLUG}` }),
+      },
+      bindings(),
+    )
+    expect(anonymous.status).toBe(401)
+
+    const { token } = await loginOrganizer()
+    const organizer = await app.request(
+      `/api/admin/events/${SLUG}/orby/ask`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: ORIGIN,
+          cookie: `sp_session=${token}`,
+        },
+        body: JSON.stringify({ content: 'What is this page?', pagePath: `/admin/events/${SLUG}` }),
+      },
+      bindings(),
+    )
+    expect(organizer.status).toBe(503)
+  })
+
   it('asks an unknown visitor for a name and email', async () => {
     const response = await app.request(`/api/support-chat?eventSlug=${SLUG}`, undefined, bindings())
     expect(response.status).toBe(200)

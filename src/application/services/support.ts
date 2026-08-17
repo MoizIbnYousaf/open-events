@@ -5,7 +5,7 @@ import type { CapturedMessageRepository } from '../ports/captured-message-reposi
 import type { ContactRepository } from '../ports/contact-repository'
 import type { EventRepository } from '../ports/event-repository'
 import type { FormRepository } from '../ports/form-repository'
-import type { OrbyReplyer } from '../ports/orby-replyer'
+import type { OrbyReplyer, OrbyTurn } from '../ports/orby-replyer'
 import type { PortalResourceRepository } from '../ports/portal-resource-repository'
 import type { SupportRepository } from '../ports/support-repository'
 import type { TokenGenerator, TokenHasher } from '../ports/token-ports'
@@ -228,44 +228,16 @@ export class SupportService {
     readonly contactId: string | null
     readonly guestToken: string | null
     readonly content: string
+    readonly pagePath: string
   }): Promise<SupportMessageDto> {
     const chat = await this.#requireOwnChat(input)
     const userMessage = await this.#append(chat, 'user', input.content, null)
-    const event = await this.#events.findBySlug(input.eventSlug)
-    if (event === null) throw new ApplicationError('not_found', 'Event not found')
-    const [forms, resources] = await Promise.all([
-      this.#forms.listByEvent(event.id),
-      this.#portalResources.listByEvent(event.id),
-    ])
-    const publicForms = forms.filter((form) => form.purpose === 'public')
-    const now = Date.parse(this.#clock.now())
-    const cfpState = publicForms.some((form) => {
-      if (form.status !== 'published') return false
-      const opens = form.limits.opensAt === null ? null : Date.parse(form.limits.opensAt)
-      const closes = form.limits.closesAt === null ? null : Date.parse(form.limits.closesAt)
-      return (opens === null || opens <= now) && (closes === null || now <= closes)
-    })
-      ? 'open'
-      : 'closed or unavailable'
-    const publicContext = [
-      `status=${event.status}`,
-      `timezone=${event.timezone}`,
-      event.dates === null
-        ? 'dates=not published'
-        : `starts=${event.dates.startsAt}; ends=${event.dates.endsAt}`,
-      event.venue ? `venue=${event.venue}` : 'venue=not published',
-      `CFP=${cfpState}`,
-      `speaker resources=${
-        resources
-          .filter((resource) => resource.published)
-          .map((resource) => resource.title)
-          .join(', ') || 'none published'
-      }`,
-    ].join('; ')
+    const { eventName, publicContext } = await this.#publicEventContext(input.eventSlug)
     const history = await this.#support.listMessages(chat.id)
     const reply = await this.#orby.reply({
-      eventName: event.name,
+      eventName,
       publicContext,
+      pagePath: input.pagePath,
       history: history.map((message) => ({
         role: message.senderType === 'admin' ? 'assistant' : 'user',
         content: message.content,
@@ -275,6 +247,65 @@ export class SupportService {
       await this.#append(chat, 'admin', reply, notifyAfter(this.#clock.now()))
     }
     return userMessage
+  }
+
+  async answerOrganizer(input: {
+    readonly actor: OrganizerActor
+    readonly eventSlug: EventSlug
+    readonly pagePath: string
+    readonly content: string
+    readonly history: readonly OrbyTurn[]
+  }): Promise<string> {
+    void input.actor
+    const content = input.content.trim()
+    if (content.length === 0 || content.length > SUPPORT_MESSAGE_MAX_LENGTH) {
+      throw new ValidationFailedError('Message is required', [])
+    }
+    const { eventName, publicContext } = await this.#publicEventContext(input.eventSlug)
+    const reply = await this.#orby.reply({
+      eventName,
+      publicContext,
+      pagePath: input.pagePath,
+      history: [...input.history, { role: 'user', content }],
+    })
+    if (reply === null) throw new ApplicationError('internal', 'Orby is unavailable')
+    return reply
+  }
+
+  async #publicEventContext(
+    eventSlug: EventSlug,
+  ): Promise<{ readonly eventName: string; readonly publicContext: string }> {
+    const event = await this.#events.findBySlug(eventSlug)
+    if (event === null) throw new ApplicationError('not_found', 'Event not found')
+    const [forms, resources] = await Promise.all([
+      this.#forms.listByEvent(event.id),
+      this.#portalResources.listByEvent(event.id),
+    ])
+    const now = Date.parse(this.#clock.now())
+    const cfpOpen = forms.some((form) => {
+      if (form.purpose !== 'public' || form.status !== 'published') return false
+      const opens = form.limits.opensAt === null ? null : Date.parse(form.limits.opensAt)
+      const closes = form.limits.closesAt === null ? null : Date.parse(form.limits.closesAt)
+      return (opens === null || opens <= now) && (closes === null || now <= closes)
+    })
+    return {
+      eventName: event.name,
+      publicContext: [
+        `status=${event.status}`,
+        `timezone=${event.timezone}`,
+        event.dates === null
+          ? 'dates=not published'
+          : `starts=${event.dates.startsAt}; ends=${event.dates.endsAt}`,
+        event.venue ? `venue=${event.venue}` : 'venue=not published',
+        `CFP=${cfpOpen ? 'open' : 'closed or unavailable'}`,
+        `speaker resources=${
+          resources
+            .filter((resource) => resource.published)
+            .map((resource) => resource.title)
+            .join(', ') || 'none published'
+        }`,
+      ].join('; '),
+    }
   }
 
   async markRead(input: {

@@ -45,7 +45,7 @@ export default function EventsIndexPage() {
 
   return (
     <AppShell slug={DEFAULT_EVENT_SLUG}>
-      <div className="grid gap-4">
+      <div className="grid gap-4" data-tour="events-list">
         <PageHeader>
           <PageHeaderContent>
             <PageHeaderTitle>Events</PageHeaderTitle>

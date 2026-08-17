@@ -44,7 +44,7 @@ export default function PublicSpeakersPage({ gallery = false }: { readonly galle
   if (params.contactId !== undefined) return <Outlet />
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-5" data-tour="speaker-gallery">
       <PageHeader surface="wash">
         <PageHeaderContent>
           <PageHeaderTitle>{gallery ? 'Speaker gallery' : 'Speakers'}</PageHeaderTitle>

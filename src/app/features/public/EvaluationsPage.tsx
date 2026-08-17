@@ -234,7 +234,7 @@ export default function EvaluationsPage() {
   return (
     <div className="grid gap-4" data-tour="reviewer-queue">
       <EvaluationsHeading count={rows.length} />
-      <div className="mx-auto grid w-full max-w-3xl gap-4">
+      <div className="mx-auto grid w-full max-w-3xl gap-4" data-tour="reviewer-assignment">
         {rows.map((row) => (
           <EvaluationCard key={rowKey(row)} row={row} onAuthFailure={setWriteCode} />
         ))}

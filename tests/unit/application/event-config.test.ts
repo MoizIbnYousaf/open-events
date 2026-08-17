@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { EventConfigService } from '../../../src/application'
-import { eventFixture, organizerActor } from '../helpers/fixtures'
+import { createOrganizerSession, eventFixture, organizerActor } from '../helpers/fixtures'
+import { toOrganizerActor } from '../../../src/application'
 import { InMemoryEventRepository } from '../helpers/in-memory-repositories'
 
 function buildHarness() {
@@ -65,5 +66,17 @@ describe('EventConfigService', () => {
     ).rejects.toMatchObject({
       code: 'not_found',
     })
+  })
+
+  it('allows tour actors to read but denies their direct service mutations', async () => {
+    const { service } = buildHarness()
+    const tourActor = toOrganizerActor(createOrganizerSession({ provenance: 'tour' }))!
+
+    await expect(service.getBySlug(tourActor, 'demo-conf-2026')).resolves.toMatchObject({
+      slug: 'demo-conf-2026',
+    })
+    await expect(
+      service.updateBySlug(tourActor, 'demo-conf-2026', { venue: 'Changed by tour' }),
+    ).rejects.toMatchObject({ code: 'forbidden' })
   })
 })

@@ -15,16 +15,17 @@ import {
 } from '../env'
 import { notFoundResponse } from '../error'
 import {
-  serializeExpiredSessionCookie,
-  serializeSessionCookie,
+  readTourSessionToken,
+  serializeExpiredTourSessionCookie,
+  serializeTourSessionCookie,
   sessionCookieMaxAgeSeconds,
 } from '../auth'
 
 const TOUR_EVENT_SLUG = 'demo-conf-2026'
 const TOUR_EVENT_ID = 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d'
-const TOUR_SPEAKER_CONTACT_ID = 'c0000000-0000-4000-8000-000000000604'
+const TOUR_SPEAKER_CONTACT_ID = 'd0000000-0000-4000-8000-000000000610'
 const TOUR_REVIEWER_CONTACT_ID = 'c0000000-0000-4000-8000-000000000601'
-const TOUR_SESSION_TTL_MS = 30 * 60 * 1000
+const TOUR_SESSION_TTL_MS = 10 * 60 * 1000
 type TourAccess = 'organizer' | 'portal' | 'evaluation'
 
 function secureRequest(context: ServerContext): boolean {
@@ -105,8 +106,8 @@ async function issueSubmitterTourSession(
   const inserted = await db
     .prepare(
       `INSERT INTO sessions
-         (id, kind, contact_id, event_id, capability, token_hash, expires_at, consumed_at, created_at)
-       SELECT ?, 'submitter', ?, ?, ?, ?, ?, NULL, ?
+         (id, kind, contact_id, event_id, capability, token_hash, expires_at, consumed_at, created_at, provenance)
+       SELECT ?, 'submitter', ?, ?, ?, ?, ?, NULL, ?, 'tour'
        WHERE ${proof}`,
     )
     .bind(
@@ -145,17 +146,22 @@ async function handleStartTourSession(context: ServerContext): Promise<Response>
 
   const deps = depsFromContext(context)
   if (deps === null) return databaseUnavailableResponse(context)
+  const previousTourToken = readTourSessionToken(context)
+  if (previousTourToken !== null) await deps.session.revokeSession(previousTourToken)
   const configuredTtl = getTtlConfig(context).organizerSessionMs
   const ttlMs = Math.min(configuredTtl, TOUR_SESSION_TTL_MS, MAX_ORGANIZER_SESSION_TTL_MS)
   const result =
     access === 'organizer'
-      ? await deps.session.issueOrganizerSession(ttlMs)
+      ? await deps.session.issueOrganizerSession(ttlMs, 'tour')
       : await issueSubmitterTourSession(context, access, ttlMs)
   if (result === null) {
     return context.json({ error: { code: 'internal', message: 'tour_fixture_unavailable' } }, 500)
   }
   const maxAge = sessionCookieMaxAgeSeconds(result.expiresAt, deps.clock.now())
-  context.header('Set-Cookie', serializeSessionCookie(result.token, maxAge, secureRequest(context)))
+  context.header(
+    'Set-Cookie',
+    serializeTourSessionCookie(result.token, maxAge, secureRequest(context)),
+  )
   return context.json({
     mode: 'ready',
     expiresAt: result.expiresAt,
@@ -164,13 +170,17 @@ async function handleStartTourSession(context: ServerContext): Promise<Response>
 }
 
 /** Drops the sandbox organizer cookie when the tour enters public screens or closes. */
-function handleEndTourSession(context: ServerContext): Response {
+async function handleEndTourSession(context: ServerContext): Promise<Response> {
   const environment = context.env.DEPLOY_ENVIRONMENT
   if (!['acceptance', 'local', 'test'].includes(environment ?? '')) {
     return notFoundResponse(context)
   }
   context.header('Cache-Control', 'no-store')
-  context.header('Set-Cookie', serializeExpiredSessionCookie(secureRequest(context)))
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const token = readTourSessionToken(context)
+  if (token !== null) await deps.session.revokeSession(token)
+  context.header('Set-Cookie', serializeExpiredTourSessionCookie(secureRequest(context)))
   return context.body(null, 204)
 }
 

@@ -206,10 +206,8 @@ describe('public headshot uploads (R2 + D1)', () => {
       bindings(),
     )
 
-    expect(response.status).toBe(404)
-    expect(await response.json()).toEqual({
-      error: { code: 'not_found', message: 'Not found' },
-    })
+    expect(response.status).toBe(204)
+    expect(await response.text()).toBe('')
   })
 
   it('keeps exactly one metadata row and one object after a replacement', async () => {

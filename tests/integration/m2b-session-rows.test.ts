@@ -56,6 +56,7 @@ describe('discriminated session rows', () => {
       expiresAt: FUTURE,
       consumedAt: null,
       createdAt: NOW,
+      provenance: 'ordinary',
     }
     expect(validateSessionIdentity(row)).toEqual([])
   })
@@ -118,6 +119,7 @@ describe('discriminated session rows', () => {
       expiresAt: FUTURE,
       consumedAt: null,
       createdAt: NOW,
+      provenance: 'ordinary',
     }
     const organizerRow: SessionRow = {
       id: 'session-row-org',
@@ -129,6 +131,7 @@ describe('discriminated session rows', () => {
       expiresAt: FUTURE,
       consumedAt: null,
       createdAt: NOW,
+      provenance: 'ordinary',
     }
 
     expect(() => toSession(submitterRow)).toThrow(DbDecodeError)
@@ -195,6 +198,7 @@ describe('discriminated session rows', () => {
         expiresAt: FUTURE,
         consumedAt: null,
         createdAt: NOW,
+        provenance: 'ordinary',
       },
     })
 
@@ -237,6 +241,7 @@ describe('discriminated session rows', () => {
         expiresAt: FUTURE,
         consumedAt: null,
         createdAt: NOW,
+        provenance: 'ordinary',
       },
     })
 
@@ -265,5 +270,6 @@ function toDecodedRow(row: SessionRow): DecodedSessionRow {
     expiresAt: row.expiresAt,
     consumedAt: row.consumedAt,
     createdAt: row.createdAt,
+    provenance: row.provenance,
   }
 }

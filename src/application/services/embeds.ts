@@ -7,7 +7,7 @@ import {
   type EmbedKind,
   type EmbedRecord,
 } from '../../domain/embed'
-import type { OrganizerActor } from '../actors'
+import { assertActorCanMutate, type OrganizerActor } from '../actors'
 import { ApplicationError, ValidationFailedError } from '../errors'
 import type { Clock } from '../ports/clock'
 import type { EventRepository } from '../ports/event-repository'
@@ -71,7 +71,7 @@ export class EmbedService {
     },
     origin: string,
   ): Promise<EmbedDto> {
-    void actor
+    assertActorCanMutate(actor)
     if (
       !isEmbedKind(input.kind) ||
       !isEmbedFormat(input.format) ||

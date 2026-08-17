@@ -86,7 +86,7 @@ export default function MessagesPage({ eventSlug }: { readonly eventSlug: EventS
   const selected = matches.find((message) => message.id === spotlightId) ?? matches[0] ?? null
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4" data-tour="messages-workspace">
       <PageHeader>
         <PageHeaderContent>
           <PageHeaderTitle>Messages</PageHeaderTitle>

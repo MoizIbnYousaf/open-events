@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Local-only D1 reset: wipe .wrangler/state, apply migrations --local, seed --local.
-import { createRequire } from 'node:module'
 import { rmSync, existsSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+
+import { seedShowcaseAssets } from './showcase-assets.mjs'
+export { wranglerCommand } from './wrangler-command.mjs'
+import { wranglerCommand } from './wrangler-command.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const stateDir = resolve(root, '.wrangler', 'state')
@@ -13,20 +16,6 @@ const stateDir = resolve(root, '.wrangler', 'state')
 // proposal would silently inflate — so the demo programme is never the default.
 const withShowcase = process.argv.includes('--showcase')
 const withProgramme = process.argv.includes('--programme') || withShowcase
-
-/**
- * `node <wrangler binary>` so a package-manager install check cannot block
- * the documented local reset / e2e webServer path.
- */
-export function wranglerCommand(repoRoot) {
-  const require = createRequire(resolve(repoRoot, 'package.json'))
-  const wranglerBin = resolve(
-    dirname(require.resolve('wrangler/package.json')),
-    'bin',
-    'wrangler.js',
-  )
-  return { command: process.execPath, wranglerBin }
-}
 
 const run = (args) => {
   const { command, wranglerBin } = wranglerCommand(root)
@@ -66,6 +55,7 @@ if (isMain) {
       '--file',
       'src/db/seed-showcase.sql',
     ])
+    seedShowcaseAssets({ repoRoot: root })
   }
   console.log(
     withShowcase

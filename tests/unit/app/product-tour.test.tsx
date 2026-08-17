@@ -10,7 +10,9 @@ import { ThemeProvider } from '../../../src/components/ui/theme-provider'
 import { routeTree } from '../../../src/app/routeTree.gen'
 import { DEFAULT_EVENT_SLUG, DEFAULT_FORM_SLUG } from '../../../src/app/lib/default-event'
 import { ProductTour, TOUR_TOGGLE_EVENT } from '../../../src/app/features/tour/ProductTour'
+import { TOUR_ROUTE_EVENT } from '../../../src/app/features/tour/tour-events'
 import { isTourActive } from '../../../src/app/features/tour/tour-activity'
+import { TOUR_LEASE_KEY } from '../../../src/app/features/tour/tour-lease'
 import { organizerDestinations } from '../../../src/app/features/nav/nav-model'
 import {
   TOUR_ORGANIZER_HOLD,
@@ -64,7 +66,13 @@ function toggleTour(): void {
 }
 
 function mountTour() {
-  const onNavigate = vi.fn()
+  const onNavigate = vi.fn((route: string, params?: Readonly<Record<string, string>>) => {
+    const path = route.replace(
+      /\$([A-Za-z0-9_]+)/g,
+      (segment, name: string) => params?.[name] ?? segment,
+    )
+    window.history.pushState(window.history.state, '', path)
+  })
   render(<ProductTour onNavigate={onNavigate} />)
   return { onNavigate, user: userEvent.setup() }
 }
@@ -104,12 +112,14 @@ async function holdAtTheOrganizerGate(user: ReturnType<typeof userEvent.setup>):
   await user.click(screen.getByRole('button', { name: /^next$/i }))
   await user.click(screen.getByRole('button', { name: /^next$/i }))
   await waitFor(
-    () => expect(screen.getByRole('dialog')).toHaveAccessibleName(/sign in to continue the tour/i),
+    () =>
+      expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer access needs attention/i),
     { timeout: GATE_TIMEOUT },
   )
 }
 
 beforeEach(() => {
+  window.history.replaceState(window.history.state, '', '/')
   installStorage()
   vi.stubGlobal(
     'fetch',
@@ -141,7 +151,7 @@ describe('tour steps', () => {
     expect(TOUR_STEPS[0]?.id).toBe('welcome')
     expect(TOUR_STEPS[0]?.route).toBeUndefined()
     expect(TOUR_STEPS[0]?.target).toBeUndefined()
-    expect(TOUR_STEPS.at(-1)?.id).toBe('schedule')
+    expect(TOUR_STEPS.at(-1)?.id).toBe('itinerary')
     const ids = TOUR_STEPS.map((step) => step.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
@@ -186,12 +196,11 @@ describe('tour steps', () => {
   // reader's Next, which was measured live. A string is the easiest fix to
   // regress silently, so the instruction the product actually keeps is pinned
   // here and the promise it does not keep is pinned out.
-  it('tells the held reader to press Next rather than promising to resume itself', () => {
-    expect(TOUR_ORGANIZER_HOLD.body).toContain('then press Next')
+  it('offers truthful organizer recovery without promising an automatic resume', () => {
+    expect(TOUR_ORGANIZER_HOLD.body).toMatch(/retry/i)
     expect(TOUR_ORGANIZER_HOLD.body).not.toMatch(/picks up|pick up/i)
-    // Both recovery doors the hold offers are named in the same sentence.
-    expect(TOUR_ORGANIZER_HOLD.body).toMatch(/organizer secret/i)
-    expect(TOUR_ORGANIZER_HOLD.body).toMatch(/skip ahead/i)
+    expect(TOUR_ORGANIZER_HOLD.body).toMatch(/sign-in door/i)
+    expect(TOUR_ORGANIZER_HOLD.body).toMatch(/public chapters/i)
   })
 
   it('derives both recovery doors from the list rather than hard-coding them', () => {
@@ -212,7 +221,7 @@ describe('product tour', () => {
 
     toggleTour()
     const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveAccessibleName(/welcome to open events/i)
+    expect(dialog).toHaveAccessibleName(/from proposal to programme/i)
 
     toggleTour()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -226,7 +235,7 @@ describe('product tour', () => {
     // admin-signin declares a [data-tour] hook that this test never renders;
     // the popover must appear regardless.
     await user.click(screen.getByRole('button', { name: /^next$/i }))
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/organizer workspace/i)
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/organizer sign-in/i)
   })
 
   it('announces its progress politely as "Step N of M"', async () => {
@@ -257,7 +266,7 @@ describe('product tour', () => {
     )
 
     await user.click(screen.getByRole('button', { name: /^next$/i }))
-    expect(await screen.findByText('Organizer journey')).toBeInTheDocument()
+    expect(await screen.findByText('Overview journey')).toBeInTheDocument()
     expect(screen.getByRole('progressbar', { name: 'Tour progress' })).toHaveAttribute(
       'aria-valuenow',
       '2',
@@ -271,10 +280,10 @@ describe('product tour', () => {
 
     expect(screen.getByRole('button', { name: /^back$/i })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: /^next$/i }))
-    expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer workspace/i)
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer sign-in/i)
 
     await user.click(screen.getByRole('button', { name: /^back$/i }))
-    expect(screen.getByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(/from proposal to programme/i)
   })
 
   it('navigates a route-bearing step with the exact route and params', async () => {
@@ -348,14 +357,17 @@ describe('product tour', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
 
     toggleTour()
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/speaker start/i)
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/role-specific access/i)
     expect(first.onNavigate).toHaveBeenCalledWith('/start', undefined)
   })
 
-  it('waits for authority cleanup before an immediate resume', async () => {
+  it('keeps the coach visible until authority cleanup finishes', async () => {
     let finishDelete: (() => void) | undefined
+    let deleteCalls = 0
     vi.mocked(fetch).mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'DELETE') {
+        deleteCalls += 1
+        if (deleteCalls !== 2) return Promise.resolve(new Response(null, { status: 204 }))
         return new Promise<Response>((resolve) => {
           finishDelete = () => resolve(new Response(null, { status: 204 }))
         })
@@ -376,26 +388,139 @@ describe('product tour', () => {
     toggleTour()
     await screen.findByRole('dialog')
     await user.click(screen.getByRole('button', { name: /pause tour/i }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(
+      0,
+    )
+    finishDelete?.()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 
     toggleTour()
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/from proposal to programme/i)
     expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(
-      1,
+      0,
     )
-    finishDelete?.()
+  })
 
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
-    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(
-      2,
+  it('supersedes a delayed role response and revokes it after Pause', async () => {
+    let finishPost: (() => void) | undefined
+    vi.mocked(fetch).mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Promise<Response>((resolve) => {
+          finishPost = () =>
+            resolve(
+              new Response(
+                JSON.stringify({
+                  mode: 'ready',
+                  expiresAt: '2026-08-16T07:00:00.000Z',
+                  eventSlug: DEFAULT_EVENT_SLUG,
+                }),
+                { status: 200, headers: { 'content-type': 'application/json' } },
+              ),
+            )
+        })
+      }
+      return Promise.resolve(new Response(null, { status: 204 }))
+    })
+
+    const { onNavigate, user } = mountTour()
+    toggleTour()
+    await screen.findByRole('dialog')
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await waitFor(() =>
+      expect(
+        vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+      ).toHaveLength(1),
     )
+
+    await user.click(screen.getByRole('button', { name: /pause tour/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    finishPost?.()
+
+    await waitFor(() =>
+      expect(
+        vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'DELETE'),
+      ).toHaveLength(3),
+    )
+    expect(onNavigate).not.toHaveBeenCalledWith('/admin/events/$slug', expect.anything())
+    expect(JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? '{}')).toMatchObject({
+      stepId: 'admin-signin',
+      status: 'paused',
+    })
+  })
+
+  it('uses keepalive cleanup on page exit', async () => {
+    mountTour()
+    toggleTour()
+    await screen.findByRole('dialog')
+
+    window.dispatchEvent(new Event('pagehide'))
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.some(([, init]) => init?.method === 'DELETE' && init.keepalive === true),
+      ).toBe(true),
+    )
+  })
+
+  it('pauses locally when another tab takes the lease without revoking its authority', async () => {
+    const { onNavigate } = mountTour()
+    toggleTour()
+    await screen.findByRole('dialog')
+    const deletesBefore = vi
+      .mocked(fetch)
+      .mock.calls.filter(([, init]) => init?.method === 'DELETE').length
+
+    window.localStorage.setItem(
+      TOUR_LEASE_KEY,
+      JSON.stringify({ tabId: 'another-tab', expiresAt: Date.now() + 15_000 }),
+    )
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: TOUR_LEASE_KEY,
+        newValue: window.localStorage.getItem(TOUR_LEASE_KEY),
+      }),
+    )
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(onNavigate).toHaveBeenLastCalledWith('/')
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'DELETE'),
+    ).toHaveLength(deletesBefore)
+  })
+
+  it('pauses at the exact checkpoint when manual navigation diverges from narration', async () => {
+    const { onNavigate, user } = mountTour()
+    toggleTour()
+    await screen.findByRole('dialog')
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Organizer sign-in')
+    const deletesBefore = vi
+      .mocked(fetch)
+      .mock.calls.filter(([, init]) => init?.method === 'DELETE').length
+
+    window.dispatchEvent(new CustomEvent(TOUR_ROUTE_EVENT, { detail: '/sessions/demo-conf-2026' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(onNavigate).toHaveBeenLastCalledWith('/')
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'DELETE'),
+    ).toHaveLength(deletesBefore + 1)
+    expect(JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? '{}')).toMatchObject({
+      stepId: 'admin-signin',
+      status: 'paused',
+    })
   })
 
   it('finishes with Done on the last step and records completion', async () => {
     // The straight walk through all twelve steps is the signed-in organizer's
     // walk, so the rail its gated steps look for is on screen throughout.
-    const rails = TOUR_STEPS.filter((step) => step.requiresSession !== undefined).map((step) =>
-      mountTourTarget(step.target ?? ''),
-    )
+    const rails = TOUR_STEPS.filter(
+      (step) => step.targetPolicy === 'required' && step.target !== undefined,
+    ).map((step) => mountTourTarget(step.target ?? ''))
     try {
       const { user } = mountTour()
       toggleTour()
@@ -407,7 +532,9 @@ describe('product tour', () => {
       expect(screen.getByRole('status')).toHaveTextContent(`Step ${STEP_COUNT} of ${STEP_COUNT}`)
 
       await user.click(screen.getByRole('button', { name: /^done$/i }))
-      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(
+        await screen.findByRole('heading', { name: /one proposal, ready for an audience/i }),
+      ).toBeInTheDocument()
       expect(window.localStorage.getItem(DONE_KEY)).toBe('true')
       expect(window.localStorage.getItem(PROGRESS_KEY)).toBeNull()
     } finally {
@@ -415,14 +542,14 @@ describe('product tour', () => {
     }
   })
 
-  it('records completion when the tour is skipped', async () => {
+  it('ends without claiming completion', async () => {
     const { user } = mountTour()
     toggleTour()
     await screen.findByRole('dialog')
 
-    await user.click(screen.getByRole('button', { name: /skip tour/i }))
+    await user.click(screen.getByRole('button', { name: /end tour/i }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(window.localStorage.getItem(DONE_KEY)).toBe('true')
+    expect(window.localStorage.getItem(DONE_KEY)).toBeNull()
     expect(window.localStorage.getItem(PROGRESS_KEY)).toBeNull()
   })
 
@@ -451,7 +578,7 @@ describe('product tour', () => {
       toggleTour()
       await screen.findByRole('dialog')
 
-      await user.click(screen.getByRole('button', { name: /skip tour/i }))
+      await user.click(screen.getByRole('button', { name: /end tour/i }))
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
       expect(opener).toHaveFocus()
     } finally {
@@ -474,7 +601,7 @@ describe('product tour', () => {
       await screen.findByRole('dialog')
 
       input.focus()
-      expect(input).toHaveFocus()
+      await waitFor(() => expect(screen.getByRole('dialog')).toHaveFocus())
       await user.keyboard('{Escape}')
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     } finally {
@@ -491,7 +618,7 @@ describe('product tour', () => {
     await screen.findByRole('dialog')
     expect(isTourActive()).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: /skip tour/i }))
+    await user.click(screen.getByRole('button', { name: /end tour/i }))
     await waitFor(() => expect(isTourActive()).toBe(false))
   })
 
@@ -508,7 +635,9 @@ describe('product tour', () => {
       expect(screen.getByRole('status')).toHaveTextContent(`Step 3 of ${STEP_COUNT}`)
       expect(screen.queryByRole('button', { name: /^next$/i })).toBeNull()
       expect(screen.getByRole('button', { name: /back to sign-in/i })).toBeEnabled()
-      expect(screen.getByRole('button', { name: /skip to public screens/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /continue with public chapters/i }),
+      ).toBeInTheDocument()
       expect(onNavigate).not.toHaveBeenCalledWith(
         '/admin/events/$slug/taxonomies',
         expect.anything(),
@@ -554,7 +683,7 @@ describe('product tour', () => {
         await waitFor(
           () =>
             expect(screen.getByRole('dialog')).toHaveAccessibleName(
-              /sign in to continue the tour/i,
+              /organizer access needs attention/i,
             ),
           { timeout: GATE_TIMEOUT },
         )
@@ -566,31 +695,24 @@ describe('product tour', () => {
   )
 
   it(
-    'visits the routeless command menu before the public route, never deeper into the organizer half',
+    'leaves a held organizer chapter for the first public route',
     async () => {
       const { onNavigate, user } = mountTour()
       toggleTour()
       await holdAtTheOrganizerGate(user)
 
-      await user.click(screen.getByRole('button', { name: /skip to public screens/i }))
+      await user.click(screen.getByRole('button', { name: /continue with public chapters/i }))
       await waitFor(() =>
         expect(onNavigate).toHaveBeenLastCalledWith('/cfp/$eventSlug/$formSlug', {
           eventSlug: DEFAULT_EVENT_SLUG,
           formSlug: DEFAULT_FORM_SLUG,
         }),
       )
-      expect(screen.getByRole('dialog')).toHaveAccessibleName(/command menu/i)
-      const paletteIndex = TOUR_STEPS.findIndex((step) => step.id === 'palette')
+      expect(screen.getByRole('dialog')).toHaveAccessibleName(/published call for papers/i)
+      const paletteIndex = TOUR_STEPS.findIndex((step) => step.id === 'public-cfp')
       expect(screen.getByRole('status')).toHaveTextContent(
         `Step ${paletteIndex + 1} of ${STEP_COUNT}`,
       )
-
-      await user.click(screen.getByRole('button', { name: /^next$/i }))
-      expect(screen.getByRole('dialog')).toHaveAccessibleName(/call for papers/i)
-      expect(onNavigate).toHaveBeenLastCalledWith('/cfp/$eventSlug/$formSlug', {
-        eventSlug: DEFAULT_EVENT_SLUG,
-        formSlug: DEFAULT_FORM_SLUG,
-      })
     },
     GATE_TEST_TIMEOUT,
   )
@@ -604,7 +726,7 @@ describe('product tour', () => {
 
       await user.click(screen.getByRole('button', { name: /back to sign-in/i }))
       await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith('/admin', undefined))
-      expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer workspace/i)
+      expect(screen.getByRole('dialog')).toHaveAccessibleName(/organizer sign-in/i)
       expect(screen.getByRole('status')).toHaveTextContent(
         `Step ${TOUR_SIGN_IN_STEP_INDEX + 1} of ${STEP_COUNT}`,
       )
@@ -667,13 +789,13 @@ describe('tour header affordance', () => {
 
     const header = await screen.findByRole('banner')
     await user.click(within(header).getByRole('button', { name: /^take the tour$/i }))
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/from proposal to programme/i)
 
     await user.click(within(header).getByRole('button', { name: /^take the tour$/i }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(await screen.findByRole('button', { name: /resume tour/i })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /resume tour/i }))
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/welcome to open events/i)
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/from proposal to programme/i)
   })
 })

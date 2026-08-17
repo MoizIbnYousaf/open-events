@@ -99,6 +99,7 @@ describe('submit unit-of-work atomic rollback', () => {
             expiresAt: FUTURE,
             consumedAt: null,
             createdAt: NOW,
+            provenance: 'ordinary',
           },
         },
       }),
@@ -217,6 +218,7 @@ describe('session redeem unit-of-work atomic rollback', () => {
           expiresAt: 'bad-instant',
           consumedAt: null,
           createdAt: NOW,
+          provenance: 'ordinary',
         },
       }),
     ).rejects.toThrow()

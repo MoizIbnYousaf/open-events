@@ -15,7 +15,7 @@ import {
   type AgendaPlacement,
   type AgendaSessionInput,
 } from '../../domain/agenda'
-import type { OrganizerActor } from '../actors'
+import { assertActorCanMutate, type OrganizerActor } from '../actors'
 import type {
   AgendaBoardDto,
   AgendaAutoPlaceResultDto,
@@ -99,11 +99,12 @@ export class AgendaService {
    * storage — they surface as a room conflict instead.
    */
   async place(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     slug: EventSlug,
     submissionId: SubmissionId,
     input: PlaceAgendaSessionInput,
   ): Promise<AgendaBoardDto> {
+    assertActorCanMutate(actor)
     const event = await this.#eventOrNotFound(slug)
     const [session, items] = await Promise.all([
       this.#placeableSession(event, submissionId),
@@ -173,10 +174,11 @@ export class AgendaService {
    * nothing, so the action is idempotent.
    */
   async unplace(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     slug: EventSlug,
     submissionId: SubmissionId,
   ): Promise<AgendaBoardDto> {
+    assertActorCanMutate(actor)
     const event = await this.#eventOrNotFound(slug)
     // `#existingSession`, not `#placeableSession`: taking a talk OFF the
     // programme is exactly what an organizer needs to do after rejecting it.
@@ -205,7 +207,8 @@ export class AgendaService {
    * sessions stay draft — a session with no room cannot appear on a programme —
    * and a repeated publish moves nothing, so the action is idempotent.
    */
-  async publish(_actor: OrganizerActor, slug: EventSlug): Promise<AgendaPublishResultDto> {
+  async publish(actor: OrganizerActor, slug: EventSlug): Promise<AgendaPublishResultDto> {
+    assertActorCanMutate(actor)
     const event = await this.#eventOrNotFound(slug)
     const now = this.#clock.now()
     const [sessions, decisions] = await Promise.all([
@@ -249,7 +252,8 @@ export class AgendaService {
    * trusted. Everything it does is an ordinary placement afterwards — movable,
    * removable, and indistinguishable from one an organizer dragged.
    */
-  async autoPlace(_actor: OrganizerActor, slug: EventSlug): Promise<AgendaAutoPlaceResultDto> {
+  async autoPlace(actor: OrganizerActor, slug: EventSlug): Promise<AgendaAutoPlaceResultDto> {
+    assertActorCanMutate(actor)
     const event = await this.#eventOrNotFound(slug)
     const [sessions, items, decisions] = await Promise.all([
       this.#agenda.listByEvent(event.id),

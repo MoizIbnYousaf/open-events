@@ -1,6 +1,7 @@
 import type {
   OrganizerSession,
   SessionCapability,
+  SessionProvenance,
   SubmitterAccessPurpose,
   SubmitterSession,
   SubmitterToken,
@@ -199,8 +200,11 @@ export class SessionService implements RoleAccessIssuer {
    * elsewhere (local secret, or a verified Clerk JWT). Callers must not skip
    * that check.
    */
-  async issueOrganizerSession(ttlMs: number): Promise<OrganizerSessionDto> {
-    const issued = await this.#buildOrganizerSession(this.#clock.now(), ttlMs)
+  async issueOrganizerSession(
+    ttlMs: number,
+    provenance: SessionProvenance = 'ordinary',
+  ): Promise<OrganizerSessionDto> {
+    const issued = await this.#buildOrganizerSession(this.#clock.now(), ttlMs, provenance)
     await this.#sessions.save(issued.session)
     return { token: issued.token, expiresAt: issued.expiresAt }
   }
@@ -389,8 +393,9 @@ export class SessionService implements RoleAccessIssuer {
                   ),
                 }
               : undefined,
+            current.provenance,
           )
-        : await this.#buildOrganizerSession(now, ttlMs)
+        : await this.#buildOrganizerSession(now, ttlMs, current.provenance)
     const result = await this.#unitOfWork.rotateSession({
       sessionId: current.id,
       consumedAt: now,
@@ -468,6 +473,7 @@ export class SessionService implements RoleAccessIssuer {
         expiresAt,
         consumedAt: null,
         createdAt: now,
+        provenance: current.provenance,
       },
       source,
     }
@@ -506,6 +512,7 @@ export class SessionService implements RoleAccessIssuer {
   async #buildOrganizerSession(
     now: UtcInstant,
     ttlMs: number,
+    provenance: SessionProvenance = 'ordinary',
   ): Promise<{
     readonly token: string
     readonly expiresAt: UtcInstant
@@ -521,6 +528,7 @@ export class SessionService implements RoleAccessIssuer {
       expiresAt,
       consumedAt: null,
       createdAt: now,
+      provenance,
     }
     return { token, expiresAt, session }
   }
@@ -535,6 +543,7 @@ export class SessionService implements RoleAccessIssuer {
       readonly createdAt: UtcInstant
       readonly absoluteExpiresAt: UtcInstant | undefined
     },
+    provenance: SessionProvenance = 'ordinary',
   ): Promise<{
     readonly token: string
     readonly expiresAt: UtcInstant
@@ -558,6 +567,7 @@ export class SessionService implements RoleAccessIssuer {
       expiresAt,
       consumedAt: null,
       createdAt: legacy?.createdAt ?? now,
+      provenance,
     }
     return { token, expiresAt, session }
   }

@@ -18,5 +18,38 @@ export default defineConfig({
     reuseExistingServer: false,
     gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
   },
-  projects: [{ name: 'tour', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'desktop-chromium',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
+    {
+      name: 'desktop-reduced-motion',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+        reducedMotion: 'reduce',
+      },
+    },
+    {
+      name: 'desktop-zoom-200',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
+    {
+      name: 'phone-320-chromium',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 320, height: 568 } },
+    },
+    {
+      name: 'phone-390-chromium',
+      use: { ...devices['Pixel 5'], viewport: { width: 390, height: 844 } },
+    },
+    {
+      name: 'tablet-chromium',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 768, height: 1024 } },
+    },
+    {
+      name: 'phone-390-webkit',
+      use: { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } },
+    },
+  ],
 })

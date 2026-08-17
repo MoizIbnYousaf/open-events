@@ -118,6 +118,36 @@ describe('the complete showcase seed', () => {
     expect(overlaps?.n).toBe(1)
   })
 
+  it('provides the exact builder, portal, embed, file, support, and review story', async () => {
+    await applyTwice()
+    const receipt = await env.DB.prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM cfp_form_versions WHERE id = 'showcase-form-draft' AND status = 'draft') AS drafts,
+        (SELECT COUNT(*) FROM cfp_pages WHERE version_id = 'showcase-form-draft') AS draft_pages,
+        (SELECT COUNT(*) FROM cfp_condition_rules WHERE version_id = 'showcase-form-draft') AS draft_conditions,
+        (SELECT COUNT(*) FROM cfp_routing_rules WHERE version_id = 'showcase-form-draft') AS draft_routes,
+        (SELECT COUNT(*) FROM embeds WHERE id = 'showcase-schedule-embed' AND enabled = 1) AS embeds,
+        (SELECT COUNT(*) FROM uploaded_files WHERE owner_contact_id = 'd0000000-0000-4000-8000-000000000610') AS files,
+        (SELECT COUNT(*) FROM uploaded_file_versions WHERE owner_contact_id = 'd0000000-0000-4000-8000-000000000610') AS file_versions,
+        (SELECT COUNT(*) FROM speaker_assignment_assignees WHERE assignment_id = 'showcase-file-request' AND status = 'pending') AS file_requests,
+        (SELECT COUNT(*) FROM support_messages WHERE chat_id = 'showcase-support-chat') AS support_messages,
+        (SELECT COUNT(*) FROM evaluation_round_scores WHERE assignment_id = 'showcase-assignment-featured') AS featured_scores`,
+    ).first<Record<string, number>>()
+
+    expect(receipt).toEqual({
+      drafts: 1,
+      draft_pages: 4,
+      draft_conditions: 2,
+      draft_routes: 1,
+      embeds: 1,
+      files: 2,
+      file_versions: 1,
+      file_requests: 1,
+      support_messages: 2,
+      featured_scores: 3,
+    })
+  })
+
   it('cannot be drained or interpreted as provider evidence', async () => {
     await seedDemoConfShowcase(env.DB)
     const safety = await env.DB.prepare(

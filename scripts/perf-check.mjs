@@ -19,7 +19,10 @@ const BUDGETS = {
   // not this one, and that remains independently capped at 150 kB. Raising this
   // is the documented move when the entry has genuinely grown; quietly tracking
   // the build is not.
-  main: 103 * 1024,
+  // The intent-only TourHost adds 1.5 kB gzip to this entry while preventing
+  // the 5.7 kB ProductTour request before a visitor asks for it. Raised by a
+  // reviewed 2 kB after measuring that net first-load reduction.
+  main: 105 * 1024,
   '/start': 20 * 1024,
   '/cfp/:eventSlug/:formSlug': 80 * 1024,
   '/admin/events/$slug/submissions': 30 * 1024,
@@ -62,7 +65,10 @@ const PURITY_MARKERS = ['dnd-kit', 'react-hook-form', 'zod', 'lucide']
  * raise by hand, in a diff, with a reason, not a ratio that quietly tracks
  * whatever the build happens to emit.
  */
-export const EAGER_CLOSURE_BUDGET = 150 * 1024
+// Raised by the same reviewed 2 kB as `main`: the intent host is eager, while
+// the larger tour feature is now absent from the initial request graph.
+export const EAGER_CLOSURE_BUDGET = 152 * 1024
+export const TOUR_CHUNK_BUDGET = 30 * 1024
 
 // TanStack autoCodeSplitting emits manifest keys like
 // "src/app/routes/_public/start.tsx?tsr-split=component"; fixtures may use
@@ -243,12 +249,39 @@ export function resolveEagerClosure(manifest) {
   return files
 }
 
+/** The one lazy tour feature chunk, addressed by source key rather than generated hash. */
+export function resolveTourChunk(manifest) {
+  if (manifest === undefined || manifest === null || typeof manifest !== 'object') {
+    throw new Error('perf:check — dist/client/.vite/manifest.json missing; run pnpm build first')
+  }
+  const dynamicImports = manifest['index.html']?.dynamicImports
+  if (!Array.isArray(dynamicImports)) {
+    throw new Error('perf:check — manifest index.html entry has no dynamicImports')
+  }
+  const matches = dynamicImports.filter(
+    (key) => key === 'src/app/features/tour/ProductTour.tsx' || /ProductTour.*\.js$/.test(key),
+  )
+  if (matches.length !== 1) {
+    throw new Error(`perf:check — expected one ProductTour chunk, found ${matches.length}`)
+  }
+  return matches[0]
+}
+
 /** One violation when the eager closure is over budget; empty when it is not. */
 export function checkEagerClosure(totalBytes, chunkCount) {
   if (totalBytes <= EAGER_CLOSURE_BUDGET) return []
   return [
     `eager closure gzip ${(totalBytes / 1024).toFixed(1)} kB across ${chunkCount} chunks exceeds budget ${(
       EAGER_CLOSURE_BUDGET / 1024
+    ).toFixed(0)} kB`,
+  ]
+}
+
+export function checkTourChunk(totalBytes) {
+  if (totalBytes <= TOUR_CHUNK_BUDGET) return []
+  return [
+    `tour feature gzip ${(totalBytes / 1024).toFixed(1)} kB exceeds budget ${(
+      TOUR_CHUNK_BUDGET / 1024
     ).toFixed(0)} kB`,
   ]
 }
@@ -295,8 +328,10 @@ if (isDirectRun) {
   }
 
   let routeChunks
+  let tourChunk
   try {
     routeChunks = resolveRouteChunks(manifest)
+    tourChunk = resolveTourChunk(manifest)
   } catch (error) {
     console.error(
       `perf:check failed:\n - ${error instanceof Error ? error.message : String(error)}`,
@@ -317,6 +352,8 @@ if (isDirectRun) {
       readFileSync(join(assetsDir, assetFile.split('/').pop() ?? '')),
     ).length
   }
+  const tourFile = manifest[tourChunk]?.file ?? tourChunk
+  const tourBytes = gzipSync(readFileSync(join(assetsDir, tourFile.split('/').pop() ?? ''))).length
 
   let eagerFiles
   try {
@@ -335,6 +372,7 @@ if (isDirectRun) {
 
   const violations = checkBudgets(chunkSizes)
   violations.push(...checkEagerClosure(eagerBytes, eagerFiles.length))
+  violations.push(...checkTourChunk(tourBytes))
   const purity = checkPurity(readFileSync(join(assetsDir, mainFile.split('/').pop() ?? ''), 'utf8'))
   if (purity.length > 0) {
     violations.push(`main chunk contains B-11 purity markers: ${purity.join(', ')}`)
@@ -349,6 +387,7 @@ if (isDirectRun) {
       EAGER_CLOSURE_BUDGET / 1024
     ).toFixed(0)}`,
   )
+  console.log(`  tour feature: ${(tourBytes / 1024).toFixed(1)} / ${TOUR_CHUNK_BUDGET / 1024}`)
   if (violations.length > 0) {
     console.error(
       'perf:check failed:\n' + violations.map((violation) => ` - ${violation}`).join('\n'),

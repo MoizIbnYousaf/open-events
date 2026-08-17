@@ -322,8 +322,8 @@ export function createSessionUnitOfWork(
         db
           .prepare(
             `INSERT INTO sessions
-               (id, kind, contact_id, event_id, capability, token_hash, expires_at, consumed_at, created_at)
-             SELECT ?, 'submitter', contact_id, event_id, purpose, ?, ?, NULL, ?
+               (id, kind, contact_id, event_id, capability, token_hash, expires_at, consumed_at, created_at, provenance)
+             SELECT ?, 'submitter', contact_id, event_id, purpose, ?, ?, NULL, ?, ?
              FROM submitter_tokens
              WHERE id = ? AND consumed_at IS NULL AND expires_at > ?
                AND ((purpose IS NULL AND ? IS NULL) OR purpose = ?)`,
@@ -333,6 +333,7 @@ export function createSessionUnitOfWork(
             session.tokenHash,
             session.expiresAt,
             session.createdAt,
+            session.provenance,
             tokenId,
             consumedAt,
             session.capability,
@@ -358,8 +359,8 @@ export function createSessionUnitOfWork(
         db
           .prepare(
             `INSERT INTO sessions
-               (id, kind, contact_id, event_id, capability, token_hash, expires_at, consumed_at, created_at)
-             SELECT ?, kind, contact_id, event_id, capability, ?, ?, NULL, ?
+               (id, kind, contact_id, event_id, capability, token_hash, expires_at, consumed_at, created_at, provenance)
+             SELECT ?, kind, contact_id, event_id, capability, ?, ?, NULL, ?, provenance
              FROM sessions
              WHERE id = ? AND consumed_at IS NULL AND expires_at > ?`,
           )

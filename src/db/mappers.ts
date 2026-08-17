@@ -140,6 +140,7 @@ export function toSession(row: SessionRow): Session {
     expiresAt: row.expiresAt,
     consumedAt: row.consumedAt,
     createdAt: row.createdAt,
+    provenance: row.provenance,
   }
   const issues = validateSessionIdentity(decoded)
   if (issues.length > 0) {
@@ -157,6 +158,7 @@ export function toSession(row: SessionRow): Session {
       expiresAt: row.expiresAt,
       consumedAt: row.consumedAt,
       createdAt: row.createdAt,
+      provenance: row.provenance,
     }
   }
   return {
@@ -166,6 +168,7 @@ export function toSession(row: SessionRow): Session {
     expiresAt: row.expiresAt,
     consumedAt: row.consumedAt,
     createdAt: row.createdAt,
+    provenance: row.provenance,
   }
 }
 

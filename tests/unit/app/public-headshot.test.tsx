@@ -111,8 +111,8 @@ afterEach(() => {
 })
 
 describe('public-headshot query module', () => {
-  it('treats 404 as "no headshot yet" rather than an error', async () => {
-    fetchHandler = () => envelopeResponse('not_found', 'Not found', 404)
+  it('treats a quiet 204 as "no headshot yet" rather than an error', async () => {
+    fetchHandler = () => new Response(null, { status: 204 })
 
     await expect(getOwnHeadshot()).resolves.toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(1)

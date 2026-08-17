@@ -118,6 +118,7 @@ export default function SpeakersPage({ eventSlug }: { readonly eventSlug: EventS
       {roster.isError ? <AlertLive>The speaker list is unavailable right now.</AlertLive> : null}
 
       <div
+        data-tour="speakers-roster"
         data-slot="speakers-canvas"
         data-spotlight={selected?.contactId ?? undefined}
         className="flex flex-col gap-4 xl:flex-row xl:items-start"

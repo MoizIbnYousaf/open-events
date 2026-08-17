@@ -11,7 +11,12 @@ import type {
 } from '../../domain/submission'
 import { defaultAgendaSlot } from '../../domain/agenda'
 import { validateAnswersAgainstVersion } from '../../domain/invariants/submission'
-import { assertSubmitterCapability, type OrganizerActor, type SubmitterActor } from '../actors'
+import {
+  assertActorCanMutate,
+  assertSubmitterCapability,
+  type OrganizerActor,
+  type SubmitterActor,
+} from '../actors'
 import type {
   AcceptedSubmissionDto,
   EventReadinessDto,
@@ -103,10 +108,11 @@ export class OnboardingService {
    * partially failing batch writes nothing.
    */
   async accept(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     submissionId: SubmissionId,
   ): Promise<AcceptedSubmissionDto> {
+    assertActorCanMutate(actor)
     const now = this.#clock.now()
     const submission = await this.#submissions.findById(submissionId)
     if (submission === null || submission.eventId !== eventId) {
@@ -208,6 +214,7 @@ export class OnboardingService {
     submissionId: SubmissionId,
     outcome: SubmissionDecisionOutcome,
   ): Promise<SubmissionDecisionDto> {
+    assertActorCanMutate(actor)
     const submission = await this.#submissions.findById(submissionId)
     if (submission === null || submission.eventId !== eventId) {
       // Cross-event and absent are deliberately the same safe answer.
@@ -362,11 +369,12 @@ export class OnboardingService {
    * returns the existing task (idempotent).
    */
   async assignFormTask(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     submissionId: SubmissionId,
     input: AssignFormTaskInput,
   ): Promise<SpeakerTaskDto> {
+    assertActorCanMutate(actor)
     const now = this.#clock.now()
     const submission = await this.#submissions.findById(submissionId)
     if (submission === null || submission.eventId !== eventId) {
@@ -464,6 +472,7 @@ export class OnboardingService {
     answers?: AnswerMap,
   ): Promise<SpeakerTaskDto> {
     assertSubmitterCapability(actor, 'portal')
+    assertActorCanMutate(actor)
     const now = this.#clock.now()
     const task = await this.#tasks.findById(id)
     if (task === null || task.eventId !== actor.eventId || task.contactId !== actor.contactId) {

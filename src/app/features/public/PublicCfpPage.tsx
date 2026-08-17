@@ -91,7 +91,7 @@ function CfpScreen({
     return <ClosedCallState definition={definitionQuery.data} />
   }
   return (
-    <div data-tour="cfp-page">
+    <div data-tour="cfp-stepper">
       <CfpWizard
         form={definitionQuery.data}
         eventSlug={eventSlug ?? ''}

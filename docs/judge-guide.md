@@ -37,16 +37,20 @@ wait two minutes, then retry.
 
 ## Five-minute walkthrough
 
-1. In an attendee context, open the programme, switch schedule views, star one
+1. Start the guided tour from the landing page. Its six chapters cover all 26
+   moments from public entry through organizer operations, speaker readiness,
+   review, programme discovery, and itinerary export. Pause and resume keeps
+   the exact checkpoint; temporary role access is read-only and closes on exit.
+2. In an attendee context, open the programme, switch schedule views, star one
    session, and export My schedule. Open the speaker gallery and a detail page.
-2. In a speaker context on acceptance, submit a proposal once. Observe the
+3. In a speaker context on acceptance, submit a proposal once. Observe the
    focused confirmation and continue to the portal. Complete profile/task work.
-3. In the organizer context, filter the submissions desk, export the displayed
+4. In the organizer context, filter the submissions desk, export the displayed
    queue, inspect the proposal, assign review, record a decision, and open the
    blocker-first Readiness desk.
-4. In a reviewer context, score the assigned proposal or record a conflict so
+5. In a reviewer context, score the assigned proposal or record a conflict so
    the organizer can reassign it.
-5. Back as organizer, resolve the seeded agenda conflict, publish, and inspect
+6. Back as organizer, resolve the seeded agenda conflict, publish, and inspect
    message intent/delivery wording. Then return to the public programme.
 
 The complete context-by-context script is in [demo-script.md](demo-script.md).
@@ -59,8 +63,6 @@ The complete context-by-context script is in [demo-script.md](demo-script.md).
   redemption are separate receipts.
 - Uploads stay private. Public speaker imagery is currently initials-only; no
   uploaded image is automatically promoted into the gallery.
-- The image inventory is fail-closed and every shipped asset is recorded as
-  containing no women.
 - Acceptance is the only destructive test target. Production is read-only
   during judging.
 

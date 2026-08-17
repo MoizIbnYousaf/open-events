@@ -1,6 +1,10 @@
 import { isAssignmentKind } from '../../domain/embed'
-import type { OrganizerActor } from '../actors'
-import { assertSubmitterCapability, type SubmitterActor } from '../actors'
+import {
+  assertActorCanMutate,
+  assertSubmitterCapability,
+  type OrganizerActor,
+  type SubmitterActor,
+} from '../actors'
 import { ApplicationError, ValidationFailedError } from '../errors'
 import type { Clock } from '../ports/clock'
 import type { EventRepository } from '../ports/event-repository'
@@ -18,7 +22,7 @@ export class AssignmentService {
   }
 
   async create(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     slug: string,
     input: {
       readonly title: string
@@ -28,6 +32,7 @@ export class AssignmentService {
       readonly contactIds: readonly string[]
     },
   ) {
+    assertActorCanMutate(actor)
     const title = input.title.trim()
     if (title.length === 0) throw new ValidationFailedError('Task title is required', [])
     if (input.contactIds.length === 0) {
@@ -78,6 +83,7 @@ export class AssignmentService {
 
   async completeMine(actor: SubmitterActor, assignmentId: string) {
     assertSubmitterCapability(actor, 'portal')
+    assertActorCanMutate(actor)
     const updated = await this.#programme.completeAssignee(
       assignmentId,
       actor.contactId,

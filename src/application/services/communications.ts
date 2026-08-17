@@ -2,7 +2,12 @@ import type { CapturedMessage } from '../../domain/confirmation'
 import type { Event, EventId } from '../../domain/event'
 import { buildCalendarInvite } from '../../domain/invite'
 import type { ProposalSubmission, SubmissionId, SubmissionOutcome } from '../../domain/submission'
-import { assertSubmitterCapability, type OrganizerActor, type SubmitterActor } from '../actors'
+import {
+  assertActorCanMutate,
+  assertSubmitterCapability,
+  type OrganizerActor,
+  type SubmitterActor,
+} from '../actors'
 import type {
   AcceptancePreviewDto,
   AudienceRecipientDto,
@@ -195,10 +200,11 @@ export class CommunicationsService {
   }
 
   async saveConfirmationTemplate(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     input: { readonly subject: string; readonly body: string },
   ): Promise<{ readonly subject: string; readonly body: string }> {
+    assertActorCanMutate(actor)
     const subject = input.subject.trim()
     const body = input.body.trim()
     if (subject.length === 0 || body.length === 0) {
@@ -239,6 +245,7 @@ export class CommunicationsService {
     eventId: EventId,
     submissionId: SubmissionId,
   ): Promise<readonly CapturedMessageDto[]> {
+    assertActorCanMutate(actor)
     return this.#queue(actor, eventId, submissionId, 'acceptance')
   }
 
@@ -277,6 +284,7 @@ export class CommunicationsService {
     submissionId: SubmissionId,
     kind: OrganizerMessageKind,
   ): Promise<readonly CapturedMessageDto[]> {
+    assertActorCanMutate(actor)
     const rendered = await this.#render(eventId, submissionId, kind)
     // The STANDING decision, not the acceptance record. Both templates state
     // outright that the proposal is accepted, and a rejection deliberately
@@ -413,7 +421,7 @@ export class CommunicationsService {
   }
 
   async sendSpeakerBroadcast(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     input: {
       readonly subject: string
@@ -421,6 +429,7 @@ export class CommunicationsService {
       readonly contactIds: readonly string[]
     },
   ) {
+    assertActorCanMutate(actor)
     const event = await this.#events.findById(eventId)
     if (event === null) throw new ApplicationError('not_found', `Event '${eventId}' not found`)
     const roster = await this.#contacts.listSpeakersByEvent(eventId)
@@ -438,7 +447,7 @@ export class CommunicationsService {
         eventName: event.name,
         portalLink: ROLE_LINK_PREVIEW,
       }
-      const issued = await this.#roleAccessIssuer.issueRoleAccess(_actor, {
+      const issued = await this.#roleAccessIssuer.issueRoleAccess(actor, {
         eventId,
         contactId: person.contactId,
         email: person.email,

@@ -5,11 +5,14 @@ import * as perf from '../../../scripts/perf-check.mjs'
 
 const {
   EAGER_CLOSURE_BUDGET,
+  TOUR_CHUNK_BUDGET,
   checkBudgets,
   checkEagerClosure,
+  checkTourChunk,
   checkPurity,
   resolveEagerClosure,
   resolveRouteChunks,
+  resolveTourChunk,
 } = perf
 
 // Manifest-driven perf-gate contract: keep the CLI thin and exercise the
@@ -37,6 +40,7 @@ const MANIFEST = {
       'assets/speakers._eventSlug-abc123.js',
       'assets/admin_.events._slug_.embeds-abc123.js',
       'assets/admin_.events._slug_.files-abc123.js',
+      'src/app/features/tour/ProductTour.tsx',
     ],
   },
   'assets/start-abc123.js': { file: 'assets/start-abc123.js' },
@@ -83,6 +87,9 @@ const MANIFEST = {
   },
   'assets/admin_.events._slug_.files-abc123.js': {
     file: 'assets/admin_.events._slug_.files-abc123.js',
+  },
+  'src/app/features/tour/ProductTour.tsx': {
+    file: 'assets/ProductTour-abc123.js',
   },
 } as const
 
@@ -196,6 +203,27 @@ describe('manifest-driven perf gate', () => {
     expect(() => resolveRouteChunks(missingManifest)).toThrow()
   })
 
+  it('pins one explicitly budgeted lazy tour chunk', () => {
+    expect(resolveTourChunk(MANIFEST)).toBe('src/app/features/tour/ProductTour.tsx')
+    expect(TOUR_CHUNK_BUDGET).toBe(30 * 1024)
+    expect(checkTourChunk(TOUR_CHUNK_BUDGET)).toEqual([])
+    expect(checkTourChunk(TOUR_CHUNK_BUDGET + 1)).toEqual([expect.stringContaining('tour feature')])
+  })
+
+  it('fails closed when the lazy tour chunk is missing or duplicated', () => {
+    expect(() =>
+      resolveTourChunk({ 'index.html': { file: 'assets/index.js', dynamicImports: [] } }),
+    ).toThrow(/expected one ProductTour chunk/)
+    expect(() =>
+      resolveTourChunk({
+        'index.html': {
+          file: 'assets/index.js',
+          dynamicImports: ['src/app/features/tour/ProductTour.tsx', 'assets/ProductTour-copy.js'],
+        },
+      }),
+    ).toThrow(/found 2/)
+  })
+
   it('passes an all-under-budget fixture with no violations (CLI prints the table)', () => {
     expect(checkBudgets).toBeTypeOf('function')
     const violations: readonly string[] = checkBudgets({
@@ -279,7 +307,7 @@ describe('manifest-driven perf gate', () => {
     })
 
     it('pins the budget as an explicit number someone has to raise by hand', () => {
-      expect(EAGER_CLOSURE_BUDGET).toBe(153600)
+      expect(EAGER_CLOSURE_BUDGET).toBe(155648)
     })
   })
 })

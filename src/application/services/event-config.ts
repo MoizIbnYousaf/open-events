@@ -1,7 +1,7 @@
 import type { Event, EventSlug } from '../../domain/event'
 import { slugifyEventName, uniqueEventSlug } from '../../domain/event-slug'
 import { validateEventConfig } from '../../domain/invariants/event'
-import type { OrganizerActor } from '../actors'
+import { assertActorCanMutate, type OrganizerActor } from '../actors'
 import type { AdminEventConfigDto, UpdateEventConfigInput } from '../dtos/event-config.dto'
 import { toAdminEventConfigDto } from '../dtos/event-config.dto'
 import { ApplicationError, ValidationFailedError } from '../errors'
@@ -31,7 +31,7 @@ export class EventConfigService {
   }
 
   async create(actor: OrganizerActor, input: CreateEventInput): Promise<AdminEventConfigDto> {
-    void actor
+    assertActorCanMutate(actor)
     const name = input.name.trim()
     if (name.length === 0) {
       throw new ValidationFailedError('Event name is required', [
@@ -66,10 +66,11 @@ export class EventConfigService {
   }
 
   async updateBySlug(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     slug: EventSlug,
     input: UpdateEventConfigInput,
   ): Promise<AdminEventConfigDto> {
+    assertActorCanMutate(actor)
     const event = await this.#events.findBySlug(slug)
     if (event === null) {
       throw new ApplicationError('not_found', `Event '${slug}' not found`)

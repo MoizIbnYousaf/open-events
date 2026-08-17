@@ -1,4 +1,4 @@
-import { assertSubmitterCapability, type SubmitterActor } from '../actors'
+import { assertActorCanMutate, assertSubmitterCapability, type SubmitterActor } from '../actors'
 import { ApplicationError, ValidationFailedError } from '../errors'
 import type { Clock } from '../ports/clock'
 import type { ContactRepository } from '../ports/contact-repository'
@@ -74,6 +74,7 @@ export class ProfileService {
     input: UpdateProfileInput,
   ): Promise<SpeakerProfileDto> {
     assertSubmitterCapability(actor, 'portal')
+    assertActorCanMutate(actor)
     const name = input.name.trim()
     if (name.length === 0) {
       throw new ValidationFailedError('A profile name is required', [])

@@ -221,7 +221,12 @@ export default function SubmissionList() {
 
   return (
     <AppShell slug={slug ?? ''}>
-      <section aria-label="Submissions" aria-busy={listQuery.isPending} className="grid gap-4">
+      <section
+        aria-label="Submissions"
+        aria-busy={listQuery.isPending}
+        className="grid gap-4"
+        data-tour="submissions-table"
+      >
         <PageHeader>
           <PageHeaderContent>
             <PageHeaderTitle>Submissions</PageHeaderTitle>

@@ -93,7 +93,7 @@ export default function EvaluationCommitteePage() {
           stretched a single-line "Criterion name" input to ~1250px, wider than
           a page of prose. C0 §3: readable column for forms, full width for
           tables and boards. */}
-      <div className="mx-auto grid w-full max-w-3xl gap-4">
+      <div className="mx-auto grid w-full max-w-3xl gap-4" data-tour="evaluations-workspace">
         <EvaluationCommitteeScreen />
       </div>
     </AppShell>

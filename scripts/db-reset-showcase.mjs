@@ -3,7 +3,8 @@ import { resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 import { acceptanceTargetFromEnv } from './acceptance-target.mjs'
-import { wranglerCommand } from './db-reset.mjs'
+import { wranglerCommand } from './wrangler-command.mjs'
+import { seedShowcaseAssets } from './showcase-assets.mjs'
 
 const EVENT_ID = 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d'
 const root = resolve(import.meta.dirname, '..')
@@ -74,5 +75,6 @@ if (process.argv.includes('--showcase')) {
     '--file',
     'src/db/seed-showcase.sql',
   ])
+  seedShowcaseAssets({ remote: true, repoRoot: root })
 }
 console.log('acceptance reset complete — isolated showcase event only')

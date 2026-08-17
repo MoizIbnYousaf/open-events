@@ -336,7 +336,12 @@ function TaxonomyForm({ data, save, navigateToLogin }: TaxonomyFormProps) {
         : null
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="grid gap-3" noValidate>
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="grid gap-3"
+      data-tour="taxonomy-workspace"
+      noValidate
+    >
       <PageHeader className="min-h-8">
         <PageHeaderContent>
           <PageHeaderTitle>Taxonomies</PageHeaderTitle>

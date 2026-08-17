@@ -72,7 +72,7 @@ export default function FilesPage({ eventSlug }: { readonly eventSlug: string })
 
   return (
     <AppShell slug={eventSlug}>
-      <div className="mx-auto grid w-full max-w-3xl gap-4">
+      <div className="mx-auto grid w-full max-w-3xl gap-4" data-tour="files-workspace">
         <PageHeader>
           <PageHeaderContent>
             <PageHeaderTitle>Files</PageHeaderTitle>

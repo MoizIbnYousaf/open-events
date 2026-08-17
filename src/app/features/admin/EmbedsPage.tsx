@@ -53,7 +53,7 @@ export default function EmbedsPage({ eventSlug }: { readonly eventSlug: string }
 
   return (
     <AppShell slug={eventSlug}>
-      <div className="grid gap-4">
+      <div className="grid gap-4" data-tour="embeds-workspace">
         <PageHeader>
           <PageHeaderContent>
             <PageHeaderTitle>Embeds</PageHeaderTitle>

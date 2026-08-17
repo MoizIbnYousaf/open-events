@@ -12,6 +12,50 @@ SET status = 'published',
     website_url = 'https://www.openevents.engineer/schedule/demo-conf-2026'
 WHERE id = 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d';
 
+-- A real editable demonstration draft copied from the published version. The
+-- published version remains frozen and every copied id is deterministic.
+INSERT INTO cfp_form_versions
+  (event_id, id, form_id, version, status, content_hash, published_at, updated_at)
+SELECT event_id, 'showcase-form-draft', form_id, 2, 'draft', NULL, NULL,
+       '2026-08-15T16:00:00.000Z'
+FROM cfp_form_versions
+WHERE id = 'f0000000-0000-4000-8000-000000000002'
+ON CONFLICT(event_id, id) DO NOTHING;
+
+INSERT INTO cfp_pages (event_id, id, version_id, position, kind, title, content)
+SELECT event_id, 'showcase-' || id, 'showcase-form-draft', position, kind, title, content
+FROM cfp_pages
+WHERE version_id = 'f0000000-0000-4000-8000-000000000002'
+ON CONFLICT(event_id, id) DO NOTHING;
+
+INSERT INTO cfp_elements
+  (event_id, id, version_id, page_id, position, kind, field_key, label,
+   required, max_length, question_type, options_json, options_source)
+SELECT event_id, 'showcase-' || id, 'showcase-form-draft', 'showcase-' || page_id,
+       position, kind, field_key, label, required, max_length, question_type,
+       options_json, options_source
+FROM cfp_elements
+WHERE version_id = 'f0000000-0000-4000-8000-000000000002'
+ON CONFLICT(event_id, id) DO NOTHING;
+
+INSERT INTO cfp_condition_rules
+  (event_id, id, rule_id, version_id, element_id, group_index, condition_index,
+   operator, operand_key, value_json, effect, position)
+SELECT event_id, 'showcase-' || id, 'showcase-' || rule_id, 'showcase-form-draft',
+       'showcase-' || element_id, group_index, condition_index, operator,
+       operand_key, value_json, effect, position
+FROM cfp_condition_rules
+WHERE version_id = 'f0000000-0000-4000-8000-000000000002'
+ON CONFLICT(event_id, id) DO NOTHING;
+
+INSERT INTO cfp_routing_rules
+  (event_id, id, version_id, position, condition_json, action_kind, action_target)
+SELECT event_id, 'showcase-' || id, 'showcase-form-draft', position,
+       condition_json, action_kind, action_target
+FROM cfp_routing_rules
+WHERE version_id = 'f0000000-0000-4000-8000-000000000002'
+ON CONFLICT(event_id, id) DO NOTHING;
+
 -- Keep the six programme sessions inside the future event window. The sixth
 -- overlaps the first speaker in another room, producing one intentional
 -- speaker conflict for the organizer desk to resolve.
@@ -127,6 +171,78 @@ INSERT INTO speaker_tasks
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-task-808-headshot', 'd0000000-0000-4000-8000-000000000808', 'd0000000-0000-4000-8000-000000000611', 'submit_headshot', 'pending', 2, '2026-04-01T09:00:00.000Z', NULL)
 ON CONFLICT DO NOTHING;
 
+INSERT INTO speaker_assignments
+  (id, event_id, title, due_at, kind, instructions, created_at) VALUES
+  ('showcase-file-request', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'Upload the final presentation deck', '2026-10-01T17:00:00.000Z',
+   'file_request', 'Upload the deck the AV team should receive.',
+   '2026-04-01T09:00:00.000Z')
+ON CONFLICT(id) DO NOTHING;
+
+INSERT INTO speaker_assignment_assignees
+  (assignment_id, contact_id, status, completed_at) VALUES
+  ('showcase-file-request', 'd0000000-0000-4000-8000-000000000610', 'pending', NULL)
+ON CONFLICT(assignment_id, contact_id) DO NOTHING;
+
+INSERT INTO embeds
+  (id, event_id, name, kind, format, enabled, brand_color, track_filter, created_at, updated_at) VALUES
+  ('showcase-schedule-embed', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'DemoConf programme', 'agenda', 'html', 1, '#2563eb', '',
+   '2026-04-01T09:00:00.000Z', '2026-08-15T16:00:00.000Z')
+ON CONFLICT(id) DO NOTHING;
+
+INSERT INTO uploaded_files
+  (id, event_id, owner_contact_id, kind, storage_key, content_type, size_bytes,
+   created_at, updated_at, file_name) VALUES
+  ('showcase-headshot-current', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'd0000000-0000-4000-8000-000000000610', 'headshot',
+   'events/a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d/contacts/d0000000-0000-4000-8000-000000000610/headshot/showcase-current',
+   'image/png', 68, '2026-04-01T09:00:00.000Z', '2026-08-15T16:00:00.000Z', NULL),
+  ('showcase-document-current', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'd0000000-0000-4000-8000-000000000610', 'document',
+   'events/a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d/contacts/d0000000-0000-4000-8000-000000000610/document/showcase-current',
+   'application/pdf', 76, '2026-04-01T09:00:00.000Z', '2026-08-15T16:00:00.000Z',
+   'incident-review-deck.pdf')
+ON CONFLICT(event_id, owner_contact_id, kind) DO NOTHING;
+
+INSERT INTO uploaded_file_versions
+  (id, event_id, owner_contact_id, kind, version, storage_key, content_type,
+   size_bytes, file_name, created_at) VALUES
+  ('showcase-document-v1', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'd0000000-0000-4000-8000-000000000610', 'document', 1,
+   'events/a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d/contacts/d0000000-0000-4000-8000-000000000610/document/showcase-v1',
+   'application/pdf', 76, 'incident-review-outline.pdf', '2026-04-01T09:00:00.000Z')
+ON CONFLICT(event_id, owner_contact_id, kind, version) DO NOTHING;
+
+INSERT INTO uploaded_file_comments
+  (id, event_id, owner_contact_id, kind, author_name, body, created_at) VALUES
+  ('showcase-document-comment', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'd0000000-0000-4000-8000-000000000610', 'document', 'Organizer',
+   'Final deck received; AV review is pending.', '2026-08-15T16:00:00.000Z')
+ON CONFLICT(id) DO NOTHING;
+
+INSERT INTO support_chats
+  (id, event_id, contact_id, last_message_at, admin_viewed_at, archived_at,
+   guest_token_hash, created_at, updated_at) VALUES
+  ('showcase-support-chat', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'd0000000-0000-4000-8000-000000000610', '2026-08-15T16:05:00.000Z',
+   '2026-08-15T16:06:00.000Z', NULL, NULL,
+   '2026-08-15T16:00:00.000Z', '2026-08-15T16:06:00.000Z')
+ON CONFLICT(id) DO NOTHING;
+
+INSERT INTO support_messages
+  (id, chat_id, content, sender_type, read_at, notify_after, notified_at,
+   created_at, updated_at) VALUES
+  ('showcase-support-question', 'showcase-support-chat',
+   'Will presentation adapters be available in every room?', 'user',
+   '2026-08-15T16:06:00.000Z', NULL, NULL,
+   '2026-08-15T16:00:00.000Z', '2026-08-15T16:00:00.000Z'),
+  ('showcase-support-answer', 'showcase-support-chat',
+   'Yes. Each room has HDMI and USB-C adapters at the lectern.', 'admin',
+   '2026-08-15T16:06:00.000Z', NULL, NULL,
+   '2026-08-15T16:05:00.000Z', '2026-08-15T16:05:00.000Z')
+ON CONFLICT(id) DO NOTHING;
+
 INSERT INTO agenda_sessions
   (event_id, submission_id, track_id, room_id, day, start, end, position, status, assignment, created_at, updated_at) VALUES
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'd0000000-0000-4000-8000-000000000807', 'f0000000-0000-4000-8000-000000000503', 'f0000000-0000-4000-8000-000000000506', '2026-10-15', '2026-10-15T10:00:00.000Z', '2026-10-15T10:45:00.000Z', 0, 'published', 'scheduled', '2026-04-01T09:00:00.000Z', '2026-08-15T16:00:00.000Z'),
@@ -171,14 +287,18 @@ INSERT INTO evaluation_assignments
   (event_id, id, round_id, submission_id, evaluator_contact_id, created_at, recused_at) VALUES
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-assignment-recused', 'showcase-round-2', 'd0000000-0000-4000-8000-000000000811', 'c0000000-0000-4000-8000-000000000601', '2026-03-02T09:00:00.000Z', '2026-03-03T09:00:00.000Z'),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-assignment-reassigned', 'showcase-round-2', 'd0000000-0000-4000-8000-000000000811', 'c0000000-0000-4000-8000-000000000602', '2026-03-03T09:05:00.000Z', NULL),
-  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-assignment-reviewed', 'showcase-round-2', 'd0000000-0000-4000-8000-000000000812', 'c0000000-0000-4000-8000-000000000601', '2026-03-02T09:00:00.000Z', NULL)
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-assignment-reviewed', 'showcase-round-2', 'd0000000-0000-4000-8000-000000000812', 'c0000000-0000-4000-8000-000000000601', '2026-03-02T09:00:00.000Z', NULL),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-assignment-featured', 'showcase-round-2', 'd0000000-0000-4000-8000-000000000807', 'c0000000-0000-4000-8000-000000000601', '2026-03-02T09:00:00.000Z', NULL)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO evaluation_round_scores
   (event_id, id, assignment_id, criterion_id, value_number, value_text, created_at, updated_at) VALUES
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-score-1', 'showcase-assignment-reassigned', 'showcase-round2-fit', 4, NULL, '2026-03-04T09:00:00.000Z', '2026-03-04T09:00:00.000Z'),
   ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-score-2', 'showcase-assignment-reassigned', 'showcase-round2-track', NULL, 'Platform & Infra', '2026-03-04T09:00:00.000Z', '2026-03-04T09:00:00.000Z'),
-  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-score-3', 'showcase-assignment-reassigned', 'showcase-round2-note', NULL, 'Strong practical fit with a clear takeaway.', '2026-03-04T09:00:00.000Z', '2026-03-04T09:00:00.000Z')
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-score-3', 'showcase-assignment-reassigned', 'showcase-round2-note', NULL, 'Strong practical fit with a clear takeaway.', '2026-03-04T09:00:00.000Z', '2026-03-04T09:00:00.000Z'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-featured-score-1', 'showcase-assignment-featured', 'showcase-round2-fit', 5, NULL, '2026-03-04T09:00:00.000Z', '2026-03-04T09:00:00.000Z'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-featured-score-2', 'showcase-assignment-featured', 'showcase-round2-track', NULL, 'Platform & Infra', '2026-03-04T09:00:00.000Z', '2026-03-04T09:00:00.000Z'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-featured-score-3', 'showcase-assignment-featured', 'showcase-round2-note', NULL, 'Clear evidence and an actionable operational takeaway.', '2026-03-04T09:00:00.000Z', '2026-03-04T09:00:00.000Z')
 ON CONFLICT DO NOTHING;
 
 -- Capture-only fixture history. These jobs are terminal, non-claimable, and

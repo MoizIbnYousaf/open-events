@@ -86,6 +86,7 @@ export function createOrganizerSession(
     expiresAt: '2026-06-01T00:00:00.000Z',
     consumedAt: null,
     createdAt: NOW,
+    provenance: 'ordinary',
     ...overrides,
   }
 }
@@ -103,6 +104,7 @@ export function createSubmitterSession(
     expiresAt: '2026-06-01T00:00:00.000Z',
     consumedAt: null,
     createdAt: NOW,
+    provenance: 'ordinary',
     ...overrides,
   }
 }
@@ -120,6 +122,7 @@ export function createDecodedSessionRow(
     expiresAt: '2026-05-16T00:00:00.000Z',
     consumedAt: null,
     createdAt: NOW,
+    provenance: 'ordinary',
     ...overrides,
   }
 }

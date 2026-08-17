@@ -33,7 +33,7 @@
   --card-foreground: #0d0d0d;
   --popover: #ffffff;
   --popover-foreground: #0d0d0d;
-  --primary: #0075de;
+  --primary: #006fd2;
   /* Hover DARKENS: an alpha-lightened fill drops white label text below AA
      (0075de at 90% over the canvas reads 3.95:1), and the pointer parks on
      buttons exactly when axe looks. 5.68:1 with white. */
@@ -57,7 +57,7 @@
   --border: rgb(0 0 0 / 0.1);
   --border-opaque: #e6e6e6;
   --input: rgb(0 0 0 / 0.12);
-  --ring: #0075de;
+  --ring: #006fd2;
 
   /* Text-accent is a separate binding from the fill-accent: the same blue
      cannot be both an accessible label colour on the canvas and a fill that
@@ -251,6 +251,10 @@ body {
  * leave a dismissed dialog mounted forever.
  */
 @media (prefers-reduced-motion: reduce) {
+  [data-tour-motion] {
+    animation: none !important;
+    transition-duration: 0s !important;
+  }
   *,
   *::before,
   *::after {

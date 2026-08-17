@@ -1,295 +1,476 @@
 import { DEFAULT_EVENT_SLUG, DEFAULT_FORM_SLUG } from '../../lib/default-event'
 
-/**
- * The product tour, as data.
- *
- * Pure TypeScript on purpose — no JSX, no router import — so the step list is
- * unit testable and the overlay component stays the only place that renders
- * anything. `target` names a `[data-tour="<id>"]` hook that the owning surface
- * declares; a step with no target (or whose target is absent, e.g. an
- * organizer page showing its signed-out state) renders centered instead.
- */
+export type TourChapterId =
+  'orientation' | 'organizer' | 'submitter' | 'speaker' | 'reviewer' | 'programme'
+
+export const TOUR_CHAPTERS: readonly { readonly id: TourChapterId; readonly label: string }[] = [
+  { id: 'orientation', label: 'Orientation' },
+  { id: 'organizer', label: 'Organizer workspace' },
+  { id: 'submitter', label: 'Submitter access' },
+  { id: 'speaker', label: 'Speaker portal' },
+  { id: 'reviewer', label: 'Reviewer workspace' },
+  { id: 'programme', label: 'Public programme' },
+]
+
 export interface TourStep {
   readonly id: string
+  readonly chapter: TourChapterId
   readonly title: string
   readonly body: string
-  /** A TanStack route path literal, exactly as declared by the route tree. */
   readonly route?: string
   readonly params?: Readonly<Record<string, string>>
-  /** A [data-tour] hook id; omitted for centered steps. */
-  readonly target?: string
-  /** Session shape the destination expects while the tour is narrating it. */
   readonly access: 'organizer' | 'public' | 'portal' | 'evaluation'
-  /**
-   * Set on steps whose surface only exists for a signed-in organizer. The tour
-   * owns no session model and probes nothing: the mark simply tells the overlay
-   * that this step's `target` is *evidence*, not decoration. An organizer route
-   * renders its rail (and therefore its `rail-*` hook) only after the session
-   * check passes — every denied, expired or errored branch returns a state card
-   * instead — so "the hook never appeared" is the same fact as "this visitor is
-   * not seeing the organizer surface", read off the DOM the tour already polls.
-   */
+  readonly target?: string
+  readonly mobileTarget: string | null
+  readonly targetPolicy: 'required' | 'optional' | 'none'
+  readonly mode: 'observe' | 'guided'
+  readonly placement: 'auto' | 'center'
+  readonly fixtureAssertions: readonly string[]
+  readonly maxTransitionMs: number
   readonly requiresSession?: 'organizer'
 }
 
 const eventParams = { slug: DEFAULT_EVENT_SLUG } as const
 const showcaseFormId = 'f0000000-0000-4000-8000-000000000001'
 const showcaseSubmissionId = 'd0000000-0000-4000-8000-000000000807'
+const moment = (value: TourStep): TourStep => value
 
-/**
- * What the tour says instead of narrating an organizer screen that never
- * rendered. It names the reason, offers the door back to the one screen that
- * can fix it, and offers the way on for a visitor who has no secret to type.
- *
- * It used to promise the tour "picks up right here" after signing in. It does
- * not: the tour holds on this step until the reader presses Next, and a
- * promise the product does not keep is worse than a plain instruction. The
- * replacement is shorter than what it replaces, which matters — this string is
- * entry-chunk data.
- */
 export const TOUR_ORGANIZER_HOLD = {
-  title: 'Sign in to continue the tour',
-  body: 'These screens only render for a signed-in session. Sign in with the organizer secret, then press Next — or skip ahead to the screens anyone can see.',
+  title: 'Organizer access needs attention',
+  body: 'This sandbox role could not open. Retry it, return to the sign-in door, or continue with the public chapters.',
 } as const
 
 export const TOUR_STEPS: readonly TourStep[] = [
-  {
+  moment({
     id: 'welcome',
-    title: 'Welcome to Open Events',
-    body: 'Open Events runs a conference programme end to end: the call for papers, evaluation, agenda building, and the public schedule. The tour opens a temporary DemoConf workspace so you can see every role without setup.',
-    access: 'organizer',
-  },
-  {
+    chapter: 'orientation',
+    title: 'From proposal to programme',
+    body: 'Follow one DemoConf proposal through intake, review, speaker work, scheduling, and the public programme. Temporary demo access is read-only.',
+    access: 'public',
+    mobileTarget: null,
+    targetPolicy: 'none',
+    mode: 'observe',
+    placement: 'center',
+    fixtureAssertions: ['DemoConf event identity'],
+    maxTransitionMs: 3000,
+  }),
+  moment({
     id: 'admin-signin',
-    title: 'Organizer workspace',
-    body: 'A normal organizer signs in before reaching this workspace. The tour has already opened a short-lived sandbox session, so the next steps can show the complete organizer flow with synthetic data.',
+    chapter: 'orientation',
+    title: 'Organizer sign-in',
+    body: 'This is the normal organizer door. The next chapter opens a separate read-only sandbox role without exposing or replacing a real login.',
     route: '/admin',
+    access: 'public',
     target: 'admin-signin',
-    access: 'organizer',
-  },
-  {
+    mobileTarget: 'admin-signin',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Organizer access door'],
+    maxTransitionMs: 5000,
+  }),
+  moment({
     id: 'event-settings',
+    chapter: 'organizer',
     title: 'Event overview',
-    body: 'Start with the live event pulse: status, the published call for papers, and direct paths into submissions, speaker readiness, and the agenda. Event details and dates remain editable below.',
+    body: 'The event pulse links settings, CFP state, submissions, speaker readiness, and the agenda. Dates and public identity stay editable below.',
     route: '/admin/events/$slug',
     params: eventParams,
+    access: 'organizer',
     target: 'event-overview',
+    mobileTarget: 'event-overview',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Published event pulse', 'CFP state'],
+    maxTransitionMs: 6000,
     requiresSession: 'organizer',
-    access: 'organizer',
-  },
-  {
+  }),
+  moment({
     id: 'events',
+    chapter: 'organizer',
     title: 'Event workspace',
-    body: 'Return to the organizer event list from this rail, then open the conference workspace you want to manage.',
-    route: '/admin/events/$slug',
-    params: eventParams,
-    target: 'rail-events',
-    requiresSession: 'organizer',
+    body: 'The event list keeps DemoConf distinct from every other workspace and makes the active conference easy to reopen.',
+    route: '/admin/events',
     access: 'organizer',
-  },
-  {
+    target: 'events-list',
+    mobileTarget: 'events-list',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['DemoConf event row'],
+    maxTransitionMs: 5000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'taxonomies',
-    title: 'Taxonomies',
-    body: 'Tracks, rooms, and session formats live here as data the rest of the app reuses. Define them once and the CFP, evaluations, and agenda all draw from the same lists.',
+    chapter: 'organizer',
+    title: 'Tracks, rooms, and formats',
+    body: 'Define programme vocabulary once. The CFP, review workspace, agenda, and public schedule reuse these populated lists.',
     route: '/admin/events/$slug/taxonomies',
     params: eventParams,
-    target: 'rail-taxonomies',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'taxonomy-workspace',
+    mobileTarget: 'taxonomy-workspace',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Three tracks', 'Two rooms', 'Three formats'],
+    maxTransitionMs: 5000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'cfp-builder',
-    title: 'CFP builder and versions',
-    body: 'Build the questions speakers answer, preview the flow, and publish an immutable version. New edits become a fresh draft, so existing submissions keep the form they were answered against.',
+    chapter: 'organizer',
+    title: 'Build and version the CFP',
+    body: 'The demonstration draft shows pages, validation, a Workshop condition, track routing, preview, and the immutable published version.',
     route: '/admin/events/$slug/forms/$formId',
     params: { slug: DEFAULT_EVENT_SLUG, formId: showcaseFormId },
-    target: 'cfp-builder',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'cfp-builder-workspace',
+    mobileTarget: 'cfp-builder-workspace',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Tour-safe draft', 'Workshop condition', 'Published version'],
+    maxTransitionMs: 7000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'submissions',
-    title: 'Submissions',
-    body: 'Every proposal the call for papers takes in lands in this list. Open one to review its answers, speakers, and materials.',
+    chapter: 'organizer',
+    title: 'Proposal intake',
+    body: 'Twelve seeded proposals show accepted, rejected, and pending states. Try the filters without changing programme data.',
     route: '/admin/events/$slug/submissions',
     params: eventParams,
-    target: 'rail-submissions',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'submissions-table',
+    mobileTarget: 'submissions-table',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Twelve proposals', 'Mixed decisions'],
+    maxTransitionMs: 6000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'submission-workspace',
-    title: 'Proposal review workspace',
-    body: 'Open a proposal to read its frozen answers, edit programme copy, inspect evaluations, decide its outcome, and send the speaker through onboarding.',
+    chapter: 'organizer',
+    title: 'One proposal, fully connected',
+    body: 'The featured proposal keeps frozen answers, speakers, committee evidence, its decision, onboarding, and schedule placement together.',
     route: '/admin/events/$slug/submissions/$submissionId',
     params: { slug: DEFAULT_EVENT_SLUG, submissionId: showcaseSubmissionId },
-    target: 'submission-workspace',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'submission-workspace',
+    mobileTarget: 'submission-workspace',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Featured proposal', 'Accepted decision', 'Evaluation evidence'],
+    maxTransitionMs: 6000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'speakers',
-    title: 'Speakers desk',
-    body: 'Manage the people behind accepted sessions here: profiles, contact details, portal access, and onboarding progress stay connected to the programme.',
+    chapter: 'organizer',
+    title: 'Speaker desk',
+    body: 'Profiles, portal access, onboarding progress, and communication actions stay attached to the accepted programme.',
     route: '/admin/events/$slug/speakers',
     params: eventParams,
-    target: 'rail-speakers',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'speakers-roster',
+    mobileTarget: 'speakers-roster',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Populated speaker roster'],
+    maxTransitionMs: 6000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'messages',
-    title: 'Messages and invitations',
-    body: 'Send and audit speaker communications here, including calendar invitations. The delivery history keeps every outreach attempt visible.',
+    chapter: 'organizer',
+    title: 'Delivery history',
+    body: 'This audit shows immutable delivery history and provider outcomes. Message composition and reminders begin from the speaker desk.',
     route: '/admin/events/$slug/messages',
     params: eventParams,
-    target: 'rail-messages',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'messages-workspace',
+    mobileTarget: 'messages-workspace',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Captured and delivered message outcomes'],
+    maxTransitionMs: 5000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'evaluations',
-    title: 'Evaluations',
-    body: 'The committee rates submissions here, and the scores roll up per proposal. Evaluators get their own focused surface for working through the queue.',
+    chapter: 'organizer',
+    title: 'Review rounds and results',
+    body: 'Criteria, assignments, weighted results, and recusal evidence give organizers a complete human-review picture.',
     route: '/admin/events/$slug/evaluations',
     params: eventParams,
-    target: 'rail-evaluations',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'evaluations-workspace',
+    mobileTarget: 'evaluations-workspace',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Two review rounds', 'Weighted results', 'Recusal'],
+    maxTransitionMs: 6000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'agenda',
-    title: 'Agenda',
-    body: 'Accepted sessions are placed onto days, tracks, and rooms on this board. What you arrange here becomes the public schedule.',
+    chapter: 'organizer',
+    title: 'Build the agenda',
+    body: 'Eight sessions, explicit conflicts, and list, day, week, track, and room projections all read from one canonical schedule.',
     route: '/admin/events/$slug/agenda',
     params: eventParams,
-    target: 'rail-agenda',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'agenda-board',
+    mobileTarget: 'agenda-board',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Eight agenda sessions', 'Known conflict'],
+    maxTransitionMs: 7000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'embeds',
-    title: 'Embeds',
-    body: 'Publish programme blocks into another site without rebuilding them. Embeds keep the external view tied to the event data here.',
+    chapter: 'organizer',
+    title: 'Publish an embed',
+    body: 'A saved schedule embed provides canonical copyable code and a live preview tied to the same programme.',
     route: '/admin/events/$slug/embeds',
     params: eventParams,
-    target: 'rail-embeds',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'embeds-workspace',
+    mobileTarget: 'embeds-workspace',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Saved schedule embed', 'Live preview'],
+    maxTransitionMs: 6000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'files',
+    chapter: 'organizer',
     title: 'Event files',
-    body: 'Review uploaded headshots and session materials in one place, with their ownership and event context intact.',
+    body: 'Headshots and presentation files remain event-scoped, owner-linked, versioned, and available as inert downloads.',
     route: '/admin/events/$slug/files',
     params: eventParams,
-    target: 'rail-files',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'files-workspace',
+    mobileTarget: 'files-workspace',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Headshot metadata', 'Presentation metadata'],
+    maxTransitionMs: 6000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'orby',
-    title: 'Orby assistant',
-    body: 'Ask event-scoped questions and get answers grounded in the programme data, without leaving the organizer workspace.',
+    chapter: 'organizer',
+    title: 'Event support desk',
+    body: 'Orby is the event support inbox. A synthetic conversation shows how attendee questions and organizer replies stay inside DemoConf.',
     route: '/admin/events/$slug/orby',
     params: eventParams,
-    target: 'rail-orby',
-    requiresSession: 'organizer',
     access: 'organizer',
-  },
-  {
+    target: 'orby-workspace',
+    mobileTarget: 'orby-workspace',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Synthetic support conversation'],
+    maxTransitionMs: 5000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'readiness',
-    title: 'Readiness',
-    body: 'A single checklist of what each accepted speaker still owes: profile, headshot, materials. It tells you who to chase before the event.',
+    chapter: 'organizer',
+    title: 'Know what is missing',
+    body: 'The readiness pulse shows task completion, sessions ready, and the most common blocker, then links to the people behind each number.',
     route: '/admin/events/$slug/readiness',
     params: eventParams,
+    access: 'organizer',
     target: 'readiness-overview',
+    mobileTarget: 'readiness-overview',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['30 percent task completion', 'Five of eight sessions ready'],
+    maxTransitionMs: 5000,
     requiresSession: 'organizer',
-    access: 'organizer',
-  },
-  {
+  }),
+  moment({
     id: 'palette',
+    chapter: 'organizer',
     title: 'Command menu',
-    body: 'Every destination the visible navigation offers is also one keystroke away: press Cmd or Ctrl+K, or use this button. It only ever lists screens you could also reach by looking.',
-    target: 'palette-trigger',
+    body: 'Open the command menu to reach any allowed organizer destination. On a phone, this explanation stays centered because the desktop trigger is hidden.',
     access: 'organizer',
-  },
-  {
+    target: 'palette-trigger',
+    mobileTarget: null,
+    targetPolicy: 'optional',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Allowed organizer destinations'],
+    maxTransitionMs: 3000,
+    requiresSession: 'organizer',
+  }),
+  moment({
     id: 'public-cfp',
-    title: 'Call for papers',
-    body: 'This is the public form speakers fill in to propose a talk. It renders the published form definition the organizer built, step by step.',
+    chapter: 'submitter',
+    title: 'The published call for papers',
+    body: 'The public stepper renders the organizer’s published form, including the Workshop condition and category routing.',
     route: '/cfp/$eventSlug/$formSlug',
     params: { eventSlug: DEFAULT_EVENT_SLUG, formSlug: DEFAULT_FORM_SLUG },
-    target: 'cfp-page',
     access: 'public',
-  },
-  {
+    target: 'cfp-stepper',
+    mobileTarget: 'cfp-stepper',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Four-step CFP', 'Workshop conditional field'],
+    maxTransitionMs: 7000,
+  }),
+  moment({
     id: 'start',
-    title: 'Speaker start',
-    body: 'Prospective speakers request a single-use CFP link here. Speaker portal and reviewer access use separate organizer-issued links, and a successful submission moves the primary speaker into the portal.',
+    chapter: 'submitter',
+    title: 'Role-specific access',
+    body: 'Speakers request a CFP link here. Portal and reviewer links are organizer-issued, and organizer sign-in remains separate.',
     route: '/start',
-    target: 'start-page',
     access: 'public',
-  },
-  {
+    target: 'start-page',
+    mobileTarget: 'start-page',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Speaker access form', 'Organizer access guidance'],
+    maxTransitionMs: 5000,
+  }),
+  moment({
     id: 'speaker-portal',
-    title: 'Speaker portal',
-    body: 'Accepted speakers use this private workspace to finish their profile, upload a headshot and materials, and complete the tasks the organizer assigned.',
+    chapter: 'speaker',
+    title: 'Speaker readiness',
+    body: 'The accepted session shows one completed task, pending work, and the next readiness blocker for the same speaker.',
     route: '/portal',
-    target: 'speaker-portal',
     access: 'portal',
-  },
-  {
+    target: 'portal-readiness',
+    mobileTarget: 'portal-readiness',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Accepted featured session', 'Mixed task state'],
+    maxTransitionMs: 7000,
+  }),
+  moment({
+    id: 'speaker-files',
+    chapter: 'speaker',
+    title: 'Profile and presentation files',
+    body: 'The speaker can inspect profile, headshot, file request, deck, and version history without leaving the portal.',
+    route: '/portal',
+    access: 'portal',
+    target: 'portal-files',
+    mobileTarget: 'portal-files',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Profile', 'Headshot', 'Deck metadata', 'File request'],
+    maxTransitionMs: 5000,
+  }),
+  moment({
     id: 'reviewer-queue',
+    chapter: 'reviewer',
     title: 'Reviewer queue',
-    body: 'Reviewers get a focused queue of assigned proposals. They can score each criterion, save notes, and recuse themselves when there is a conflict.',
+    body: 'The reviewer sees only assigned proposals, each criterion, saved score state, and the recusal action for conflicts.',
     route: '/evaluations',
-    target: 'reviewer-queue',
     access: 'evaluation',
-  },
-  {
+    target: 'reviewer-assignment',
+    mobileTarget: 'reviewer-assignment',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Assigned proposal', 'Saved score', 'Recusal action'],
+    maxTransitionMs: 7000,
+  }),
+  moment({
     id: 'session-catalogue',
-    title: 'Session catalogue',
-    body: 'Attendees can browse and search every published session outside the timetable view, then open the details that matter to them.',
+    chapter: 'programme',
+    title: 'Browse published sessions',
+    body: 'Search and filter eight public sessions, then open the details that matter. Reviewer authority is already closed.',
     route: '/sessions/$eventSlug',
     params: { eventSlug: DEFAULT_EVENT_SLUG },
     access: 'public',
-  },
-  {
+    target: 'session-catalogue',
+    mobileTarget: 'session-catalogue',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Eight published sessions', 'Search and filters'],
+    maxTransitionMs: 6000,
+  }),
+  moment({
     id: 'speaker-gallery',
-    title: 'Speaker gallery',
-    body: 'The public speaker directory connects each presenter to their published profile and sessions.',
+    chapter: 'programme',
+    title: 'Meet the speakers',
+    body: 'The public gallery connects each presenter to a profile and their published sessions without exposing private contact data.',
     route: '/speakers/$eventSlug',
     params: { eventSlug: DEFAULT_EVENT_SLUG },
     access: 'public',
-  },
-  {
+    target: 'speaker-gallery',
+    mobileTarget: 'speaker-gallery',
+    targetPolicy: 'required',
+    mode: 'observe',
+    placement: 'auto',
+    fixtureAssertions: ['Eight public speakers', 'Session relationships'],
+    maxTransitionMs: 6000,
+  }),
+  moment({
     id: 'schedule',
-    title: 'Public schedule',
-    body: 'The agenda the organizer built, published for attendees by list, track, and room. This closes the loop: from proposal to a session people can find.',
+    chapter: 'programme',
+    title: 'The published schedule',
+    body: 'The organizer’s agenda becomes an attendee schedule with list, day, week, track, and room views and working session details.',
     route: '/schedule/$eventSlug',
     params: { eventSlug: DEFAULT_EVENT_SLUG },
-    target: 'schedule-page',
     access: 'public',
-  },
+    target: 'schedule-grid',
+    mobileTarget: 'schedule-grid',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Eight sessions across two days', 'Five projections'],
+    maxTransitionMs: 6000,
+  }),
+  moment({
+    id: 'itinerary',
+    chapter: 'programme',
+    title: 'Save and export an itinerary',
+    body: 'Star sessions, keep the personal itinerary across reloads, and export an iCalendar file. These changes stay in this browser.',
+    route: '/schedule/$eventSlug',
+    params: { eventSlug: DEFAULT_EVENT_SLUG },
+    access: 'public',
+    target: 'itinerary-action',
+    mobileTarget: 'itinerary-action',
+    targetPolicy: 'required',
+    mode: 'guided',
+    placement: 'auto',
+    fixtureAssertions: ['Itinerary controls', 'iCalendar export'],
+    maxTransitionMs: 5000,
+  }),
 ]
 
-/**
- * The organizer door: where a held step sends anyone who wants to fix the hold
- * rather than route around it. Derived rather than hard-coded so reordering the
- * list cannot silently point the recovery at the wrong screen.
- */
 export const TOUR_SIGN_IN_STEP_INDEX = TOUR_STEPS.findIndex((step) => step.id === 'admin-signin')
 
-/**
- * Where a held tour resumes: the first later step that is BOTH ungated and
- * route-bearing. Route-bearing matters as much as ungated — a step with no
- * route inherits whatever page is already on screen, and for a tour held on a
- * denied organizer route that page is the denied one, which is exactly what the
- * hold exists to stop narrating over. Returns -1 when no such step is left.
- */
 export function publicResumeIndexAfter(index: number): number {
   return TOUR_STEPS.findIndex(
-    (step, at) => at > index && step.requiresSession === undefined && step.route !== undefined,
+    (step, at) => at > index && step.access === 'public' && step.route !== undefined,
   )
+}
+
+export function tourChapterForStep(stepId: string): TourChapterId | null {
+  return TOUR_STEPS.find((step) => step.id === stepId)?.chapter ?? null
 }

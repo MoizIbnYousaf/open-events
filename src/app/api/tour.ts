@@ -10,12 +10,17 @@ export type TourSessionStart =
 
 export type TourAccess = 'organizer' | 'portal' | 'evaluation'
 
-async function tourRequest(method: 'POST' | 'DELETE', access?: TourAccess): Promise<Response> {
+async function tourRequest(
+  method: 'POST' | 'DELETE',
+  access?: TourAccess,
+  keepalive = false,
+): Promise<Response> {
   const response = await fetch('/api/tour/session', {
     method,
     credentials: 'include',
     headers: access === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: access === undefined ? undefined : JSON.stringify({ access }),
+    keepalive,
   })
   if (!response.ok) {
     throw new ApiClientError('internal', 'The guided tour could not start.', response.status)
@@ -32,6 +37,8 @@ export async function startTourSession(
 }
 
 /** Drops tour authority before public screens and whenever the tour closes. */
-export async function endTourSession(): Promise<void> {
-  await tourRequest('DELETE')
+export async function endTourSession(
+  options: { readonly keepalive?: boolean } = {},
+): Promise<void> {
+  await tourRequest('DELETE', undefined, options.keepalive ?? false)
 }

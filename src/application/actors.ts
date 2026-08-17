@@ -30,17 +30,20 @@ export class SubmitterActor {
   readonly eventId: EventId
   readonly capability: SessionCapability | null
   readonly legacyBroadAuthority: boolean
+  readonly tourAuthority: boolean
 
   private constructor(
     contactId: ContactId,
     eventId: EventId,
     capability: SessionCapability | null,
     legacyBroadAuthority: boolean,
+    tourAuthority: boolean,
   ) {
     this.contactId = contactId
     this.eventId = eventId
     this.capability = capability
     this.legacyBroadAuthority = legacyBroadAuthority
+    this.tourAuthority = tourAuthority
   }
 
   static fromSession(session: ValidatedSession): SubmitterActor | null {
@@ -56,6 +59,7 @@ export class SubmitterActor {
       session.eventId,
       session.capability,
       session.capability === null,
+      session.provenance === 'tour',
     )
   }
 }
@@ -92,15 +96,24 @@ export class OrganizerActor {
   declare private readonly __organizerBrand: undefined
 
   readonly kind = 'organizer' as const
+  readonly tourAuthority: boolean
 
-  private constructor() {}
+  private constructor(tourAuthority: boolean) {
+    this.tourAuthority = tourAuthority
+  }
 
   static fromSession(session: Session): OrganizerActor | null {
-    return session.kind === 'organizer' ? new OrganizerActor() : null
+    return session.kind === 'organizer' ? new OrganizerActor(session.provenance === 'tour') : null
   }
 }
 
 /** Narrowing factory: organizer sessions only; returns null for submitters. */
 export function toOrganizerActor(session: Session): OrganizerActor | null {
   return OrganizerActor.fromSession(session)
+}
+
+export function assertActorCanMutate(actor: OrganizerActor | SubmitterActor): void {
+  if (actor.tourAuthority) {
+    throw new ApplicationError('forbidden', 'The guided tour is read-only')
+  }
 }

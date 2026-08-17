@@ -30,6 +30,7 @@ import migration0028Sql from '../../migrations/0028_resend_webhook_events.sql?ra
 import migration0029Sql from '../../migrations/0029_acceptance_reset.sql?raw'
 import migration0030Sql from '../../migrations/0030_allow_presentation_documents.sql?raw'
 import migration0031Sql from '../../migrations/0031_add_event_branding.sql?raw'
+import migration0032Sql from '../../migrations/0032_add_session_provenance.sql?raw'
 import seedProgrammeSql from '../../src/db/seed-programme.sql?raw'
 import seedShowcaseSql from '../../src/db/seed-showcase.sql?raw'
 import migration0016Sql from '../../migrations/0016_create_submission_decisions.sql?raw'
@@ -140,6 +141,10 @@ export const MIGRATIONS: D1Migration[] = [
   {
     name: '0031_add_event_branding.sql',
     queries: splitSqlStatements(migration0031Sql),
+  },
+  {
+    name: '0032_add_session_provenance.sql',
+    queries: splitSqlStatements(migration0032Sql),
   },
 ]
 

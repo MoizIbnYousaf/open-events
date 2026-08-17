@@ -36,7 +36,12 @@ import {
 } from '../../domain/evaluation'
 import { isValidEmailAddress, normalizeEmail } from '../../domain/invariants/email'
 import { isValidUtcInstant } from '../../domain/invariants/time'
-import { assertSubmitterCapability, type OrganizerActor, type SubmitterActor } from '../actors'
+import {
+  assertActorCanMutate,
+  assertSubmitterCapability,
+  type OrganizerActor,
+  type SubmitterActor,
+} from '../actors'
 import type {
   EvaluationAssignmentDto,
   EvaluationCriterionDto,
@@ -296,10 +301,11 @@ export class EvaluationService {
    * total beside whatever they gave next.
    */
   async defineCriteria(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     input: DefineCriteriaInput,
   ): Promise<readonly EvaluationCriterionDto[]> {
+    assertActorCanMutate(actor)
     if (input.criteria.length === 0) {
       throw new ApplicationError('validation_failed', 'At least one criterion is required')
     }
@@ -345,7 +351,7 @@ export class EvaluationService {
     await this.#requireStableDefault(eventId, current, resolved)
 
     await Promise.all(resolved.map((criterion) => this.#evaluations.saveCriterion(criterion)))
-    return this.listCriteria(_actor, eventId)
+    return this.listCriteria(actor, eventId)
   }
 
   /**
@@ -409,10 +415,11 @@ export class EvaluationService {
    * reading that event's review surface. It is not a role on the contact.
    */
   async addCommitteeMember(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     input: AddCommitteeMemberInput,
   ): Promise<CommitteeMemberDto> {
+    assertActorCanMutate(actor)
     const email = normalizeEmail(typeof input.email === 'string' ? input.email : '')
     if (!isValidEmailAddress(email)) {
       throw new ApplicationError('validation_failed', 'A valid reviewer email is required')
@@ -444,11 +451,12 @@ export class EvaluationService {
    * that happened to be valid.
    */
   async configureRound(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     roundId: EvaluationRoundId,
     input: ConfigureRoundInput,
   ): Promise<EvaluationRoundDto> {
+    assertActorCanMutate(actor)
     const name = typeof input.name === 'string' ? input.name.trim() : ''
     if (name.length === 0) {
       throw new ApplicationError('validation_failed', 'A round name is required')
@@ -493,11 +501,12 @@ export class EvaluationService {
    * discover by reading it back.
    */
   async putRoundScorecard(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     roundId: EvaluationRoundId,
     input: readonly RoundCriterionInput[],
   ): Promise<readonly RoundCriterionDto[]> {
+    assertActorCanMutate(actor)
     await this.#requireRound(eventId, roundId)
     const criteria: RoundCriterion[] = input.map((candidate, index) =>
       this.#parseCriterion(candidate, index, eventId, roundId),
@@ -526,11 +535,12 @@ export class EvaluationService {
    * rather than forced past a cap.
    */
   async distributeRound(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     roundId: EvaluationRoundId,
     input: DistributeRoundInput,
   ): Promise<DistributeRoundResultDto> {
+    assertActorCanMutate(actor)
     const round = await this.#requireRound(eventId, roundId)
     if (round.status !== 'open') {
       throw new ApplicationError('conflict', 'That review round is closed')
@@ -639,6 +649,7 @@ export class EvaluationService {
     eventId: EventId,
     input: RemindReviewersInput = {},
   ): Promise<RemindReviewersResultDto> {
+    assertActorCanMutate(actor)
     const roster = await this.#evaluations.listCommitteeRoster(eventId)
     const only = input.contactIds
     const chosen =
@@ -696,11 +707,12 @@ export class EvaluationService {
    * the committee entirely.
    */
   async putRoundPool(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     roundId: EvaluationRoundId,
     contactIds: readonly ContactId[],
   ): Promise<readonly { readonly contactId: ContactId }[]> {
+    assertActorCanMutate(actor)
     await this.#requireRound(eventId, roundId)
     const seats = await Promise.all(
       contactIds.map((contactId) => this.#evaluations.findCommitteeMember(eventId, contactId)),
@@ -807,10 +819,11 @@ export class EvaluationService {
    * reason, so the history of who read what stays answerable.
    */
   async removeCommitteeMember(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     contactId: ContactId,
   ): Promise<void> {
+    assertActorCanMutate(actor)
     await this.#evaluations.deleteCommitteeMember(eventId, contactId)
   }
 
@@ -835,10 +848,11 @@ export class EvaluationService {
    * a conflict, because open is not reachable from closed.
    */
   async openRound(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     input: OpenRoundInput,
   ): Promise<EvaluationRoundDto> {
+    assertActorCanMutate(actor)
     const name = typeof input.name === 'string' ? input.name.trim() : ''
     if (!Number.isInteger(input.number) || input.number < 1) {
       throw new ApplicationError('validation_failed', 'A round number must be a whole number')
@@ -884,10 +898,11 @@ export class EvaluationService {
    * closed round is a no-op and keeps the rubric originally recorded.
    */
   async closeRound(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     roundId: EvaluationRoundId,
   ): Promise<EvaluationRoundDto> {
+    assertActorCanMutate(actor)
     const round = await this.#evaluations.findRoundById(roundId)
     if (round === null || round.eventId !== eventId) {
       throw new ApplicationError('not_found', `Round '${roundId}' not found`)
@@ -913,11 +928,12 @@ export class EvaluationService {
    * same assignment returns the existing row rather than a second one.
    */
   async assign(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     submissionId: SubmissionId,
     input: AssignEvaluatorInput,
   ): Promise<EvaluationAssignmentDto> {
+    assertActorCanMutate(actor)
     const submission = await this.#submissions.findById(submissionId)
     if (submission === null || submission.eventId !== eventId) {
       throw new ApplicationError('not_found', `Submission '${submissionId}' not found`)
@@ -1227,6 +1243,7 @@ export class EvaluationService {
     input: SubmitEvaluationInput,
   ): Promise<EvaluationRowDto> {
     assertSubmitterCapability(actor, 'evaluation')
+    assertActorCanMutate(actor)
     const [assignments, rounds] = await Promise.all([
       this.#requireAssignments(actor),
       this.#evaluations.listRounds(actor.eventId),
@@ -1328,6 +1345,7 @@ export class EvaluationService {
    */
   async recuse(actor: SubmitterActor, input: RecuseInput): Promise<void> {
     assertSubmitterCapability(actor, 'evaluation')
+    assertActorCanMutate(actor)
     const assignments = await this.#requireAssignments(actor)
     const assignment = assignments.find(
       (candidate) =>

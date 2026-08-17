@@ -1,5 +1,5 @@
 import type { Event, EventBranding, EventBrandingAsset, EventBrandingKind } from '../../domain'
-import type { OrganizerActor } from '../actors'
+import { assertActorCanMutate, type OrganizerActor } from '../actors'
 import { ApplicationError } from '../errors'
 import { publicEventBrandingPath } from '../public-path'
 import type { Clock } from '../ports/clock'
@@ -126,6 +126,7 @@ export class EventBrandingService {
     kind: EventBrandingKind,
     input: BrandingImageInput,
   ): Promise<BrandingAssetDto> {
+    assertActorCanMutate(_actor)
     const event = await this.#events.findBySlug(slug)
     if (event === null) throw new ApplicationError('not_found', 'Event not found')
     if (!isBrandingContentType(input.contentType)) {
@@ -161,6 +162,7 @@ export class EventBrandingService {
   }
 
   async remove(_actor: OrganizerActor, slug: string, kind: EventBrandingKind): Promise<void> {
+    assertActorCanMutate(_actor)
     const event = await this.#events.findBySlug(slug)
     if (event === null) throw new ApplicationError('not_found', 'Event not found')
     const currentBranding = brandingOf(event)

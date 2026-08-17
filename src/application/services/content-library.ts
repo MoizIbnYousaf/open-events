@@ -1,5 +1,10 @@
 import { answerText } from '../../domain/programme'
-import { assertSubmitterCapability, type OrganizerActor, type SubmitterActor } from '../actors'
+import {
+  assertActorCanMutate,
+  assertSubmitterCapability,
+  type OrganizerActor,
+  type SubmitterActor,
+} from '../actors'
 import { ApplicationError, ValidationFailedError } from '../errors'
 import type { Clock } from '../ports/clock'
 import type { ContactRepository } from '../ports/contact-repository'
@@ -132,7 +137,7 @@ export class ContentLibraryService {
   }
 
   async addComment(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     slug: string,
     input: {
       readonly ownerContactId: string
@@ -141,6 +146,7 @@ export class ContentLibraryService {
       readonly body: string
     },
   ) {
+    assertActorCanMutate(actor)
     const event = await this.#event(slug)
     const body = input.body.trim()
     if (body.length === 0) throw new ValidationFailedError('Comment is empty', [])
@@ -190,6 +196,7 @@ export class ContentLibraryService {
 
   async addOwnComment(actor: SubmitterActor, kind: UploadedFileKind, bodyInput: string) {
     assertSubmitterCapability(actor, 'portal')
+    assertActorCanMutate(actor)
     const body = bodyInput.trim()
     if (body.length === 0) throw new ValidationFailedError('Comment is empty', [])
     const contact = await this.#contacts.findById(actor.contactId)
@@ -207,11 +214,12 @@ export class ContentLibraryService {
   }
 
   async editSession(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     slug: string,
     submissionId: string,
     input: { readonly title: string; readonly abstract: string; readonly editorName?: string },
   ) {
+    assertActorCanMutate(actor)
     const event = await this.#event(slug)
     const submission = await this.#submissions.findById(submissionId)
     if (submission === null || submission.eventId !== event.id) {
@@ -249,7 +257,8 @@ export class ContentLibraryService {
     return this.#programme.listRevisions(event.id, submissionId)
   }
 
-  async restoreRevision(_actor: OrganizerActor, slug: string, revisionId: string) {
+  async restoreRevision(actor: OrganizerActor, slug: string, revisionId: string) {
+    assertActorCanMutate(actor)
     const event = await this.#event(slug)
     const revision = await this.#programme.findRevision(revisionId)
     if (revision === null || revision.eventId !== event.id) {
@@ -290,11 +299,12 @@ export class ContentLibraryService {
   }
 
   async setContentStatus(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     slug: string,
     submissionId: string,
     status: string,
   ) {
+    assertActorCanMutate(actor)
     if (!isSessionContentStatus(status)) {
       throw new ValidationFailedError('Unknown content status', [])
     }

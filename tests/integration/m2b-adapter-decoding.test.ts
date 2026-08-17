@@ -241,6 +241,7 @@ describe('D1 adapter row decoding round-trips', () => {
       expiresAt: FUTURE,
       consumedAt: null,
       createdAt: NOW,
+      provenance: 'ordinary',
     })
     const decoded = await sessionRepository.findByHash('b'.repeat(64))
     expect(decoded).toMatchObject({

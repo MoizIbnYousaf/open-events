@@ -1,5 +1,5 @@
 import type { DraftId, FormId, ProposalDraft } from '../../domain'
-import { assertSubmitterCapability, type SubmitterActor } from '../actors'
+import { assertActorCanMutate, assertSubmitterCapability, type SubmitterActor } from '../actors'
 import type { DraftDto, SaveDraftInput } from '../dtos/draft.dto'
 import { toDraftDto } from '../dtos/draft.dto'
 import { ApplicationError, ValidationFailedError } from '../errors'
@@ -29,6 +29,7 @@ export class DraftService {
   /** The actor (contactId + eventId) comes from the persisted submitter session, never the body. */
   async save(actor: SubmitterActor, input: SaveDraftInput): Promise<DraftDto> {
     assertSubmitterCapability(actor, 'cfp')
+    assertActorCanMutate(actor)
     if (actor.contactId.trim().length === 0) {
       throw new ValidationFailedError(
         'actor.contactId must be derived from the persisted submitter session',

@@ -8,7 +8,7 @@ import {
   countRows,
   latestCapturedBody,
   seedDemoConf,
-  seedDemoConfProgramme,
+  seedDemoConfShowcase,
 } from './m2b-helpers'
 import {
   ALLOWED_ORIGIN,
@@ -213,20 +213,25 @@ describe('guided tour session', () => {
       eventSlug: 'demo-conf-2026',
     })
     const cookie = response.headers.get('set-cookie')
-    expect(cookie).toContain('sp_session=')
+    expect(cookie).toContain('sp_tour_session=')
+    expect(cookie).not.toContain('sp_session=')
     expect(cookie).toContain('HttpOnly')
     expect(cookie).toContain('SameSite=Strict')
     const maxAge = Number(cookie?.match(/Max-Age=(\d+)/)?.[1])
-    expect(maxAge).toBeGreaterThanOrEqual(1798)
-    expect(maxAge).toBeLessThanOrEqual(1800)
+    expect(maxAge).toBeGreaterThanOrEqual(598)
+    expect(maxAge).toBeLessThanOrEqual(600)
 
-    const token = cookie?.match(/sp_session=([^;]+)/)?.[1] ?? ''
+    const token = cookie?.match(/sp_tour_session=([^;]+)/)?.[1] ?? ''
     const admin = await app.request(
       '/api/admin/events/demo-conf-2026',
-      { headers: { cookie: cookieHeader(token) } },
+      { headers: { cookie: `sp_tour_session=${token}` } },
       bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
     )
     expect(admin.status).toBe(200)
+    const row = await env.DB.prepare('SELECT provenance FROM sessions WHERE token_hash = ?')
+      .bind(await createSha256TokenHasher().hash(token))
+      .first<{ provenance: string }>()
+    expect(row?.provenance).toBe('tour')
   })
 
   it.each([
@@ -235,7 +240,7 @@ describe('guided tour session', () => {
   ] as const)(
     'issues a fixture-proven %s session that opens its populated persona surface',
     async (access, path) => {
-      await seedDemoConfProgramme(env.DB)
+      await seedDemoConfShowcase(env.DB)
       const response = await app.request(
         '/api/tour/session',
         {
@@ -248,12 +253,12 @@ describe('guided tour session', () => {
 
       expect(response.status).toBe(200)
       const cookie = response.headers.get('set-cookie') ?? ''
-      const token = cookie.match(/sp_session=([^;]+)/)?.[1] ?? ''
+      const token = cookie.match(/sp_tour_session=([^;]+)/)?.[1] ?? ''
       expect(token).not.toBe('')
 
       const persona = await app.request(
         path,
-        { headers: { cookie: cookieHeader(token) } },
+        { headers: { cookie: `sp_tour_session=${token}` } },
         bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
       )
       expect(persona.status).toBe(200)
@@ -314,16 +319,111 @@ describe('guided tour session', () => {
     expect(crossOrigin.headers.get('set-cookie')).toBeNull()
   })
 
-  it('ends tour authority with the shared hardened cookie expiry contract', async () => {
+  it('hard-revokes tour authority while preserving an ordinary signed-in session', async () => {
+    const ordinary = await loginOrganizer()
+    expect(ordinary.token).not.toBeNull()
+    const started = await app.request(
+      '/api/tour/session',
+      { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    const tourCookie = started.headers.get('set-cookie') ?? ''
+    const tourToken = tourCookie.match(/sp_tour_session=([^;]+)/)?.[1] ?? ''
+    expect(tourToken).not.toBe('')
+
     const response = await app.request(
       '/api/tour/session',
-      { method: 'DELETE', headers: { origin: ALLOWED_ORIGIN } },
+      {
+        method: 'DELETE',
+        headers: {
+          origin: ALLOWED_ORIGIN,
+          cookie: `${cookieHeader(ordinary.token ?? '')}; sp_tour_session=${tourToken}`,
+        },
+      },
       bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
     )
 
     expect(response.status).toBe(204)
-    expect(response.headers.get('set-cookie')).toContain('sp_session=')
+    expect(response.headers.get('set-cookie')).toContain('sp_tour_session=')
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+    const replay = await app.request(
+      '/api/admin/events/demo-conf-2026',
+      { headers: { cookie: `sp_tour_session=${tourToken}` } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    expect(replay.status).toBe(401)
+    const ordinaryStillActive = await app.request(
+      '/api/admin/events/demo-conf-2026',
+      { headers: { cookie: cookieHeader(ordinary.token ?? '') } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    expect(ordinaryStillActive.status).toBe(200)
+  })
+
+  it('denies durable mutations under tour provenance even beside an ordinary cookie', async () => {
+    const ordinary = await loginOrganizer()
+    const started = await app.request(
+      '/api/tour/session',
+      { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    const tourToken = (started.headers.get('set-cookie') ?? '').match(
+      /sp_tour_session=([^;]+)/,
+    )?.[1]
+    expect(tourToken).toBeTruthy()
+    const mutation = await app.request(
+      '/api/admin/events/demo-conf-2026',
+      {
+        method: 'PATCH',
+        headers: {
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+          cookie: `${cookieHeader(ordinary.token ?? '')}; sp_tour_session=${tourToken ?? ''}`,
+        },
+        body: JSON.stringify({ venue: 'Tour mutation must not land' }),
+      },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    expect(mutation.status).toBe(403)
+    const event = await env.DB.prepare('SELECT venue FROM events WHERE slug = ?')
+      .bind('demo-conf-2026')
+      .first<{ venue: string }>()
+    expect(event?.venue).not.toBe('Tour mutation must not land')
+  })
+
+  it('revokes the previous tour role before issuing the next one', async () => {
+    await seedDemoConfShowcase(env.DB)
+    const organizer = await app.request(
+      '/api/tour/session',
+      { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    const oldToken = (organizer.headers.get('set-cookie') ?? '').match(
+      /sp_tour_session=([^;]+)/,
+    )?.[1]
+    const portal = await app.request(
+      '/api/tour/session',
+      {
+        method: 'POST',
+        headers: {
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+          cookie: `sp_tour_session=${oldToken ?? ''}`,
+        },
+        body: JSON.stringify({ access: 'portal' }),
+      },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    expect(portal.status).toBe(200)
+    expect(
+      (
+        await app.request(
+          '/api/admin/events/demo-conf-2026',
+          { headers: { cookie: `sp_tour_session=${oldToken ?? ''}` } },
+          bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+        )
+      ).status,
+    ).toBe(401)
   })
 })
 

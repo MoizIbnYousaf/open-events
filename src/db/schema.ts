@@ -10,7 +10,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
 import { UPLOADED_FILE_KINDS } from '../application/ports/uploaded-file-repository'
-import { SESSION_KINDS, SUBMITTER_ACCESS_PURPOSES } from '../domain/auth'
+import { SESSION_KINDS, SESSION_PROVENANCES, SUBMITTER_ACCESS_PURPOSES } from '../domain/auth'
 import { CAPTURED_MESSAGE_KINDS } from '../domain/confirmation'
 import { CONTACT_ROLES } from '../domain/contact'
 import { EVALUATION_ROUND_STATUSES } from '../domain/evaluation'
@@ -102,6 +102,9 @@ export const sessions = sqliteTable(
     expiresAt: text('expires_at').notNull(),
     consumedAt: text('consumed_at'),
     createdAt: text('created_at').notNull(),
+    provenance: text('provenance', { enum: [...SESSION_PROVENANCES] })
+      .notNull()
+      .default('ordinary'),
   },
   (table) => [
     foreignKey({

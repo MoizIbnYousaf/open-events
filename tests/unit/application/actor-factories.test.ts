@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  assertActorCanMutate,
   OrganizerActor,
   SubmitterActor,
   toOrganizerActor,
@@ -67,6 +68,22 @@ describe('actor narrowing factories', () => {
     expect(SubmitterActor.fromSession(organizer)).toBeNull()
     expect(OrganizerActor.fromSession(organizer)?.kind).toBe('organizer')
     expect(OrganizerActor.fromSession(submitter)).toBeNull()
+  })
+
+  it('marks tour-derived actors as read-only while ordinary actors remain mutable', () => {
+    const tourOrganizer = toOrganizerActor(createOrganizerSession({ provenance: 'tour' }))!
+    const tourSubmitter = toSubmitterActor(createSubmitterSession({ provenance: 'tour' }))!
+    const ordinaryOrganizer = toOrganizerActor(createOrganizerSession())!
+    const ordinarySubmitter = toSubmitterActor(createSubmitterSession())!
+
+    expect(() => assertActorCanMutate(tourOrganizer)).toThrowError(
+      expect.objectContaining({ code: 'forbidden' }),
+    )
+    expect(() => assertActorCanMutate(tourSubmitter)).toThrowError(
+      expect.objectContaining({ code: 'forbidden' }),
+    )
+    expect(() => assertActorCanMutate(ordinaryOrganizer)).not.toThrow()
+    expect(() => assertActorCanMutate(ordinarySubmitter)).not.toThrow()
   })
 })
 

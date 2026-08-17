@@ -1,5 +1,5 @@
 import type { ContactId, EventId } from '../../domain'
-import { assertSubmitterCapability, type SubmitterActor } from '../actors'
+import { assertActorCanMutate, assertSubmitterCapability, type SubmitterActor } from '../actors'
 import { ApplicationError } from '../errors'
 import type { Clock } from '../ports/clock'
 import type { ObjectStoragePort } from '../ports/object-storage'
@@ -213,6 +213,7 @@ export class DocumentService {
 
   async storeDocument(actor: SubmitterActor, input: StoreDocumentInput): Promise<DocumentDto> {
     assertSubmitterCapability(actor, 'portal')
+    assertActorCanMutate(actor)
     if (!isDocumentContentType(input.contentType)) {
       throw new DocumentUnsupportedTypeError()
     }

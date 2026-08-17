@@ -386,6 +386,7 @@ export function createSessionRepository(db: D1Database): SessionRepository {
               expiresAt: session.expiresAt,
               consumedAt: session.consumedAt,
               createdAt: session.createdAt,
+              provenance: session.provenance,
             }
           : {
               id: session.id,
@@ -397,6 +398,7 @@ export function createSessionRepository(db: D1Database): SessionRepository {
               expiresAt: session.expiresAt,
               consumedAt: session.consumedAt,
               createdAt: session.createdAt,
+              provenance: session.provenance,
             }
       await database.insert(sessions).values(values)
     },

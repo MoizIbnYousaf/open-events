@@ -11,20 +11,26 @@ import { Toaster } from './components/ui/sonner'
 import { CommandMenu } from './app/features/command/CommandMenu'
 import type { NavigateCommand } from './app/features/command/command-actions'
 import LazyProductTour from './app/features/tour/LazyProductTour'
+import { announceTourRoute } from './app/features/tour/tour-events'
 import './index.css'
 
 const router = createRouter()
+router.subscribe('onResolved', () => announceTourRoute(router.state.location.pathname))
 
 function navigateFromCommand(action: NavigateCommand): void {
   void router.navigate({ to: action.to, params: action.params })
 }
 
-function navigateFromTour(route: string, params?: Readonly<Record<string, string>>): void {
-  void router.navigate({ to: route, params } as Parameters<typeof router.navigate>[0])
+function navigateFromTour(route: string, params?: Readonly<Record<string, string>>): Promise<void> {
+  return router.navigate({ to: route, params } as Parameters<typeof router.navigate>[0])
 }
 
 function refreshAfterTourResume(): void {
   void queryClient.invalidateQueries()
+}
+
+function clearAfterTourAccess(): void {
+  queryClient.clear()
 }
 
 // The application shell. Everything that outlives a route lives here rather
@@ -41,7 +47,11 @@ function appTree(): ReactNode {
           <RouterProvider router={router} />
         </QueryClientProvider>
         <CommandMenu onNavigate={navigateFromCommand} floating={true} />
-        <LazyProductTour onNavigate={navigateFromTour} onResume={refreshAfterTourResume} />
+        <LazyProductTour
+          onNavigate={navigateFromTour}
+          onResume={refreshAfterTourResume}
+          onAccessExit={clearAfterTourAccess}
+        />
         <Toaster />
       </ThemeProvider>
     </AppErrorBoundary>

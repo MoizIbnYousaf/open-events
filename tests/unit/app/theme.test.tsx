@@ -401,7 +401,7 @@ describe('pre-paint theme boot', () => {
     expect(css).toMatch(/\.dark \{[\s\S]*--background: #080808;/)
     expect(css).toMatch(/\.dark \{[\s\S]*--card: #121212;/)
     expect(css).toContain('--background: #fcfcfc;')
-    expect(css).toContain('--primary: #0075de;')
+    expect(css).toContain('--primary: #006fd2;')
   })
 
   // R1-M1: from lg up the page toolbar is sticky at the top of #main, which is

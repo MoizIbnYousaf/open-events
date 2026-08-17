@@ -18,13 +18,14 @@ import { forbiddenResponse, unauthorizedResponse } from './error'
 
 /** Single HttpOnly session cookie for both actor kinds. */
 export const SESSION_COOKIE_NAME = 'sp_session'
+export const TOUR_SESSION_COOKIE_NAME = 'sp_tour_session'
 
 /**
  * Reads the session token from the Cookie header. Duplicate or malformed
  * `sp_session` cookies yield null (fail closed -> 401); only exactly one
  * non-empty value is accepted.
  */
-export function readSessionToken(context: ServerContext): string | null {
+function readCookieToken(context: ServerContext, cookieName: string): string | null {
   const header = context.req.header('cookie')
   if (header === undefined) return null
   const values: string[] = []
@@ -35,13 +36,21 @@ export function readSessionToken(context: ServerContext): string | null {
     if (separator <= 0) continue
     const name = trimmed.slice(0, separator).trim()
     const value = trimmed.slice(separator + 1).trim()
-    if (name === SESSION_COOKIE_NAME) {
+    if (name === cookieName) {
       if (value.length === 0) return null
       values.push(value)
     }
   }
   if (values.length !== 1) return null
   return values[0] ?? null
+}
+
+export function readSessionToken(context: ServerContext): string | null {
+  return readCookieToken(context, SESSION_COOKIE_NAME)
+}
+
+export function readTourSessionToken(context: ServerContext): string | null {
+  return readCookieToken(context, TOUR_SESSION_COOKIE_NAME)
 }
 
 /**
@@ -66,6 +75,22 @@ export function serializeExpiredSessionCookie(secure: boolean): string {
   return `${cookie}; Max-Age=0`
 }
 
+export function serializeTourSessionCookie(
+  token: string,
+  maxAgeSeconds: number,
+  secure: boolean,
+): string {
+  let cookie = `${TOUR_SESSION_COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/`
+  if (secure) cookie += '; Secure'
+  return `${cookie}; Max-Age=${Math.max(1, Math.floor(maxAgeSeconds))}`
+}
+
+export function serializeExpiredTourSessionCookie(secure: boolean): string {
+  let cookie = `${TOUR_SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/`
+  if (secure) cookie += '; Secure'
+  return `${cookie}; Max-Age=0`
+}
+
 /** Cookie Max-Age derived from the session expiry and the server clock. */
 export function sessionCookieMaxAgeSeconds(expiresAt: string, now: string): number {
   const diffMs = Date.parse(expiresAt) - Date.parse(now)
@@ -79,13 +104,27 @@ export function requireSession(): MiddlewareHandler<ServerEnv> {
     if (deps === null) {
       return databaseUnavailableResponse(context)
     }
-    const token = readSessionToken(context)
+    const tourToken = readTourSessionToken(context)
+    const token = tourToken ?? readSessionToken(context)
     if (token === null) {
       return unauthorizedResponse(context)
     }
     const session = await deps.session.validateSession(token)
     if (session === null) {
       return unauthorizedResponse(context)
+    }
+    if (
+      (tourToken !== null && session.provenance !== 'tour') ||
+      (tourToken === null && session.provenance !== 'ordinary')
+    ) {
+      return unauthorizedResponse(context)
+    }
+    if (
+      session.provenance === 'tour' &&
+      context.req.method !== 'GET' &&
+      context.req.method !== 'HEAD'
+    ) {
+      return forbiddenResponse(context)
     }
     context.set('session', session)
     await next()

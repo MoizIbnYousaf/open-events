@@ -10,6 +10,9 @@ export const SESSION_KINDS = ['organizer', 'submitter'] as const
 
 export type SessionKind = (typeof SESSION_KINDS)[number]
 
+export const SESSION_PROVENANCES = ['ordinary', 'tour'] as const
+export type SessionProvenance = (typeof SESSION_PROVENANCES)[number]
+
 export const SUBMITTER_ACCESS_PURPOSES = ['cfp', 'portal', 'evaluation'] as const
 
 export type SubmitterAccessPurpose = (typeof SUBMITTER_ACCESS_PURPOSES)[number]
@@ -36,6 +39,7 @@ export interface BaseSession {
   readonly expiresAt: UtcInstant
   readonly consumedAt: UtcInstant | null
   readonly createdAt: UtcInstant
+  readonly provenance: SessionProvenance
 }
 
 /** Organizer session: no submitter subject member at all. */
@@ -82,6 +86,7 @@ export interface DecodedSessionRow {
   readonly expiresAt: UtcInstant
   readonly consumedAt: UtcInstant | null
   readonly createdAt: UtcInstant
+  readonly provenance: SessionProvenance
 }
 
 export function validateSessionIdentity(

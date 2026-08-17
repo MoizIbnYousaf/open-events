@@ -1,5 +1,5 @@
 import type { ContactId, EventId } from '../../domain'
-import { assertSubmitterCapability, type SubmitterActor } from '../actors'
+import { assertActorCanMutate, assertSubmitterCapability, type SubmitterActor } from '../actors'
 import type { HeadshotDto } from '../dtos/headshot.dto'
 import { toHeadshotDto } from '../dtos/headshot.dto'
 import { ApplicationError } from '../errors'
@@ -86,6 +86,7 @@ export class HeadshotService {
    */
   async storeHeadshot(actor: SubmitterActor, input: StoreHeadshotInput): Promise<HeadshotDto> {
     assertSubmitterCapability(actor, 'portal')
+    assertActorCanMutate(actor)
     return this.storeForOwner(actor.eventId, actor.contactId, input)
   }
 

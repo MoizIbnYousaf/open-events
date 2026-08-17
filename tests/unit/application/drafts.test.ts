@@ -141,6 +141,14 @@ describe('DraftService.save', () => {
     await expect(service.save(rawNullActor, input())).rejects.toMatchObject({ code: 'forbidden' })
     expect(drafts.list()).toHaveLength(1)
   })
+
+  it('denies a direct tour-authority mutation before touching draft data', async () => {
+    const { service, drafts } = buildHarness()
+    const tourActor = createSubmitterActor({ capability: 'cfp', provenance: 'tour' })
+
+    await expect(service.save(tourActor, input())).rejects.toMatchObject({ code: 'forbidden' })
+    expect(drafts.list()).toHaveLength(1)
+  })
 })
 
 describe('DraftService intake-version validation', () => {

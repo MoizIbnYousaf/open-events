@@ -13,7 +13,9 @@ the same ids and rows. The showcase contains 12 proposals, eight accepted and
 published sessions over two days and rooms, two rejected decisions, two pending
 decisions, two review rounds, one recorded recusal with reassignment, mixed
 speaker readiness, a deliberate speaker-overlap conflict, and capture-only
-message states.
+message states. It also creates a saved embed, a support conversation, a form
+draft for the tour, and matching R2 objects for the featured speaker's headshot
+and current plus historical presentation deck.
 
 All showcase identities use reserved `example.test` addresses. Captured fixture
 messages store only a redacted marker and keyed fixture fingerprint. Their jobs
@@ -28,7 +30,8 @@ pnpm db:reset:acceptance:showcase
 ```
 
 The script first asks the acceptance-only reset endpoint to delete the isolated
-event, then reapplies base, programme, and showcase layers to the acceptance D1.
+event and its file prefix, then reapplies base, programme, and showcase layers
+to the acceptance D1 and R2 bucket.
 The production reset route does not exist. A production overlay is never a
 reset target and requires a D1 backup, bounded additive diff, and explicit
 production-data authorization before the remote write.

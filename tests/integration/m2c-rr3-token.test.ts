@@ -427,6 +427,7 @@ describe('bounded statement counts', () => {
         expiresAt: FUTURE,
         consumedAt: null,
         createdAt: FIXED_NOW,
+        provenance: 'ordinary',
       },
     })
 

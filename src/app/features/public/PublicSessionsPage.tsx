@@ -81,7 +81,7 @@ export default function PublicSessionsPage({ eventSlug }: { readonly eventSlug?:
   })
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4" data-tour="session-catalogue">
       <PageHeader surface="wash">
         <PageHeaderContent>
           <PageHeaderTitle>Sessions</PageHeaderTitle>

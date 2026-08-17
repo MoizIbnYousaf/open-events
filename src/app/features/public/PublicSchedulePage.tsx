@@ -269,7 +269,7 @@ function ScheduleViews({
       />
       <ScheduleArtwork schedule={schedule} />
       {agenda.days.length > 0 ? (
-        <section className="grid min-w-0 gap-3">
+        <section className="grid min-w-0 gap-3" data-tour="schedule-grid">
           <SectionHeading>Agenda</SectionHeading>
           <nav aria-label="Schedule days">
             <ul className="flex flex-wrap gap-2">
@@ -350,9 +350,9 @@ function ScheduleViews({
           ) : null}
         </section>
       ) : null}
-      <section className="grid min-w-0 gap-3">
+      <section className="grid min-w-0 gap-3" data-tour="itinerary-panel">
         <SectionHeading>Itinerary</SectionHeading>
-        {itinerary.map((session) => (
+        {itinerary.map((session, index) => (
           <Card key={session.submissionId}>
             <CardContent className="grid gap-2">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -384,6 +384,7 @@ function ScheduleViews({
                 <Button
                   type="button"
                   variant="outline"
+                  data-tour={index === 0 ? 'itinerary-action' : undefined}
                   onClick={() => toggleStar(session.submissionId)}
                 >
                   {starred.includes(session.submissionId)

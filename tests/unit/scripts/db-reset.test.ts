@@ -21,8 +21,12 @@ describe('db-reset wrangler launch', () => {
 
   it('does not spawn pnpm to reach wrangler', () => {
     const source = readFileSync(resolve(REPO_ROOT, 'scripts', 'db-reset.mjs'), 'utf8')
+    const commandSource = readFileSync(
+      resolve(REPO_ROOT, 'scripts', 'wrangler-command.mjs'),
+      'utf8',
+    )
     expect(source).not.toMatch(/spawnSync\(\s*['"]pnpm['"]/)
-    expect(source).toContain('wrangler/package.json')
+    expect(commandSource).toContain('wrangler/package.json')
   })
 })
 

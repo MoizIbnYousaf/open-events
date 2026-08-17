@@ -812,7 +812,8 @@ export async function handleGetOwnHeadshot(context: ServerContext): Promise<Resp
   const actor = requireSubmitter(context)
   if (actor === null) return forbiddenResponse(context)
   const headshot = await deps.headshots.getOwnHeadshot(actor)
-  if (headshot === null) return notFoundResponse(context)
+  if (headshot === null)
+    return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } })
   return new Response(headshot.body, {
     status: 200,
     headers: {

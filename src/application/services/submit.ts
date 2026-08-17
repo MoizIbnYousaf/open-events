@@ -19,7 +19,12 @@ import type {
 } from '../dtos/submission.dto'
 import type { CfpSubmitAuthorization } from '../dtos/session.dto'
 import { toSubmissionDetailDto, toSubmissionListItemDto } from '../dtos/submission.dto'
-import { assertSubmitterCapability, type OrganizerActor, type SubmitterActor } from '../actors'
+import {
+  assertActorCanMutate,
+  assertSubmitterCapability,
+  type OrganizerActor,
+  type SubmitterActor,
+} from '../actors'
 import { ApplicationError, ValidationFailedError } from '../errors'
 import type { Clock } from '../ports/clock'
 import type { ContactRepository } from '../ports/contact-repository'
@@ -83,6 +88,7 @@ export class SubmitService {
    * instant (submittedAt/createdAt/gate) comes from the service clock.
    */
   async submit(actor: SubmitterActor, input: SubmitInput): Promise<SubmissionDetailDto> {
+    assertActorCanMutate(actor)
     return (await this.#submit(actor, input)).detail
   }
 
@@ -99,6 +105,7 @@ export class SubmitService {
     readonly portalToken: string
     readonly portalExpiresAt: string
   }> {
+    assertActorCanMutate(authorization.actor)
     if (authorization.originDraftId !== input.originDraftId) {
       throw new ApplicationError('forbidden', 'Submit handoff does not match this request')
     }

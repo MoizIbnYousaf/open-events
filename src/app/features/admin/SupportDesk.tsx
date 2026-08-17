@@ -103,7 +103,7 @@ export default function SupportDesk({ eventSlug }: { readonly eventSlug: string 
 
   return (
     <AppShell slug={eventSlug}>
-      <div className="grid gap-4">
+      <div className="grid gap-4" data-tour="orby-workspace">
         <PageHeader>
           <PageHeaderContent>
             <PageHeaderTitle>{ORBY_NAME}</PageHeaderTitle>

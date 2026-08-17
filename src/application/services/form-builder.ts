@@ -13,7 +13,7 @@ import { validateFormLimits } from '../../domain/invariants/form'
 import { validateVersionFreeze } from '../../domain/invariants/freeze'
 import { validateVersionRules } from '../../domain/invariants/rules'
 import type { ElementRule, RoutingRule } from '../../domain/rules'
-import type { OrganizerActor } from '../actors'
+import { assertActorCanMutate, type OrganizerActor } from '../actors'
 import type {
   FormDefinitionDto,
   FormSummaryDto,
@@ -103,11 +103,12 @@ export class FormBuilderService {
    * about.
    */
   async updateWindow(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     formId: FormId,
     input: { readonly opensAt: UtcInstant | null; readonly closesAt: UtcInstant | null },
   ): Promise<FormSummaryDto> {
+    assertActorCanMutate(actor)
     const form = await this.#forms.findById(formId)
     // Event scope before anything else: a form belonging to another event is a
     // safe not-found, never someone else's window to move.
@@ -165,11 +166,12 @@ export class FormBuilderService {
    * concurrent edit surfaces as `conflict` instead of silently clobbering.
    */
   async updateDraft(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     formId: FormId,
     input: SaveFormDraftInput,
   ): Promise<FormVersionDetailDto> {
+    assertActorCanMutate(actor)
     const [form, allVersions] = await Promise.all([
       this.#requireForm(formId, eventId),
       this.#versions.listByForm(formId),
@@ -206,10 +208,11 @@ export class FormBuilderService {
 
   /** Publish = validate, freeze (content hash + published_at), and bind the form. */
   async publish(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     formId: FormId,
   ): Promise<FormVersionDetailDto> {
+    assertActorCanMutate(actor)
     const [form, expected] = await Promise.all([
       this.#requireForm(formId, eventId),
       this.#versions.findLatestDraftByForm(formId),

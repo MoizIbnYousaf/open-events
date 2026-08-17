@@ -30,10 +30,10 @@ async function toApiError(response: Response): Promise<ApiClientError> {
   return new ApiClientError(code, message, response.status)
 }
 
-/** GET /api/public/profile/headshot — 404 means "no headshot yet", not an error. */
+/** GET /api/public/profile/headshot — 204 means "no headshot yet", not an error. */
 export async function getOwnHeadshot(): Promise<OwnHeadshot | null> {
   const response = await fetch('/api/public/profile/headshot', { credentials: 'include' })
-  if (response.status === 404) return null
+  if (response.status === 204 || response.status === 404) return null
   if (!response.ok) throw await toApiError(response)
   const blob = await response.blob()
   return {

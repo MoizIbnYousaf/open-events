@@ -1,4 +1,4 @@
-import type { OrganizerActor } from '../actors'
+import { assertActorCanMutate, type OrganizerActor } from '../actors'
 import type { EventId } from '../../domain/event'
 import type { ContactId } from '../../domain/contact'
 import { isSpeakerWorkflowStatus } from '../../domain/embed'
@@ -66,7 +66,7 @@ export class SpeakerService {
   }
 
   async addSpeaker(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     input: {
       readonly name: string
@@ -77,6 +77,7 @@ export class SpeakerService {
       readonly travelNotes?: string
     },
   ): Promise<SpeakerRosterEntryDto> {
+    assertActorCanMutate(actor)
     const email = normalizeEmail(input.email)
     if (!isValidEmailAddress(email)) {
       throw new ValidationFailedError('A valid email is required', [])
@@ -121,6 +122,7 @@ export class SpeakerService {
     eventId: EventId,
     csv: string,
   ): Promise<{ readonly imported: number; readonly roster: readonly SpeakerRosterEntryDto[] }> {
+    assertActorCanMutate(actor)
     const rows = parseSpeakerCsv(csv)
     for (const row of rows) {
       await this.addSpeaker(actor, eventId, row)
@@ -129,11 +131,12 @@ export class SpeakerService {
   }
 
   async setStatus(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     contactId: ContactId,
     status: string,
   ): Promise<SpeakerRosterEntryDto> {
+    assertActorCanMutate(actor)
     if (!isSpeakerWorkflowStatus(status)) {
       throw new ValidationFailedError('Unknown speaker status', [])
     }
@@ -163,7 +166,7 @@ export class SpeakerService {
   }
 
   async updateOrganizerProfile(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     eventId: EventId,
     contactId: ContactId,
     input: {
@@ -174,6 +177,7 @@ export class SpeakerService {
       readonly travelNotes?: string
     },
   ): Promise<SpeakerRosterEntryDto> {
+    assertActorCanMutate(actor)
     const existing = (await this.#contacts.listSpeakersByEvent(eventId)).find(
       (row) => row.contactId === contactId,
     )

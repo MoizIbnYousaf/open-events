@@ -1054,7 +1054,7 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
   const removed = removedTarget?.assignment === 'scheduled' ? undefined : removedTarget
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6" data-tour="agenda-board">
       {/* The page title, the one number that decides whether the schedule is
             ready, and the action that ends the job — one strip, in that order. */}
       <PageHeader>

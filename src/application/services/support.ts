@@ -1,5 +1,5 @@
 import { ApplicationError, ValidationFailedError } from '../errors'
-import type { OrganizerActor } from '../actors'
+import { assertActorCanMutate, type OrganizerActor } from '../actors'
 import type { Clock } from '../ports/clock'
 import type { CapturedMessageRepository } from '../ports/captured-message-repository'
 import type { ContactRepository } from '../ports/contact-repository'
@@ -309,7 +309,7 @@ export class SupportService {
     chatId: string,
     content: string,
   ): Promise<SupportMessageDto> {
-    void actor
+    assertActorCanMutate(actor)
     const event = await this.#events.findBySlug(slug)
     if (event === null) throw new ApplicationError('not_found', `Event '${slug}' not found`)
     const chat = await this.#support.findChatById(chatId)
@@ -326,6 +326,7 @@ export class SupportService {
     chatId: string,
     archived: boolean,
   ): Promise<AdminSupportChatDto> {
+    assertActorCanMutate(actor)
     const event = await this.#events.findBySlug(slug)
     if (event === null) throw new ApplicationError('not_found', `Event '${slug}' not found`)
     const chat = await this.#support.findChatById(chatId)

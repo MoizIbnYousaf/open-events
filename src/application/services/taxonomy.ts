@@ -1,7 +1,7 @@
 import type { EventSlug } from '../../domain/event'
 import { validateTaxonomyItems } from '../../domain/invariants/taxonomy'
 import type { TaxonomyItem } from '../../domain/taxonomy'
-import type { OrganizerActor } from '../actors'
+import { assertActorCanMutate, type OrganizerActor } from '../actors'
 import type { ReplaceTaxonomyInput, TaxonomyListDto } from '../dtos/taxonomy.dto'
 import { toTaxonomyListDto } from '../dtos/taxonomy.dto'
 import { ApplicationError, ValidationFailedError } from '../errors'
@@ -25,10 +25,11 @@ export class TaxonomyService {
   }
 
   async replaceByEventSlug(
-    _actor: OrganizerActor,
+    actor: OrganizerActor,
     slug: EventSlug,
     input: ReplaceTaxonomyInput,
   ): Promise<TaxonomyListDto> {
+    assertActorCanMutate(actor)
     const event = await this.#events.findBySlug(slug)
     if (event === null) {
       throw new ApplicationError('not_found', `Event '${slug}' not found`)

@@ -159,14 +159,22 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
           </Card>
         )}
       </section>
-      <div id="portal-tasks" className="grid scroll-mt-24 gap-5 lg:grid-cols-2">
+      <div
+        id="portal-tasks"
+        className="grid scroll-mt-24 gap-5 lg:grid-cols-2"
+        data-tour="portal-readiness"
+      >
         <TasksPanel />
         <AssignmentsPanel />
       </div>
       <div id="portal-profile" className="scroll-mt-24">
         <ProfileEditor />
       </div>
-      <div id="portal-files" className="grid scroll-mt-24 gap-5 lg:grid-cols-2">
+      <div
+        id="portal-files"
+        className="grid scroll-mt-24 gap-5 lg:grid-cols-2"
+        data-tour="portal-files"
+      >
         <HeadshotUploader />
         <DocumentUploader />
       </div>

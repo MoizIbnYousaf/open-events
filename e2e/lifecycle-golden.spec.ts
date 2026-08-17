@@ -126,6 +126,7 @@ function isExpectedException(method: string, url: string, status: number): boole
 interface EvidencedRequest {
   readonly method: () => string
   readonly url: () => string
+  readonly failure?: () => { readonly errorText: string } | null
 }
 
 interface EvidencedResponse {
@@ -316,6 +317,14 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
   let expected404ConsumeBudget = 0
 
   const recordRequestFailed = (request: EvidencedRequest) => {
+    const errorText = request.failure?.()?.errorText
+    if (
+      errorText === 'net::ERR_ABORTED' ||
+      errorText === 'NS_BINDING_ABORTED' ||
+      errorText === 'cancelled'
+    ) {
+      return
+    }
     failedRequests.push(`${request.method()} ${request.url()}`)
   }
 

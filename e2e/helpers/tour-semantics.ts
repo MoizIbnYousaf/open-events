@@ -84,8 +84,10 @@ export async function expectTourSemantics(page: Page, step: TourStep): Promise<v
       await expect(target).toContainText('Round 2: Programme balance')
       return
     case 'agenda':
-      await expect(target).toContainText('8 of 8 sessions placed')
+      await expect(target).toContainText('8 of 9 sessions placed')
       await expect(target).toContainText('2 conflicts')
+      await expect(target).toContainText('Opening keynote: Operating AI systems in public')
+      await expect(target).toContainText('Invited session')
       return
     case 'embeds':
       await expect(target).toContainText('DemoConf programme')
@@ -96,6 +98,9 @@ export async function expectTourSemantics(page: Page, step: TourStep): Promise<v
       await expect(target).toContainText('incident-review-deck.pdf')
       await expect(target).toContainText('headshot')
       await expect(target).toContainText('2 versions')
+      await expect(target).toContainText('Speaker guide')
+      await expect(target).toContainText('AV and slides')
+      await expect(target).toContainText('Venue information')
       for (const [kind, contentType, byteLength] of [
         ['headshot', 'image/png', 68],
         ['document', 'application/pdf', 76],
@@ -137,6 +142,8 @@ export async function expectTourSemantics(page: Page, step: TourStep): Promise<v
       await expect(target).toContainText('Confirm your participation')
       await expect(target).toContainText('Outstanding')
       await expect(target).toContainText('Upload the final presentation deck')
+      await expect(target).toContainText('Opening keynote: Operating AI systems in public')
+      await expect(target).toContainText('Speaker guide')
       return
     case 'speaker-files':
       await expect(target).toContainText('incident-review-deck.pdf')
@@ -166,6 +173,11 @@ export async function expectTourSemantics(page: Page, step: TourStep): Promise<v
       await expect(page.locator('main')).toContainText(
         'Add a session to My schedule before exporting a calendar',
       )
+      await expect(page.getByRole('link', { name: 'Add to Google Calendar' }).first()).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Add to Outlook' }).first()).toBeVisible()
+      await expect(
+        page.getByRole('link', { name: 'Download iCalendar file' }).first(),
+      ).toBeVisible()
       return
   }
 

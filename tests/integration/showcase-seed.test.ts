@@ -22,6 +22,8 @@ describe('the complete showcase seed', () => {
     const counts = await env.DB.prepare(
       `SELECT
         (SELECT COUNT(*) FROM proposal_submissions) AS submissions,
+        (SELECT COUNT(*) FROM proposal_submissions WHERE source = 'cfp') AS cfp_submissions,
+        (SELECT COUNT(*) FROM proposal_submissions WHERE source = 'direct') AS direct_sessions,
         (SELECT COUNT(*) FROM submission_acceptances) AS accepted,
         (SELECT COUNT(*) FROM submission_decisions WHERE outcome = 'rejected') AS rejected,
         (SELECT COUNT(*) FROM proposal_submissions s WHERE NOT EXISTS (
@@ -35,14 +37,16 @@ describe('the complete showcase seed', () => {
     ).first<Record<string, number>>()
 
     expect(counts).toMatchObject({
-      submissions: 12,
-      accepted: 8,
+      submissions: 13,
+      cfp_submissions: 12,
+      direct_sessions: 1,
+      accepted: 9,
       rejected: 2,
       pending: 2,
       published: 8,
       rounds: 2,
       recusals: 1,
-      pending_tasks: 6,
+      pending_tasks: 9,
       completed_tasks: 3,
     })
 
@@ -131,7 +135,9 @@ describe('the complete showcase seed', () => {
         (SELECT COUNT(*) FROM uploaded_file_versions WHERE owner_contact_id = 'd0000000-0000-4000-8000-000000000610') AS file_versions,
         (SELECT COUNT(*) FROM speaker_assignment_assignees WHERE assignment_id = 'showcase-file-request' AND status = 'pending') AS file_requests,
         (SELECT COUNT(*) FROM support_messages WHERE chat_id = 'showcase-support-chat') AS support_messages,
-        (SELECT COUNT(*) FROM evaluation_round_scores WHERE assignment_id = 'showcase-assignment-featured') AS featured_scores`,
+        (SELECT COUNT(*) FROM evaluation_round_scores WHERE assignment_id = 'showcase-assignment-featured') AS featured_scores,
+        (SELECT COUNT(*) FROM portal_resources WHERE published = 1) AS resources,
+        (SELECT COUNT(*) FROM cfp_forms WHERE purpose = 'direct') AS direct_forms`,
     ).first<Record<string, number>>()
 
     expect(receipt).toEqual({
@@ -145,6 +151,8 @@ describe('the complete showcase seed', () => {
       file_requests: 1,
       support_messages: 2,
       featured_scores: 3,
+      resources: 3,
+      direct_forms: 1,
     })
   })
 

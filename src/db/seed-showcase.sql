@@ -318,3 +318,97 @@ INSERT INTO email_delivery_jobs
   ('showcase-job-captured', 'showcase-message-captured', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'capture', 'captured', 'showcase-recipient-captured', 'fixture', NULL, NULL, '2026-04-02T10:00:00.000Z', 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, '2026-04-01T10:00:00.000Z', '2026-04-01T10:00:00.000Z'),
   ('showcase-job-action', 'showcase-message-action', 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'capture', 'operator_action', 'showcase-recipient-action', 'fixture', NULL, NULL, '2026-04-02T10:05:00.000Z', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 'fixture_delivery_failure', NULL, NULL, '2026-04-01T10:05:00.000Z', '2026-04-01T10:05:00.000Z')
 ON CONFLICT(id) DO NOTHING;
+
+-- Safe event-wide speaker resources: Markdown and links only, never raw HTML embeds.
+INSERT INTO portal_resources
+  (event_id, id, kind, title, body, url, position, published, created_at, updated_at) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-resource-guide', 'markdown',
+   'Speaker guide', '# Speaker guide\n\nArrive 20 minutes early and check in at the programme desk.', NULL, 0, 1,
+   '2026-04-01T09:00:00.000Z', '2026-08-17T11:00:00.000Z'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-resource-av', 'markdown',
+   'AV and slides', 'Every room has HDMI and USB-C. Upload the final deck in Files before the event.', NULL, 1, 1,
+   '2026-04-01T09:00:00.000Z', '2026-08-17T11:00:00.000Z'),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-resource-venue', 'link',
+   'Venue information', NULL, 'https://www.openevents.engineer/schedule/demo-conf-2026', 2, 1,
+   '2026-04-01T09:00:00.000Z', '2026-08-17T11:00:00.000Z')
+ON CONFLICT(event_id, id) DO NOTHING;
+
+-- One organizer-originated keynote. It reuses the accepted programme spine
+-- while staying out of CFP intake and evaluation counts through source='direct'.
+INSERT INTO cfp_forms
+  (event_id, id, slug, status, published_version_id, opens_at, closes_at,
+   total_cap, per_identity_limit, purpose) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'direct-form-a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   '__open_events_direct_sessions__', 'published',
+   'direct-version-a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   NULL, NULL, NULL, NULL, 'direct')
+ON CONFLICT(event_id, id) DO NOTHING;
+
+INSERT INTO cfp_form_versions
+  (event_id, id, form_id, version, status, content_hash, published_at, updated_at) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'direct-version-a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'direct-form-a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   1, 'published',
+   '0000000000000000000000000000000000000000000000000000000000000000',
+   '2026-04-01T09:00:00.000Z', '2026-04-01T09:00:00.000Z')
+ON CONFLICT(event_id, id) DO NOTHING;
+
+INSERT INTO proposal_submissions
+  (id, event_id, owner_contact_id, form_version_id, origin_draft_id, status,
+   title, answers_json, content_hash, routing_json, created_at, submitted_at, source) VALUES
+  ('d0000000-0000-4000-8000-000000000813',
+   'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'd0000000-0000-4000-8000-000000000610',
+   'direct-version-a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d',
+   'showcase-direct-keynote', 'pending', 'Opening keynote: Operating AI systems in public',
+   '{"format":"Talk","track":"Platform & Infra","abstract":"A guaranteed keynote on the operational practice behind reliable AI engineering."}',
+   'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+   NULL, '2026-04-01T09:00:00.000Z', '2026-04-01T09:00:00.000Z', 'direct')
+ON CONFLICT(origin_draft_id) DO NOTHING;
+
+INSERT INTO submission_contributors
+  (event_id, submission_id, contact_id, role, position) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'd0000000-0000-4000-8000-000000000813',
+   'd0000000-0000-4000-8000-000000000610', 'primary', 0)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO submission_acceptances (event_id, submission_id, accepted_at) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'd0000000-0000-4000-8000-000000000813',
+   '2026-04-01T09:00:00.000Z')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO submission_decisions
+  (event_id, id, submission_id, sequence, outcome, decided_by, decided_at) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-direct-decision',
+   'd0000000-0000-4000-8000-000000000813', 1, 'accepted', 'organizer',
+   '2026-04-01T09:00:00.000Z')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO speaker_tasks
+  (event_id, id, submission_id, contact_id, kind, status, position, created_at, completed_at) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-direct-task-confirm',
+   'd0000000-0000-4000-8000-000000000813', 'd0000000-0000-4000-8000-000000000610',
+   'confirm_participation', 'pending', 0, '2026-04-01T09:00:00.000Z', NULL),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-direct-task-bio',
+   'd0000000-0000-4000-8000-000000000813', 'd0000000-0000-4000-8000-000000000610',
+   'submit_bio', 'pending', 1, '2026-04-01T09:00:00.000Z', NULL),
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'showcase-direct-task-headshot',
+   'd0000000-0000-4000-8000-000000000813', 'd0000000-0000-4000-8000-000000000610',
+   'submit_headshot', 'pending', 2, '2026-04-01T09:00:00.000Z', NULL)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO agenda_sessions
+  (event_id, submission_id, track_id, room_id, day, start, end, position,
+   status, assignment, created_at, updated_at) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'd0000000-0000-4000-8000-000000000813',
+   'f0000000-0000-4000-8000-000000000503', NULL, '2026-10-14',
+   '2026-10-14T08:00:00.000Z', '2026-10-14T08:45:00.000Z', NULL,
+   'draft', 'unassigned', '2026-04-01T09:00:00.000Z', '2026-04-01T09:00:00.000Z')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO agenda_session_speakers (event_id, submission_id, contact_id) VALUES
+  ('a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d', 'd0000000-0000-4000-8000-000000000813',
+   'd0000000-0000-4000-8000-000000000610')
+ON CONFLICT DO NOTHING;

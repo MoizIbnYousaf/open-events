@@ -17,6 +17,7 @@ import { ApplicationError } from '../../application/errors'
 import { EVENT_STATUSES, type EventDates, type EventStatus } from '../../domain/event'
 import type { FormElement, FormPage } from '../../domain/form-version'
 import type { ElementRule, RoutingRule } from '../../domain/rules'
+import type { PortalResourceInput } from '../../domain/portal-resource'
 import { isSubmissionDecisionOutcome } from '../../domain/submission'
 import {
   requireActor,
@@ -831,6 +832,91 @@ export async function handleListFiles(context: ServerContext): Promise<Response>
   const slug = context.req.param('slug')
   if (slug === undefined) return notFoundResponse(context)
   return context.json(await deps.contentLibrary.listFiles(actor, slug))
+}
+
+function portalResourceInput(
+  body: Record<string, unknown> | null,
+): (PortalResourceInput & { readonly published: boolean }) | null {
+  if (
+    body === null ||
+    typeof body.kind !== 'string' ||
+    typeof body.title !== 'string' ||
+    typeof body.published !== 'boolean'
+  ) {
+    return null
+  }
+  if (body.kind === 'markdown' && typeof body.body === 'string') {
+    return { kind: 'markdown', title: body.title, body: body.body, published: body.published }
+  }
+  if (body.kind === 'link' && typeof body.url === 'string') {
+    return { kind: 'link', title: body.title, url: body.url, published: body.published }
+  }
+  return null
+}
+
+export async function handleListPortalResources(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  const slug = context.req.param('slug')
+  if (actor === null) return forbiddenResponse(context)
+  if (slug === undefined) return notFoundResponse(context)
+  return context.json(await deps.portalResources.listOrganizer(actor, slug))
+}
+
+export async function handleCreatePortalResource(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  const slug = context.req.param('slug')
+  if (actor === null) return forbiddenResponse(context)
+  if (slug === undefined) return notFoundResponse(context)
+  const input = portalResourceInput(await readJsonBody(context))
+  if (input === null) return validationFailedResponse(context)
+  return context.json(await deps.portalResources.create(actor, slug, input), 201)
+}
+
+export async function handleUpdatePortalResource(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  const slug = context.req.param('slug')
+  const id = context.req.param('id')
+  if (actor === null) return forbiddenResponse(context)
+  if (slug === undefined || id === undefined) return notFoundResponse(context)
+  const input = portalResourceInput(await readJsonBody(context))
+  if (input === null) return validationFailedResponse(context)
+  return context.json(await deps.portalResources.update(actor, slug, id, input))
+}
+
+export async function handleReorderPortalResources(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  const slug = context.req.param('slug')
+  if (actor === null) return forbiddenResponse(context)
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (
+    body === null ||
+    !Array.isArray(body.ids) ||
+    !body.ids.every((id) => typeof id === 'string')
+  ) {
+    return validationFailedResponse(context)
+  }
+  return context.json(await deps.portalResources.reorder(actor, slug, body.ids))
+}
+
+export async function handleDeletePortalResource(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  const slug = context.req.param('slug')
+  const id = context.req.param('id')
+  if (actor === null) return forbiddenResponse(context)
+  if (slug === undefined || id === undefined) return notFoundResponse(context)
+  await deps.portalResources.delete(actor, slug, id)
+  return context.json({ deleted: true })
 }
 
 /** POST /api/admin/events/:slug/files/zip */
@@ -1998,6 +2084,40 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleListFiles,
+  )
+  app.get(
+    '/api/admin/events/:slug/resources',
+    requireSession(),
+    requireActor('organizer'),
+    handleListPortalResources,
+  )
+  app.post(
+    '/api/admin/events/:slug/resources',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleCreatePortalResource,
+  )
+  app.post(
+    '/api/admin/events/:slug/resources/reorder',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleReorderPortalResources,
+  )
+  app.patch(
+    '/api/admin/events/:slug/resources/:id',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleUpdatePortalResource,
+  )
+  app.delete(
+    '/api/admin/events/:slug/resources/:id',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleDeletePortalResource,
   )
   app.post(
     '/api/admin/events/:slug/files/zip',

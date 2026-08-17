@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { AlertLive } from '../../../components/ui/alert-live'
@@ -34,6 +34,8 @@ import HeadshotUploader from './HeadshotUploader'
 import ProfileEditor from './ProfileEditor'
 import TasksPanel from './TasksPanel'
 import CalendarActions from './CalendarActions'
+
+const PortalResources = lazy(() => import('./PortalResources'))
 
 interface PortalPageProps {
   /** Called once when the API reports no session; the route sends them to /start. */
@@ -170,6 +172,11 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
       <div id="portal-profile" className="scroll-mt-24">
         <ProfileEditor />
       </div>
+      <div id="portal-resources" className="scroll-mt-24" data-tour="portal-resources">
+        <Suspense fallback={<StatusLive>Loading resources…</StatusLive>}>
+          <PortalResources />
+        </Suspense>
+      </div>
       <div
         id="portal-files"
         className="grid scroll-mt-24 gap-5 lg:grid-cols-2"
@@ -220,6 +227,7 @@ function PortalSections() {
         ['Proposals', '#portal-proposals'],
         ['Tasks', '#portal-tasks'],
         ['Profile', '#portal-profile'],
+        ['Resources', '#portal-resources'],
         ['Files', '#portal-files'],
       ].map(([label, href]) => (
         <a

@@ -506,6 +506,14 @@ export async function handleListSpeakerTasks(context: ServerContext): Promise<Re
   return context.json(tasks)
 }
 
+export async function handleListPortalResources(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireSubmitter(context)
+  if (actor === null) return forbiddenResponse(context)
+  return context.json(await deps.portalResources.listSpeaker(actor))
+}
+
 /**
  * POST /api/public/tasks/:id/complete: idempotent own-task completion. A form
  * task requires an `{ answers }` body validated against its pinned published
@@ -1088,6 +1096,13 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
     requireActor('submitter'),
     requireCapability('portal'),
     handleListOwnAssignments,
+  )
+  app.get(
+    '/api/public/resources',
+    requireSession(),
+    requireActor('submitter'),
+    requireCapability('portal'),
+    handleListPortalResources,
   )
   app.post(
     '/api/public/assignments/:id/complete',

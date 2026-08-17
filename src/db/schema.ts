@@ -21,6 +21,7 @@ import { CONDITION_EFFECTS, CONDITION_OPERATORS, ROUTING_ACTIONS } from '../doma
 import { ALL_SPEAKER_TASK_KINDS, SPEAKER_TASK_STATUSES } from '../domain/speaker-task'
 import { SUBMISSION_DECISION_OUTCOMES, SUBMISSION_STATUSES } from '../domain/submission'
 import { TAXONOMY_KINDS } from '../domain/taxonomy'
+import { PORTAL_RESOURCE_KINDS } from '../domain/portal-resource'
 
 /**
  * Drizzle mirror of migrations/0002_create_m2_tables.sql. The migration is the
@@ -54,6 +55,33 @@ export const events = sqliteTable('events', {
   backgroundHeight: integer('background_height'),
   backgroundUpdatedAt: text('background_updated_at'),
 })
+
+export const portalResources = sqliteTable(
+  'portal_resources',
+  {
+    eventId: text('event_id').notNull(),
+    id: text('id').notNull(),
+    kind: text('kind', { enum: [...PORTAL_RESOURCE_KINDS] }).notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    url: text('url'),
+    position: integer('position').notNull(),
+    published: integer('published', { mode: 'boolean' }).notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('idx_portal_resources_id').on(table.id),
+    index('idx_portal_resources_event_order').on(
+      table.eventId,
+      table.published,
+      table.position,
+      table.id,
+    ),
+    foreignKey({ columns: [table.eventId], foreignColumns: [events.id] }),
+  ],
+)
 
 export const contacts = sqliteTable('contacts', {
   id: text('id').primaryKey(),
@@ -848,6 +876,7 @@ export const speakerTasks = sqliteTable(
 )
 
 export type EventRow = typeof events.$inferSelect
+export type PortalResourceRow = typeof portalResources.$inferSelect
 export type ContactRow = typeof contacts.$inferSelect
 export type SubmitterTokenRow = typeof submitterTokens.$inferSelect
 export type SessionRow = typeof sessions.$inferSelect

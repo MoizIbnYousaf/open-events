@@ -9,6 +9,7 @@ import { SpeakerService } from '../application/services/speakers'
 import { SupportService } from '../application/services/support'
 import { AssignmentService } from '../application/services/assignments'
 import { ContentLibraryService } from '../application/services/content-library'
+import { PortalResourceService } from '../application/services/portal-resources'
 import { EmbedService } from '../application/services/embeds'
 import { capturingEmailSender, selectEmailSender } from './email'
 import { selectOrbyReplyer } from './orby'
@@ -65,6 +66,7 @@ import { createSpeakerTaskRepository } from '../db/speaker-task-repository'
 import { createSubmitUnitOfWork } from '../db/submit-unit-of-work'
 import { createSupportRepository } from '../db/support-repository'
 import { createUploadedFileRepository } from '../db/uploaded-file-repository'
+import { createPortalResourceRepository } from '../db/portal-resource-repository'
 
 import type { ServerContext } from './env'
 import {
@@ -94,6 +96,7 @@ export interface ServerDeps {
   readonly taxonomies: TaxonomyRepository
   readonly embeds: EmbedService
   readonly contentLibrary: ContentLibraryService
+  readonly portalResources: PortalResourceService
   readonly assignments: AssignmentService
   readonly session: SessionService
   readonly eventConfig: EventConfigService
@@ -245,6 +248,7 @@ export function buildServerDeps(
       clock,
       files === null ? null : createR2ObjectStorage(files),
     ),
+    portalResources: new PortalResourceService(createPortalResourceRepository(db), events, clock),
     assignments: new AssignmentService(events, createProgrammeRepository(db), clock),
     documents:
       files === null

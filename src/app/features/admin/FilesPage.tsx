@@ -24,6 +24,7 @@ import {
 } from '../../../components/ui/page-header'
 import AppShell from '../nav/AppShell'
 import { versionApprovalTrail } from './file-versions'
+import PortalResourcesEditor from './PortalResourcesEditor'
 
 interface FileRow {
   readonly id: string
@@ -128,6 +129,7 @@ export default function FilesPage({ eventSlug }: { readonly eventSlug: string })
             ))}
           </div>
         )}
+        <PortalResourcesEditor eventSlug={eventSlug} />
       </div>
     </AppShell>
   )

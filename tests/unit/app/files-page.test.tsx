@@ -52,6 +52,7 @@ beforeEach(() => {
           },
         ])
       }
+      if (url === `/api/admin/events/${SLUG}/resources`) return jsonResponse([])
       if (url.includes('/versions')) {
         return jsonResponse([
           {
@@ -91,5 +92,16 @@ describe('files library versions', () => {
     await user.click(screen.getByRole('button', { name: /versions and comments/i }))
     expect(await screen.findByText(/approval trail: v1 → v2 \(current\)/i)).toBeInTheDocument()
     expect(screen.getByText(/looks good/i)).toBeInTheDocument()
+  })
+
+  it('keeps safe speaker resource management beside uploaded files', async () => {
+    mount()
+
+    expect(await screen.findByRole('heading', { name: 'Speaker resources' })).toBeInTheDocument()
+    expect(screen.getByText(/raw HTML and embeds are not supported/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Add resource' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Type')).toBeInTheDocument()
+    expect(screen.getByLabelText('Title')).toBeInTheDocument()
+    expect(screen.getByLabelText('Markdown')).toHaveAttribute('maxlength', '20000')
   })
 })

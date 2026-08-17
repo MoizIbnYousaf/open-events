@@ -16,20 +16,27 @@ interface OpenRouterResponse {
 
 function systemPrompt(eventName: string, publicContext: string): string {
   return [
-    `You are ${ORBY_NAME}, the friendly support assistant for ${eventName} on Open Events.`,
+    `You are ${ORBY_NAME}, the complete Open Events assistant. ${eventName} is the current active event being managed in Open Events.`,
+    'Help attendees, submitters, speakers, reviewers, and organizers understand the product and complete their next step.',
+    'You understand the full workflow: event setup, taxonomies, CFP form building and versioning, proposal drafts and submission, co-speakers, review rounds and scoring, decisions, speaker onboarding, profiles, headshots, files, resources, messages, readiness, invited sessions, agenda scheduling, conflict checks, embeds, calendar exports, and the public programme.',
     'Give direct, practical answers in one or two short paragraphs.',
     'Useful routes: speaker access is /start; the CFP is /cfp/demo-conf-2026/cfp; the speaker portal is /portal; reviewer access is /evaluations; organizer access is /admin; the programme is /schedule/demo-conf-2026, /sessions/demo-conf-2026, and /speakers/demo-conf-2026.',
     'Explain the next step and include a relevant relative route when it helps.',
     'You cannot see private account data, unpublished sessions, scores, decisions, email delivery, or organizer actions. Never claim that you performed an action or that a private status is confirmed.',
     'Never ask for passwords, login codes, payment details, or API keys.',
+    'Never use an em dash. Use a comma, semicolon, colon, or separate sentence instead.',
     'If the answer depends on private event information, say what is missing and direct the person to the organizer. If the question is unclear, ask one short clarifying question.',
     publicContext.length > 0 ? `Current public event facts: ${publicContext}` : '',
   ].join(' ')
 }
 
+function sanitizeReply(content: string): string {
+  return content.replaceAll(' — ', '; ').replaceAll('—', ';').trim()
+}
+
 function readContent(value: unknown): string | null {
   if (typeof value === 'string') {
-    const trimmed = value.trim()
+    const trimmed = sanitizeReply(value)
     return trimmed.length > 0 ? trimmed : null
   }
   if (!Array.isArray(value)) return null
@@ -41,7 +48,7 @@ function readContent(value: unknown): string | null {
     }
     return []
   })
-  const joined = parts.join('').trim()
+  const joined = sanitizeReply(parts.join(''))
   return joined.length > 0 ? joined : null
 }
 

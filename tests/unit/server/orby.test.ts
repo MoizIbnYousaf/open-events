@@ -17,7 +17,7 @@ describe('Orby OpenRouter adapter', () => {
   it('posts history to OpenRouter and returns the assistant text', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({ choices: [{ message: { content: 'The CFP is still open.' } }] }),
+        JSON.stringify({ choices: [{ message: { content: 'The CFP is open — submit now.' } }] }),
         {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -31,7 +31,7 @@ describe('Orby OpenRouter adapter', () => {
       publicContext: 'Venue: DemoConf Convention Center. CFP status: open.',
       history: [{ role: 'user', content: 'Is the CFP open?' }],
     })
-    expect(reply).toBe('The CFP is still open.')
+    expect(reply).toBe('The CFP is open; submit now.')
     expect(fetchMock).toHaveBeenCalledOnce()
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     const body = JSON.parse(String(init.body)) as {
@@ -45,6 +45,10 @@ describe('Orby OpenRouter adapter', () => {
     expect(body.messages[0]?.content).toContain('/start')
     expect(body.messages[0]?.content).toContain('/schedule/demo-conf-2026')
     expect(body.messages[0]?.content).toContain('Never ask for passwords')
+    expect(body.messages[0]?.content).toContain('complete Open Events assistant')
+    expect(body.messages[0]?.content).toContain('current active event')
+    expect(body.messages[0]?.content).toContain('Never use an em dash')
+    expect(body.messages[0]?.content).not.toContain('—')
     expect(body.messages[0]?.content).toContain('DemoConf Convention Center')
     expect(body.max_tokens).toBe(240)
     expect(body.temperature).toBe(0.2)

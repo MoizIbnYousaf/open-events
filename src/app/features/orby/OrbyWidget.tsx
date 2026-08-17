@@ -95,18 +95,21 @@ export default function OrbyWidget() {
           className="pointer-events-auto flex w-[min(100vw-2rem,22rem)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-popover"
         >
           <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">{ORBY_NAME}</p>
-              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    connected ? 'bg-emerald-500' : 'bg-muted-foreground/50',
-                  )}
-                />
-                {connected ? 'Connected' : 'Reconnecting'}
-              </p>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <img src="/orby-mascot.png" alt="" className="size-10 shrink-0 object-contain" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">{ORBY_NAME}</p>
+                <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'size-1.5 rounded-full',
+                      connected ? 'bg-emerald-500' : 'bg-muted-foreground/50',
+                    )}
+                  />
+                  {connected ? 'Open Events assistant' : 'Reconnecting'}
+                </p>
+              </div>
             </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
               Close
@@ -196,14 +199,13 @@ export default function OrbyWidget() {
       ) : null}
       <Button
         type="button"
-        className="pointer-events-auto relative size-12 rounded-full p-0 shadow-popover"
+        className="pointer-events-auto relative h-14 rounded-full border border-primary/30 bg-card px-2 pr-4 text-foreground shadow-popover transition-transform hover:scale-[1.03] hover:bg-card"
         aria-expanded={open}
         aria-label={unread > 0 ? `${ORBY_NAME}, ${unread} unread` : `Chat with ${ORBY_NAME}`}
         onClick={() => setOpen((value) => !value)}
       >
-        <span aria-hidden="true" className="text-sm font-semibold">
-          {open ? '×' : 'O'}
-        </span>
+        <img src="/orby-mascot.png" alt="" className="size-11 shrink-0 object-contain" />
+        <span className="text-sm font-semibold">{open ? 'Close Orby' : 'Ask Orby'}</span>
         {!open && unread > 0 ? (
           <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
             {badge}

@@ -16,6 +16,7 @@ export const APPROVED_VISUAL_ASSETS = Object.freeze([
   'public/og/logo-sheet.png',
   'public/og/open-events.png',
   'public/og/orby.png',
+  'public/orby-mascot.png',
   'public/session-stage.jpg',
   'public/speakers-conversation.jpg',
   'public/washes/conference-hero-dark.jpg',

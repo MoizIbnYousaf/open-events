@@ -186,6 +186,7 @@ describe('agenda board read', () => {
       {
         submissionId: 'submission-1',
         title: 'Proposal submission-1',
+        source: 'cfp',
         day: '2026-05-13',
         start: '2026-05-13T08:00:00.000Z',
         end: '2026-05-13T09:00:00.000Z',

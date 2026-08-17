@@ -129,6 +129,7 @@ describe('Workers-pool integration: real Hono app against the pool D1 binding', 
     })
 
     expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
     const payload = (await response.json()) as HealthPayload
     expect(payload).toEqual({
       status: 'ok',

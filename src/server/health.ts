@@ -84,6 +84,7 @@ export async function probeDatabase(db: D1Database): Promise<boolean> {
 
 /** GET /api/health handler. */
 export async function handleHealth(context: ServerContext): Promise<Response> {
+  context.header('Cache-Control', 'no-store')
   const identity = deploymentIdentityFromBindings(context.env)
   if (identity === null) {
     return context.json(

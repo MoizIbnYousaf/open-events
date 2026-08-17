@@ -1,4 +1,4 @@
-import type { EventSlug, FormSlug } from '../domain'
+import type { EventBrandingKind, EventSlug, FormSlug, UtcInstant } from '../domain'
 
 /**
  * Canonical clean public CFP path: `/cfp/:eventSlug/:formSlug`. The start
@@ -16,3 +16,12 @@ export function publicCfpPath(eventSlug: EventSlug, formSlug: FormSlug): string 
  * so the acceptance message and every public page address it by this literal.
  */
 export const SPEAKER_PORTAL_PATH = '/portal'
+
+export function publicEventBrandingPath(
+  eventSlug: EventSlug,
+  kind: EventBrandingKind,
+  updatedAt?: UtcInstant,
+): string {
+  const path = `/api/public/events/${encodeURIComponent(eventSlug)}/branding/${kind}`
+  return updatedAt === undefined ? path : `${path}?v=${encodeURIComponent(updatedAt)}`
+}

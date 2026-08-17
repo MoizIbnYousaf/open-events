@@ -25,6 +25,14 @@ describe('toEventDto', () => {
       status: event.status,
       startsAt: '2026-05-13T08:00:00.000Z',
       endsAt: '2026-05-15T17:00:00.000Z',
+      logoUrl: null,
+      logoWidth: null,
+      logoHeight: null,
+      logoUpdatedAt: null,
+      backgroundUrl: null,
+      backgroundWidth: null,
+      backgroundHeight: null,
+      backgroundUpdatedAt: null,
     }
 
     expect(toEventDto(event)).toEqual(expected)
@@ -39,6 +47,14 @@ describe('toEventDto', () => {
       status: event.status,
       startsAt: null,
       endsAt: null,
+      logoUrl: null,
+      logoWidth: null,
+      logoHeight: null,
+      logoUpdatedAt: null,
+      backgroundUrl: null,
+      backgroundWidth: null,
+      backgroundHeight: null,
+      backgroundUpdatedAt: null,
     }
 
     expect(toEventDto({ ...event, dates: null })).toEqual(expected)

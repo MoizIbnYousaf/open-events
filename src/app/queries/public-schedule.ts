@@ -26,6 +26,13 @@ export interface PublicScheduleSession {
 
 export interface PublicScheduleEnvelope {
   readonly timezone: string
+  readonly eventName?: string
+  readonly logoUrl?: string | null
+  readonly logoWidth?: number | null
+  readonly logoHeight?: number | null
+  readonly backgroundUrl?: string | null
+  readonly backgroundWidth?: number | null
+  readonly backgroundHeight?: number | null
   readonly sessions: readonly PublicScheduleSession[]
 }
 

@@ -61,12 +61,22 @@ import {
   organizerSendLimit,
 } from '../rate-limit'
 import { sendReviewerInvite } from '../reviewer-invite'
+import { declaresOversizeBody, readCappedBody } from '../request-body'
 import {
+  BRANDING_BACKGROUND_MAX_BYTES,
+  BRANDING_LOGO_MAX_BYTES,
+  BrandingImageInvalidError,
+  BrandingImageTooLargeError,
+  BrandingImageUnsupportedTypeError,
   HEADSHOT_MAX_BYTES,
   HeadshotEmptyError,
   HeadshotTooLargeError,
   HeadshotUnsupportedTypeError,
 } from '../../application'
+
+function eventBrandingKind(value: string | undefined): 'logo' | 'background' | null {
+  return value === 'logo' || value === 'background' ? value : null
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -315,6 +325,59 @@ export async function handleUpdateEventConfig(context: ServerContext): Promise<R
   if (input === null) return validationFailedResponse(context)
   const dto = await deps.eventConfig.updateBySlug(actor, slug, input)
   return context.json(dto)
+}
+
+/** PUT /api/admin/events/:slug/branding/:kind. */
+export async function handlePutEventBranding(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.eventBranding === null) return notFoundResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const kind = eventBrandingKind(context.req.param('kind'))
+  if (slug === undefined || kind === null) return notFoundResponse(context)
+  const maxBytes = kind === 'logo' ? BRANDING_LOGO_MAX_BYTES : BRANDING_BACKGROUND_MAX_BYTES
+  if (declaresOversizeBody(context.req.header('content-length'), maxBytes)) {
+    return toErrorResponse(context, 'validation_failed', 413)
+  }
+  const contentType = (context.req.header('content-type') ?? '').split(';')[0]?.trim() ?? ''
+  const bytes = await readCappedBody(context.req.raw, maxBytes)
+  if (bytes === null) return toErrorResponse(context, 'validation_failed', 413)
+  try {
+    const asset = await deps.eventBranding.store(actor, slug, kind, { contentType, bytes })
+    return context.json({
+      kind: asset.kind,
+      contentType: asset.contentType,
+      width: asset.width,
+      height: asset.height,
+      updatedAt: asset.updatedAt,
+      url: asset.url,
+    })
+  } catch (error) {
+    if (error instanceof BrandingImageUnsupportedTypeError) {
+      return toErrorResponse(context, 'validation_failed', 415)
+    }
+    if (error instanceof BrandingImageTooLargeError) {
+      return toErrorResponse(context, 'validation_failed', 413)
+    }
+    if (error instanceof BrandingImageInvalidError) return validationFailedResponse(context)
+    throw error
+  }
+}
+
+/** DELETE /api/admin/events/:slug/branding/:kind. */
+export async function handleDeleteEventBranding(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.eventBranding === null) return notFoundResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  const kind = eventBrandingKind(context.req.param('kind'))
+  if (slug === undefined || kind === null) return notFoundResponse(context)
+  await deps.eventBranding.remove(actor, slug, kind)
+  return new Response(null, { status: 204 })
 }
 
 /** GET /api/admin/events/:slug/taxonomies. */
@@ -1780,6 +1843,20 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleUpdateEventConfig,
+  )
+  app.put(
+    '/api/admin/events/:slug/branding/:kind',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handlePutEventBranding,
+  )
+  app.delete(
+    '/api/admin/events/:slug/branding/:kind',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleDeleteEventBranding,
   )
   app.get(
     '/api/admin/events/:slug/taxonomies',

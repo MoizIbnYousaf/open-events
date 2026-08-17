@@ -99,6 +99,8 @@ describe('migration apply from an empty local D1', () => {
       '0027_email_delivery_outbox.sql',
       '0028_resend_webhook_events.sql',
       '0029_acceptance_reset.sql',
+      '0030_allow_presentation_documents.sql',
+      '0031_add_event_branding.sql',
     ])
 
     const tables = await env.DB.prepare(
@@ -129,6 +131,16 @@ describe('migration apply from an empty local D1', () => {
       organizer_contact: 'programme@example.test',
       venue: 'DemoConf Convention Center, Berlin',
       event_type: 'conference',
+      logo_storage_key: null,
+      logo_content_type: null,
+      logo_width: null,
+      logo_height: null,
+      logo_updated_at: null,
+      background_storage_key: null,
+      background_content_type: null,
+      background_width: null,
+      background_height: null,
+      background_updated_at: null,
     })
     expect(await countRows(env.DB, 'events')).toBe(1)
     expect(await countRows(env.DB, 'cfp_forms')).toBe(1)

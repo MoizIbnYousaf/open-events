@@ -43,6 +43,16 @@ export const events = sqliteTable('events', {
   organizerContact: text('organizer_contact'),
   venue: text('venue'),
   eventType: text('event_type'),
+  logoStorageKey: text('logo_storage_key'),
+  logoContentType: text('logo_content_type'),
+  logoWidth: integer('logo_width'),
+  logoHeight: integer('logo_height'),
+  logoUpdatedAt: text('logo_updated_at'),
+  backgroundStorageKey: text('background_storage_key'),
+  backgroundContentType: text('background_content_type'),
+  backgroundWidth: integer('background_width'),
+  backgroundHeight: integer('background_height'),
+  backgroundUpdatedAt: text('background_updated_at'),
 })
 
 export const contacts = sqliteTable('contacts', {

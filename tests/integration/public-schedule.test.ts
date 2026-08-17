@@ -138,6 +138,15 @@ describe('public schedule API', () => {
       sessions: Array<Record<string, unknown>>
     }
     expect(body.timezone).toBe('Europe/Berlin')
+    expect(body).toMatchObject({
+      eventName: 'DemoConf 2026',
+      logoUrl: null,
+      logoWidth: null,
+      logoHeight: null,
+      backgroundUrl: null,
+      backgroundWidth: null,
+      backgroundHeight: null,
+    })
     expect(body.sessions).toHaveLength(1)
     expect(body.sessions[0]).toEqual({
       submissionId: 'submission-1',

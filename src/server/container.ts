@@ -22,6 +22,7 @@ import { DocumentService } from '../application/services/documents'
 import { DraftService } from '../application/services/drafts'
 import { EvaluationService } from '../application/services/evaluations'
 import { EventConfigService } from '../application/services/event-config'
+import { EventBrandingService } from '../application/services/event-branding'
 import { FormBuilderService } from '../application/services/form-builder'
 import { GetEvent } from '../application/services/get-event'
 import { HeadshotService } from '../application/services/headshots'
@@ -96,6 +97,7 @@ export interface ServerDeps {
   readonly assignments: AssignmentService
   readonly session: SessionService
   readonly eventConfig: EventConfigService
+  readonly eventBranding: EventBrandingService | null
   readonly taxonomy: TaxonomyService
   readonly formBuilder: FormBuilderService
   readonly drafts: DraftService
@@ -173,6 +175,14 @@ export function buildServerDeps(
     formContent: content,
     programme: createProgrammeRepository(db),
     eventConfig: new EventConfigService(createEventConfigRepository(db), clock),
+    eventBranding:
+      files === null
+        ? null
+        : new EventBrandingService(
+            createEventConfigRepository(db),
+            createR2ObjectStorage(files),
+            clock,
+          ),
     taxonomy: new TaxonomyService(events, createTaxonomyRepository(db)),
     formBuilder: new FormBuilderService(
       events,

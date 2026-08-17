@@ -127,9 +127,19 @@ export default function LandingEventState() {
     <div className="overflow-hidden bg-background text-foreground">
       <section className="relative mx-auto grid min-h-[calc(100svh-4rem)] max-w-[1500px] lg:grid-cols-[0.92fr_1.08fr]">
         <div className="relative z-10 flex flex-col justify-center px-5 py-16 sm:px-10 lg:px-16 lg:py-24 xl:px-24">
-          <p className="mb-7 text-xs font-semibold tracking-[0.18em] text-link uppercase">
-            Open Events
-          </p>
+          {event.logoUrl === null ? (
+            <p className="mb-7 text-xs font-semibold tracking-[0.18em] text-link uppercase">
+              Open Events
+            </p>
+          ) : (
+            <img
+              src={event.logoUrl}
+              width={event.logoWidth ?? undefined}
+              height={event.logoHeight ?? undefined}
+              alt={`${event.name} logo`}
+              className="mb-7 max-h-14 max-w-56 object-contain object-left"
+            />
+          )}
           <h1 className="max-w-3xl text-balance font-heading text-[3.25rem] leading-[0.94] font-semibold tracking-[-0.065em] sm:text-7xl xl:text-[6rem]">
             Your event, <br />
             finally in sync.
@@ -177,8 +187,14 @@ export default function LandingEventState() {
         </div>
         <div className="relative min-h-[54svh] overflow-hidden bg-black lg:min-h-full">
           <img
-            src="/images/open-events-stage.png"
-            alt="Conference speaker presenting on stage to a live audience"
+            src={event.backgroundUrl ?? '/images/open-events-stage.png'}
+            width={event.backgroundWidth ?? undefined}
+            height={event.backgroundHeight ?? undefined}
+            alt={
+              event.backgroundUrl === null
+                ? 'Conference speaker presenting on stage to a live audience'
+                : `${event.name} background`
+            }
             className="absolute inset-0 h-full w-full object-cover object-[28%_center]"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/10 lg:bg-gradient-to-r lg:from-background/45 lg:via-transparent lg:to-transparent" />

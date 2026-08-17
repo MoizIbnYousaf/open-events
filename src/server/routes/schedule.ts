@@ -57,9 +57,21 @@ export async function handleGetPublicSchedule(context: ServerContext): Promise<R
     profiles: deps.programme,
   })
 
-  return context.json({ timezone: event.timezone, sessions: publicSessions }, 200, {
-    'Cache-Control': 'public, max-age=60',
-  })
+  return context.json(
+    {
+      timezone: event.timezone,
+      eventName: event.name,
+      logoUrl: event.logoUrl,
+      logoWidth: event.logoWidth,
+      logoHeight: event.logoHeight,
+      backgroundUrl: event.backgroundUrl,
+      backgroundWidth: event.backgroundWidth,
+      backgroundHeight: event.backgroundHeight,
+      sessions: publicSessions,
+    },
+    200,
+    { 'Cache-Control': 'public, max-age=60' },
+  )
 }
 
 /** GET /api/public/events/:slug/speakers */

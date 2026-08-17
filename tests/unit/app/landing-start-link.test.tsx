@@ -21,6 +21,14 @@ const EVENT_DTO = {
   endsAt: '2026-05-15T17:00:00.000Z',
   websiteUrl: 'https://example.test/demo-conf-2026',
   organizerContact: 'programme@example.test',
+  logoUrl: null,
+  logoWidth: null,
+  logoHeight: null,
+  logoUpdatedAt: null,
+  backgroundUrl: null,
+  backgroundWidth: null,
+  backgroundHeight: null,
+  backgroundUpdatedAt: null,
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -96,6 +104,28 @@ describe('landing page access link', () => {
         name: 'Conference speaker presenting on stage to a live audience',
       }),
     ).toHaveAttribute('src', '/images/open-events-stage.png')
+  })
+
+  it('uses configured event artwork with reserved dimensions', async () => {
+    stubFetch({
+      ...EVENT_DTO,
+      logoUrl: '/api/public/events/demo-conf-2026/branding/logo?v=1',
+      logoWidth: 512,
+      logoHeight: 256,
+      backgroundUrl: '/api/public/events/demo-conf-2026/branding/background?v=1',
+      backgroundWidth: 1600,
+      backgroundHeight: 900,
+    })
+    await mountLanding()
+
+    expect(await screen.findByRole('img', { name: 'DemoConf 2026 logo' })).toHaveAttribute(
+      'width',
+      '512',
+    )
+    expect(screen.getByRole('img', { name: 'DemoConf 2026 background' })).toHaveAttribute(
+      'src',
+      '/api/public/events/demo-conf-2026/branding/background?v=1',
+    )
   })
 
   it('keeps the link reachable while the event is still loading', async () => {

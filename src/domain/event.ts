@@ -30,6 +30,22 @@ export interface EventDates {
   readonly endsAt: UtcInstant
 }
 
+export const EVENT_BRANDING_KINDS = ['logo', 'background'] as const
+export type EventBrandingKind = (typeof EVENT_BRANDING_KINDS)[number]
+
+export interface EventBrandingAsset {
+  readonly storageKey: string
+  readonly contentType: string
+  readonly width: number
+  readonly height: number
+  readonly updatedAt: UtcInstant
+}
+
+export interface EventBranding {
+  readonly logo: EventBrandingAsset | null
+  readonly background: EventBrandingAsset | null
+}
+
 /** Canonical event entity backing the programme vocabulary. */
 export interface Event {
   readonly id: EventId
@@ -46,4 +62,6 @@ export interface Event {
   readonly venue?: string | null
   /** Event type label (free-form), e.g. 'conference'. */
   readonly eventType?: string | null
+  /** Optional event-owned public artwork. Object keys never cross DTO boundaries. */
+  readonly branding?: EventBranding
 }

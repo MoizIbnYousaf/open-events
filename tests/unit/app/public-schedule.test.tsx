@@ -22,6 +22,13 @@ const SCHEDULE_URL = `/api/public/events/${EVENT_SLUG}/schedule`
 
 const SCHEDULE_ENVELOPE = {
   timezone: 'Europe/Berlin',
+  eventName: 'DemoConf 2026',
+  logoUrl: null,
+  logoWidth: null,
+  logoHeight: null,
+  backgroundUrl: null,
+  backgroundWidth: null,
+  backgroundHeight: null,
   sessions: [
     {
       submissionId: 'submission-1',
@@ -159,6 +166,35 @@ describe('public schedule', () => {
       expect(h1s[0]).not.toHaveTextContent('Open Events')
     },
   )
+
+  it('renders configured artwork without another event request', async () => {
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === SCHEDULE_URL) {
+        return jsonResponse({
+          ...SCHEDULE_ENVELOPE,
+          logoUrl: '/api/public/events/demo-conf-2026/branding/logo?v=1',
+          logoWidth: 512,
+          logoHeight: 256,
+          backgroundUrl: '/api/public/events/demo-conf-2026/branding/background?v=1',
+          backgroundWidth: 1600,
+          backgroundHeight: 900,
+        })
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+    await renderPage()
+
+    expect(await screen.findByRole('img', { name: 'DemoConf 2026 logo' })).toHaveAttribute(
+      'width',
+      '512',
+    )
+    expect(screen.getByRole('img', { name: 'DemoConf 2026 background' })).toHaveAttribute(
+      'src',
+      '/api/public/events/demo-conf-2026/branding/background?v=1',
+    )
+    expect(fetchMock.mock.calls).toHaveLength(1)
+  })
 
   it('keeps the loading state heading-free with aria-busy and a status, cleared after ready', async () => {
     let resolveSchedule: ((response: Response) => void) | undefined

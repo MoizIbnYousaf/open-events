@@ -50,6 +50,7 @@ import type { EventSlug } from '../../../domain/event'
 import { EVENT_STATUSES } from '../../../domain/event'
 
 import AppShell from '../nav/AppShell'
+import EventBrandingCard from './EventBrandingCard'
 import { DeniedState, ExpiredSessionState, ForbiddenState, LoadErrorState } from './AdminStates'
 
 const eventConfigSchema = z
@@ -191,6 +192,16 @@ function EventConfigScreen() {
           forms={formsQuery.data ?? []}
           save={save}
           navigateToLogin={() => void navigate({ to: '/admin' })}
+        />
+        <EventBrandingCard
+          slug={slug ?? ''}
+          logoUrl={configQuery.data.logoUrl}
+          logoWidth={configQuery.data.logoWidth}
+          logoHeight={configQuery.data.logoHeight}
+          backgroundUrl={configQuery.data.backgroundUrl}
+          backgroundWidth={configQuery.data.backgroundWidth}
+          backgroundHeight={configQuery.data.backgroundHeight}
+          onChanged={() => configQuery.refetch().then(() => undefined)}
         />
         <FormsList query={formsQuery} slug={slug ?? ''} />
         <CfpSettings query={formsQuery} slug={slug ?? ''} />

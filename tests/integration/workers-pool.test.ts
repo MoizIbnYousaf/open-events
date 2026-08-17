@@ -101,6 +101,14 @@ const expectedEventDto: EventDto = {
   status: seededRow.status,
   startsAt: seededRow.starts_at,
   endsAt: seededRow.ends_at,
+  logoUrl: null,
+  logoWidth: null,
+  logoHeight: null,
+  logoUpdatedAt: null,
+  backgroundUrl: null,
+  backgroundWidth: null,
+  backgroundHeight: null,
+  backgroundUpdatedAt: null,
 }
 
 const emailCaptureBindings = {

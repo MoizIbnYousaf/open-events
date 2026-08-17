@@ -72,6 +72,7 @@ import {
   turnstileRemoteAddress,
 } from '../rate-limit'
 import { TURNSTILE_PUBLIC_START_ACTION, verifyTurnstile } from '../turnstile'
+import { declaresOversizeBody, readCappedBody } from '../request-body'
 import { handleHealth } from '../health'
 import { handleGetEvent } from './events'
 import {
@@ -110,6 +111,30 @@ function accessRecoveryResponse(kind: SubmitterAccessRecoveryKind): Response {
       Location: accessRecoveryPath(kind),
       'Cache-Control': 'no-store',
       'Referrer-Policy': 'no-referrer',
+    },
+  })
+}
+
+function publicBrandingKind(value: string | undefined): 'logo' | 'background' | null {
+  return value === 'logo' || value === 'background' ? value : null
+}
+
+/** Public event-owned artwork. Missing metadata or bytes are the same 404. */
+export async function handleGetPublicEventBranding(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  if (deps.eventBranding === null) return notFoundResponse(context)
+  const slug = context.req.param('slug')
+  const kind = publicBrandingKind(context.req.param('kind'))
+  if (slug === undefined || kind === null) return notFoundResponse(context)
+  const asset = await deps.eventBranding.getPublic(slug, kind)
+  if (asset === null) return notFoundResponse(context)
+  return new Response(asset.body, {
+    headers: {
+      'Content-Type': asset.contentType,
+      'Content-Length': String(asset.body.byteLength),
+      'Cache-Control': 'public, max-age=60',
+      'X-Content-Type-Options': 'nosniff',
     },
   })
 }
@@ -621,48 +646,6 @@ export async function handleRecuseEvaluation(context: ServerContext): Promise<Re
   return context.body(null, 204)
 }
 
-/** True when the client declares a body that already exceeds the budget. */
-function declaresOversizeBody(contentLength: string | undefined): boolean {
-  if (contentLength === undefined) return false
-  const declared = Number(contentLength)
-  return Number.isFinite(declared) && declared > HEADSHOT_MAX_BYTES
-}
-
-/**
- * Reads at most `maxBytes` from the request body and returns null the moment
- * the stream goes over budget, cancelling the rest. An undeclared (or lying)
- * oversize body is therefore denied without ever being materialised in full,
- * so the isolate never buffers more than the frozen upload budget.
- */
-async function readCappedBody(request: Request, maxBytes: number): Promise<ArrayBuffer | null> {
-  const body = request.body
-  if (body === null) return new ArrayBuffer(0)
-  const reader = body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      total += value.byteLength
-      if (total > maxBytes) {
-        await reader.cancel()
-        return null
-      }
-      chunks.push(value)
-    }
-  } finally {
-    reader.releaseLock()
-  }
-  const merged = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    merged.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return merged.buffer
-}
-
 /**
  * PUT /api/public/profile/headshot: owner-scoped binary upload. The declared
  * content type must be one of the frozen image types (415) and the body must
@@ -679,7 +662,7 @@ export async function handlePutOwnHeadshot(context: ServerContext): Promise<Resp
   const actor = requireSubmitter(context)
   if (actor === null) return forbiddenResponse(context)
   const contentType = (context.req.header('content-type') ?? '').split(';')[0]?.trim() ?? ''
-  if (declaresOversizeBody(context.req.header('content-length'))) {
+  if (declaresOversizeBody(context.req.header('content-length'), HEADSHOT_MAX_BYTES)) {
     return toErrorResponse(context, 'validation_failed', 413)
   }
   const bytes = await readCappedBody(context.req.raw, HEADSHOT_MAX_BYTES)
@@ -1092,6 +1075,7 @@ export function registerPublicRoutes(app: Hono<ServerEnv>): void {
   app.get('/api/public/events/:slug/speakers', handleGetPublicSpeakers)
   app.get('/api/public/events/:slug/speakers/:contactId/headshot', handleGetPublicSpeakerHeadshot)
   app.get('/api/public/events/:slug/speakers/:contactId', handleGetPublicSpeaker)
+  app.get('/api/public/events/:slug/branding/:kind', handleGetPublicEventBranding)
   app.get('/api/public/embeds/:embedId', handleGetPublicEmbed)
   app.get('/embed/:embedId', handleRenderEmbed)
   app.get(

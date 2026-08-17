@@ -54,6 +54,36 @@ export class DbDecodeError extends Error {
 }
 
 export function toEvent(row: EventRow): Event {
+  const asset = (kind: 'logo' | 'background'): NonNullable<Event['branding']>['logo'] => {
+    const values =
+      kind === 'logo'
+        ? [
+            row.logoStorageKey,
+            row.logoContentType,
+            row.logoWidth,
+            row.logoHeight,
+            row.logoUpdatedAt,
+          ]
+        : [
+            row.backgroundStorageKey,
+            row.backgroundContentType,
+            row.backgroundWidth,
+            row.backgroundHeight,
+            row.backgroundUpdatedAt,
+          ]
+    const missing = (value: unknown): boolean => value === null || value === undefined
+    if (values.every(missing)) return null
+    if (values.some(missing)) {
+      throw new DbDecodeError(`Event ${kind} branding metadata is incomplete`)
+    }
+    return {
+      storageKey: values[0] as string,
+      contentType: values[1] as string,
+      width: values[2] as number,
+      height: values[3] as number,
+      updatedAt: values[4] as string,
+    }
+  }
   return {
     id: row.id,
     slug: row.slug,
@@ -68,6 +98,7 @@ export function toEvent(row: EventRow): Event {
     organizerContact: row.organizerContact ?? null,
     venue: row.venue ?? null,
     eventType: row.eventType ?? null,
+    branding: { logo: asset('logo'), background: asset('background') },
   }
 }
 

@@ -82,6 +82,33 @@ function ScheduleHeading({ description }: { readonly description?: string }) {
   )
 }
 
+function ScheduleArtwork({ schedule }: { readonly schedule: PublicScheduleEnvelope }) {
+  if (schedule.logoUrl == null && schedule.backgroundUrl == null) return null
+  return (
+    <div className="relative h-40 overflow-hidden rounded-lg border border-border bg-muted/40 sm:h-52">
+      {schedule.backgroundUrl == null ? null : (
+        <img
+          src={schedule.backgroundUrl}
+          width={schedule.backgroundWidth ?? undefined}
+          height={schedule.backgroundHeight ?? undefined}
+          alt={`${schedule.eventName ?? 'Event'} background`}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/15 to-transparent" />
+      {schedule.logoUrl == null ? null : (
+        <img
+          src={schedule.logoUrl}
+          width={schedule.logoWidth ?? undefined}
+          height={schedule.logoHeight ?? undefined}
+          alt={`${schedule.eventName ?? 'Event'} logo`}
+          className="absolute bottom-5 left-5 max-h-16 max-w-56 object-contain drop-shadow-lg"
+        />
+      )}
+    </div>
+  )
+}
+
 function ScheduleScreen({ eventSlug }: { readonly eventSlug: string | undefined }) {
   const query = usePublicSchedule(eventSlug)
 
@@ -156,6 +183,7 @@ function ScheduleScreen({ eventSlug }: { readonly eventSlug: string | undefined 
       eventSlug={eventSlug ?? ''}
       timezone={query.data.timezone}
       sessions={query.data.sessions}
+      schedule={query.data}
     />
   )
 }
@@ -164,10 +192,12 @@ function ScheduleViews({
   eventSlug,
   timezone,
   sessions,
+  schedule,
 }: {
   readonly eventSlug: string
   readonly timezone: string
   readonly sessions: readonly PublicScheduleSession[]
+  readonly schedule: PublicScheduleEnvelope
 }) {
   const views = useMemo(() => {
     const placements: AgendaPlacement[] = sessions.map((session) => ({
@@ -237,6 +267,7 @@ function ScheduleViews({
       <ScheduleHeading
         description={`${String(sessionCount)} ${sessionCount === 1 ? 'session' : 'sessions'} · times shown in ${timezone}`}
       />
+      <ScheduleArtwork schedule={schedule} />
       {agenda.days.length > 0 ? (
         <section className="grid min-w-0 gap-3">
           <SectionHeading>Agenda</SectionHeading>

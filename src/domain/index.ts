@@ -1,6 +1,10 @@
 export {
   EVENT_STATUSES,
+  EVENT_BRANDING_KINDS,
   type Event,
+  type EventBranding,
+  type EventBrandingAsset,
+  type EventBrandingKind,
   type EventDates,
   type EventId,
   type EventSlug,

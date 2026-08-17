@@ -7,6 +7,7 @@ import type {
   IanaTimezone,
   UtcInstant,
 } from '../../domain'
+import { publicEventBrandingPath } from '../public-path'
 
 /** Admin `GET/PATCH /api/admin/events/:slug` response body. */
 export interface AdminEventConfigDto {
@@ -21,6 +22,14 @@ export interface AdminEventConfigDto {
   readonly organizerContact: string | null
   readonly venue: string | null
   readonly eventType: string | null
+  readonly logoUrl: string | null
+  readonly logoWidth: number | null
+  readonly logoHeight: number | null
+  readonly logoUpdatedAt: UtcInstant | null
+  readonly backgroundUrl: string | null
+  readonly backgroundWidth: number | null
+  readonly backgroundHeight: number | null
+  readonly backgroundUpdatedAt: UtcInstant | null
 }
 
 /** Partial admin update; omitted fields keep their current value. */
@@ -36,6 +45,8 @@ export interface UpdateEventConfigInput {
 }
 
 export function toAdminEventConfigDto(event: Event): AdminEventConfigDto {
+  const logo = event.branding?.logo ?? null
+  const background = event.branding?.background ?? null
   return {
     id: event.id,
     slug: event.slug,
@@ -48,5 +59,16 @@ export function toAdminEventConfigDto(event: Event): AdminEventConfigDto {
     organizerContact: event.organizerContact ?? null,
     venue: event.venue ?? null,
     eventType: event.eventType ?? null,
+    logoUrl: logo === null ? null : publicEventBrandingPath(event.slug, 'logo', logo.updatedAt),
+    logoWidth: logo?.width ?? null,
+    logoHeight: logo?.height ?? null,
+    logoUpdatedAt: logo?.updatedAt ?? null,
+    backgroundUrl:
+      background === null
+        ? null
+        : publicEventBrandingPath(event.slug, 'background', background.updatedAt),
+    backgroundWidth: background?.width ?? null,
+    backgroundHeight: background?.height ?? null,
+    backgroundUpdatedAt: background?.updatedAt ?? null,
   }
 }

@@ -78,6 +78,16 @@ function eventInsertValues(event: Event) {
     organizerContact: event.organizerContact ?? null,
     venue: event.venue ?? null,
     eventType: event.eventType ?? null,
+    logoStorageKey: event.branding?.logo?.storageKey ?? null,
+    logoContentType: event.branding?.logo?.contentType ?? null,
+    logoWidth: event.branding?.logo?.width ?? null,
+    logoHeight: event.branding?.logo?.height ?? null,
+    logoUpdatedAt: event.branding?.logo?.updatedAt ?? null,
+    backgroundStorageKey: event.branding?.background?.storageKey ?? null,
+    backgroundContentType: event.branding?.background?.contentType ?? null,
+    backgroundWidth: event.branding?.background?.width ?? null,
+    backgroundHeight: event.branding?.background?.height ?? null,
+    backgroundUpdatedAt: event.branding?.background?.updatedAt ?? null,
   }
 }
 
@@ -178,6 +188,16 @@ export function createEventConfigRepository(db: D1Database): EventConfigReposito
             organizerContact: values.organizerContact,
             venue: values.venue,
             eventType: values.eventType,
+            logoStorageKey: values.logoStorageKey,
+            logoContentType: values.logoContentType,
+            logoWidth: values.logoWidth,
+            logoHeight: values.logoHeight,
+            logoUpdatedAt: values.logoUpdatedAt,
+            backgroundStorageKey: values.backgroundStorageKey,
+            backgroundContentType: values.backgroundContentType,
+            backgroundWidth: values.backgroundWidth,
+            backgroundHeight: values.backgroundHeight,
+            backgroundUpdatedAt: values.backgroundUpdatedAt,
           },
         })
     },

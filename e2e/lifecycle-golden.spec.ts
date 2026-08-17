@@ -712,7 +712,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     await expect(featuredReadinessRow).toContainText('Not ready')
 
     // ── Step 7 (communications): audience, one acceptance send, one reminder,
-    //    immutable typed history, and the parseable stable-UID invite.
+    //    and immutable typed history.
     enterStage('communications')
     await adminPage.goto(`/admin/events/${EVENT_SLUG}/submissions/${submissionId}`)
     const audience = adminPage.getByRole('list', { name: 'Audience' })
@@ -729,22 +729,6 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     await expect(history).toContainText('Acceptance')
     await expect(history).toContainText('Reminder')
     await expect(adminPage.getByRole('button', { name: 'Send acceptance' })).toBeDisabled()
-
-    const downloadInvite = async () => {
-      const response = await speakerPage.request.get(`/api/public/invite/${submissionId}.ics`)
-      recordResponse(response, 'GET')
-      expect(response.status()).toBe(200)
-      expect(response.headers()['content-type']).toBe('text/calendar; charset=utf-8')
-      return response.text()
-    }
-    const firstCalendar = parseCalendar(await downloadInvite())
-    expect(firstCalendar.properties.get('VERSION')).toBe('2.0')
-    expect(firstCalendar.properties.get('SUMMARY')).toBe(TITLE)
-    expect(firstCalendar.properties.get('UID')).toBe(`${submissionId}@${INVITE_UID_DOMAIN}`)
-    expect(firstCalendar.properties.get('DTSTART')).toMatch(/^\d{8}T\d{6}Z$/)
-    const secondCalendar = parseCalendar(await downloadInvite())
-    expect(secondCalendar.properties.get('UID')).toBe(firstCalendar.properties.get('UID'))
-    expect(secondCalendar.properties.get('DTSTART')).toBe(firstCalendar.properties.get('DTSTART'))
 
     // ── Step 8 (agenda): place both sessions into the same room and start to
     //    force the deterministic conflict, resolve it, verify all five
@@ -779,6 +763,24 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
       await expect(adminPage.getByRole('region', { name: `${view} view` })).toContainText(TITLE)
     }
     await expectNoSeriousAxeFindings(adminPage, 'agenda board')
+
+    // Calendar facts come from the actual placement, never the event's full
+    // date range. Repeating the download keeps the stable identity and slot.
+    const downloadInvite = async () => {
+      const response = await speakerPage.request.get(`/api/public/invite/${submissionId}.ics`)
+      recordResponse(response, 'GET')
+      expect(response.status()).toBe(200)
+      expect(response.headers()['content-type']).toBe('text/calendar; charset=utf-8')
+      return response.text()
+    }
+    const firstCalendar = parseCalendar(await downloadInvite())
+    expect(firstCalendar.properties.get('VERSION')).toBe('2.0')
+    expect(firstCalendar.properties.get('SUMMARY')).toBe(TITLE)
+    expect(firstCalendar.properties.get('UID')).toBe(`${submissionId}@${INVITE_UID_DOMAIN}`)
+    expect(firstCalendar.properties.get('DTSTART')).toMatch(/^\d{8}T\d{6}Z$/)
+    const secondCalendar = parseCalendar(await downloadInvite())
+    expect(secondCalendar.properties.get('UID')).toBe(firstCalendar.properties.get('UID'))
+    expect(secondCalendar.properties.get('DTSTART')).toBe(firstCalendar.properties.get('DTSTART'))
 
     await adminPage.getByRole('button', { name: 'Publish agenda' }).click()
     // Publication is also confirmed; the axe scan above runs with no dialog open.

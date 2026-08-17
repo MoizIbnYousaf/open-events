@@ -241,6 +241,20 @@ body {
   }
 }
 
+@keyframes orby-hover {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(2deg);
+  }
+}
+
+.orby-mascot-motion {
+  animation: orby-hover 3.6s ease-in-out infinite;
+}
+
 /**
  * Reduced motion. Our conscious divergence from the reference product, which
  * ships no guard at all: every transition and animation collapses to a single

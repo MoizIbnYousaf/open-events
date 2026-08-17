@@ -199,13 +199,13 @@ export default function OrbyWidget() {
       ) : null}
       <Button
         type="button"
-        className="pointer-events-auto relative h-14 rounded-full border border-primary/30 bg-card px-2 pr-4 text-foreground shadow-popover transition-transform hover:scale-[1.03] hover:bg-card"
+        className="pointer-events-auto relative h-14 rounded-full border border-primary/30 bg-card pr-2 pl-4 text-foreground shadow-popover transition-transform hover:scale-[1.03] hover:bg-card"
         aria-expanded={open}
         aria-label={unread > 0 ? `${ORBY_NAME}, ${unread} unread` : `Chat with ${ORBY_NAME}`}
         onClick={() => setOpen((value) => !value)}
       >
-        <img src="/orby-mascot.png?v=1" alt="" className="size-11 shrink-0 object-contain" />
         <span className="text-sm font-semibold">{open ? 'Close Orby' : 'Ask Orby'}</span>
+        <img src="/orby-mascot.png?v=1" alt="" className="size-11 shrink-0 object-contain" />
         {!open && unread > 0 ? (
           <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
             {badge}

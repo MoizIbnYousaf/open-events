@@ -117,6 +117,9 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
   expect(unmatchedExpected404Messages([sample404], 0)).toEqual([sample404])
 
   const recordRequestFailed = (request: EvidencedRequest) => {
+    const rawUrl = request.url()
+    const url = rawUrl.replace(new URL(rawUrl).origin, '')
+    if (isExpectedException(request.method(), url, 404)) return
     failedRequests.push(`${request.method()} ${request.url()}`)
   }
 

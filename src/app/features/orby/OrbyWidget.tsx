@@ -92,7 +92,10 @@ export default function OrbyWidget() {
   const badge = unread > 9 ? '9+' : String(unread)
 
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-40 flex flex-col items-end gap-2">
+    <div
+      data-testid="orby-dock"
+      className="pointer-events-none fixed right-4 bottom-20 z-40 flex flex-col items-end gap-2 sm:bottom-4"
+    >
       {open ? (
         <section
           aria-label={`${ORBY_NAME} support`}

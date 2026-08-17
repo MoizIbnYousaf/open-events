@@ -94,6 +94,7 @@ describe('Orby widget', () => {
   it('opens on the public site and starts a conversation', async () => {
     const user = userEvent.setup()
     await mountAt('/')
+    expect(await screen.findByTestId('orby-dock')).toHaveClass('bottom-20', 'sm:bottom-4')
     await user.click(await screen.findByRole('button', { name: `Chat with ${ORBY_NAME}` }))
     await user.type(screen.getByLabelText('Name'), 'Ada')
     await user.type(screen.getByLabelText('Email'), 'ada@example.test')

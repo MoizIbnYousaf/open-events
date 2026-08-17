@@ -120,6 +120,14 @@ describe('acceptance event reset', () => {
       .bind(DEMO_CONF_2026_ID)
       .run()
     await env.DB.prepare(
+      `INSERT INTO portal_resources
+         (event_id, id, kind, title, body, url, position, published, created_at, updated_at)
+       VALUES (?, 'reset-resource', 'markdown', 'Reset me', 'Reset me', NULL, 0, 1,
+               '2026-08-15T12:00:00.000Z', '2026-08-15T12:00:00.000Z')`,
+    )
+      .bind(DEMO_CONF_2026_ID)
+      .run()
+    await env.DB.prepare(
       `INSERT INTO email_delivery_jobs
          (id, captured_message_id, event_id, mode, status, recipient_fingerprint,
           key_version, nonce, ciphertext, payload_expires_at, attempts, created_at, updated_at)
@@ -152,6 +160,9 @@ describe('acceptance event reset', () => {
     })
     expect(
       await env.DB.prepare('SELECT id FROM events WHERE id = ?').bind(DEMO_CONF_2026_ID).first(),
+    ).toBeNull()
+    expect(
+      await env.DB.prepare("SELECT id FROM portal_resources WHERE id = 'reset-resource'").first(),
     ).toBeNull()
     expect(
       await env.DB.prepare('SELECT id FROM events WHERE id = ?').bind(otherEventId).first(),

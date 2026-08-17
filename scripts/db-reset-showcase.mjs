@@ -19,7 +19,9 @@ const target = acceptanceTargetFromEnv()
 const resetSecret = process.env.ACCEPTANCE_RESET_SECRET ?? ''
 if (resetSecret.length < 32) throw new Error('ACCEPTANCE_RESET_SECRET is missing')
 
-const health = await globalThis.fetch(`${target.baseUrl}/api/health`)
+const healthUrl = new URL('/api/health', target.baseUrl)
+healthUrl.searchParams.set('release', target.buildRevision)
+const health = await globalThis.fetch(healthUrl, { headers: { 'cache-control': 'no-cache' } })
 if (!health.ok) throw new Error('acceptance health is unavailable')
 const healthBody = await health.json()
 if (

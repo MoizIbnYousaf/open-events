@@ -267,7 +267,7 @@ export function CommandMenu({ onNavigate, floating = false }: CommandMenuProps):
           setOpen(true)
         }}
       >
-        Command menu
+        {floating ? 'Shortcuts menu' : 'Command menu'}
         <Kbd>{apple ? OPEN_HINT_MAC : OPEN_HINT_OTHER}</Kbd>
       </Button>
       <CommandDialog
@@ -276,7 +276,7 @@ export function CommandMenu({ onNavigate, floating = false }: CommandMenuProps):
           if (next) setOpen(true)
           else close()
         }}
-        title="Command menu"
+        title={floating ? 'Shortcuts menu' : 'Command menu'}
         description="Search this event's screens and switch the theme. Use the arrow keys to choose, Enter to go, Escape to close."
         finalFocus={finalFocusRef}
       >

@@ -310,8 +310,8 @@ export const TOUR_STEPS: readonly TourStep[] = [
   moment({
     id: 'palette',
     chapter: 'organizer',
-    title: 'Command menu',
-    body: 'Open the command menu to reach any allowed organizer destination. On a phone, this explanation stays centered because the desktop trigger is hidden.',
+    title: 'Shortcuts menu',
+    body: 'Open the shortcuts menu to reach any allowed organizer destination. On desktop, the same tool is the Command menu and opens with the keyboard shortcut.',
     access: 'organizer',
     target: 'palette-trigger',
     mobileTarget: null,

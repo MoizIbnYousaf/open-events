@@ -121,7 +121,7 @@ function mountFloatingAt(path: string) {
 }
 
 function foldAwayFloatingTrigger(): void {
-  const floating = screen.getByRole('button', { name: /command menu/i })
+  const floating = screen.getByRole('button', { name: /shortcuts menu/i })
   floating.style.display = 'none'
 }
 
@@ -221,6 +221,13 @@ describe('command action model', () => {
 })
 
 describe('command menu', () => {
+  it('calls the floating phone control the Shortcuts menu', async () => {
+    const { user } = mountFloatingAt('/')
+    const trigger = await screen.findByRole('button', { name: /shortcuts menu/i })
+    await user.click(trigger)
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(/shortcuts menu/i)
+  })
+
   it('offers a visible affordance that names its shortcut', async () => {
     const { user } = mountAt('/')
 

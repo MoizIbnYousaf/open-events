@@ -1,0 +1,29 @@
+/
+  Cache-Control: no-store
+
+/admin/*
+  Cache-Control: no-store
+
+/cfp/*
+  Cache-Control: no-store
+
+/schedule/*
+  Cache-Control: no-store
+
+/sessions/*
+  Cache-Control: no-store
+
+/speakers/*
+  Cache-Control: no-store
+
+/start
+  Cache-Control: no-store
+
+/portal
+  Cache-Control: no-store
+
+/headshot
+  Cache-Control: no-store
+
+/evaluations
+  Cache-Control: no-store

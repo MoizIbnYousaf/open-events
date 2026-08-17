@@ -93,7 +93,7 @@ export default function SupportDesk({ eventSlug }: { readonly eventSlug: string 
   const threadRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    document.title = `${ORBY_NAME} — Open Events`
+    document.title = 'Organizer manual support — Open Events'
   }, [])
 
   useEffect(() => {
@@ -106,9 +106,9 @@ export default function SupportDesk({ eventSlug }: { readonly eventSlug: string 
       <div className="grid gap-4" data-tour="orby-workspace">
         <PageHeader>
           <PageHeaderContent>
-            <PageHeaderTitle>{ORBY_NAME}</PageHeaderTitle>
+            <PageHeaderTitle>Organizer manual support</PageHeaderTitle>
             <PageHeaderDescription>
-              Live support conversations. Replies go out as {ORBY_NAME}.
+              Human support conversations. Organizer replies appear as {ORBY_NAME}.
             </PageHeaderDescription>
           </PageHeaderContent>
         </PageHeader>

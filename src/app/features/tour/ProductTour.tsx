@@ -341,7 +341,7 @@ function TourFooter({
           disabled={pending}
           onClick={onForward}
         >
-          {copy.forwardLabel}
+          {pending ? 'Opening…' : copy.forwardLabel}
         </Button>
       </div>
     </div>

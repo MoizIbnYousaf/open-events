@@ -1,9 +1,32 @@
 import { lazy, Suspense, useEffect, useState, type ReactElement } from 'react'
 import { hasPendingTourToggle, TOUR_TOGGLE_EVENT } from './tour-events'
 
-const ProductTour = lazy(() =>
-  import('./ProductTour').then((module) => ({ default: module.ProductTour })),
-)
+const TOUR_CHUNK_RELOAD_KEY = 'open-events:tour-chunk-reload'
+
+const ProductTour = lazy(async () => {
+  try {
+    const module = await import('./ProductTour')
+    try {
+      window.sessionStorage.removeItem(TOUR_CHUNK_RELOAD_KEY)
+    } catch {
+      // Storage can be denied; a successful import needs no recovery marker.
+    }
+    return { default: module.ProductTour }
+  } catch (error) {
+    let alreadyRetried = false
+    try {
+      alreadyRetried = window.sessionStorage.getItem(TOUR_CHUNK_RELOAD_KEY) === 'true'
+      if (!alreadyRetried) window.sessionStorage.setItem(TOUR_CHUNK_RELOAD_KEY, 'true')
+    } catch {
+      // A storage-denied browser still gets one best-effort refresh.
+    }
+    if (!alreadyRetried) {
+      window.location.reload()
+      return new Promise<never>(() => undefined)
+    }
+    throw error
+  }
+})
 
 interface LazyProductTourProps {
   readonly onNavigate: (route: string, params?: Readonly<Record<string, string>>) => void

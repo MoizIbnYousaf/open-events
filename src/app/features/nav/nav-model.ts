@@ -106,7 +106,7 @@ export function organizerDestinations(slug: string): readonly NavDestination[] {
     },
     {
       id: 'orby',
-      label: 'Orby',
+      label: 'Organizer support',
       to: '/admin/events/$slug/orby',
       params,
       group: 'Programme',

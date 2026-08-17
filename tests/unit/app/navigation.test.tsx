@@ -144,7 +144,7 @@ describe('nav model', () => {
       'Agenda',
       'Embeds',
       'Files',
-      'Orby',
+      'Organizer support',
     ])
     for (const destination of organizerDestinations(EVENT_SLUG)) {
       if (destination.to.includes('$slug')) {

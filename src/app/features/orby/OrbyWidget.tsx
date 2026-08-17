@@ -96,7 +96,7 @@ export default function OrbyWidget() {
         >
           <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <img src="/orby-mascot.png" alt="" className="size-10 shrink-0 object-contain" />
+              <img src="/orby-mascot.png?v=1" alt="" className="size-10 shrink-0 object-contain" />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">{ORBY_NAME}</p>
                 <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -204,7 +204,7 @@ export default function OrbyWidget() {
         aria-label={unread > 0 ? `${ORBY_NAME}, ${unread} unread` : `Chat with ${ORBY_NAME}`}
         onClick={() => setOpen((value) => !value)}
       >
-        <img src="/orby-mascot.png" alt="" className="size-11 shrink-0 object-contain" />
+        <img src="/orby-mascot.png?v=1" alt="" className="size-11 shrink-0 object-contain" />
         <span className="text-sm font-semibold">{open ? 'Close Orby' : 'Ask Orby'}</span>
         {!open && unread > 0 ? (
           <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">

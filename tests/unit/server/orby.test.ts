@@ -9,7 +9,9 @@ afterEach(() => {
 describe('Orby OpenRouter adapter', () => {
   it('stays quiet when no key is configured', async () => {
     const orby = selectOrbyReplyer({})
-    await expect(orby.reply({ eventName: 'DemoConf 2026', history: [] })).resolves.toBeNull()
+    await expect(
+      orby.reply({ eventName: 'DemoConf 2026', publicContext: '', history: [] }),
+    ).resolves.toBeNull()
   })
 
   it('posts history to OpenRouter and returns the assistant text', async () => {
@@ -26,6 +28,7 @@ describe('Orby OpenRouter adapter', () => {
     const orby = createOpenRouterOrby({ apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })
     const reply = await orby.reply({
       eventName: 'DemoConf 2026',
+      publicContext: 'Venue: DemoConf Convention Center. CFP status: open.',
       history: [{ role: 'user', content: 'Is the CFP open?' }],
     })
     expect(reply).toBe('The CFP is still open.')
@@ -42,6 +45,7 @@ describe('Orby OpenRouter adapter', () => {
     expect(body.messages[0]?.content).toContain('/start')
     expect(body.messages[0]?.content).toContain('/schedule/demo-conf-2026')
     expect(body.messages[0]?.content).toContain('Never ask for passwords')
+    expect(body.messages[0]?.content).toContain('DemoConf Convention Center')
     expect(body.max_tokens).toBe(240)
     expect(body.temperature).toBe(0.2)
     expect(init.headers).toMatchObject({ authorization: 'Bearer test-key' })
@@ -58,6 +62,7 @@ describe('Orby OpenRouter adapter', () => {
     const orby = createOpenRouterOrby({ apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })
     await orby.reply({
       eventName: 'DemoConf 2026',
+      publicContext: '',
       history: Array.from({ length: 20 }, (_, index) => ({
         role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
         content: `Turn ${index + 1}`,
@@ -74,6 +79,8 @@ describe('Orby OpenRouter adapter', () => {
   it('swallows a refused OpenRouter call', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 401 })))
     const orby = createOpenRouterOrby({ apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })
-    await expect(orby.reply({ eventName: 'DemoConf 2026', history: [] })).resolves.toBeNull()
+    await expect(
+      orby.reply({ eventName: 'DemoConf 2026', publicContext: '', history: [] }),
+    ).resolves.toBeNull()
   })
 })

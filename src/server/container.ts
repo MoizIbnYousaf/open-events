@@ -294,6 +294,8 @@ export function buildServerDeps(
     support: new SupportService(
       events,
       contacts,
+      forms,
+      createPortalResourceRepository(db),
       createSupportRepository(db),
       createCapturedMessageRepository(db, emailDeliveryConfig),
       createSha256TokenHasher(),

@@ -4,7 +4,9 @@ import type { Clock } from '../ports/clock'
 import type { CapturedMessageRepository } from '../ports/captured-message-repository'
 import type { ContactRepository } from '../ports/contact-repository'
 import type { EventRepository } from '../ports/event-repository'
+import type { FormRepository } from '../ports/form-repository'
 import type { OrbyReplyer } from '../ports/orby-replyer'
+import type { PortalResourceRepository } from '../ports/portal-resource-repository'
 import type { SupportRepository } from '../ports/support-repository'
 import type { TokenGenerator, TokenHasher } from '../ports/token-ports'
 import { isValidEmailAddress, normalizeEmail } from '../../domain/invariants/email'
@@ -89,6 +91,8 @@ function toUserMessageDto(message: SupportMessage, userName: string): SupportMes
 export class SupportService {
   readonly #events: EventRepository
   readonly #contacts: ContactRepository
+  readonly #forms: FormRepository
+  readonly #portalResources: PortalResourceRepository
   readonly #support: SupportRepository
   readonly #captured: CapturedMessageRepository
   readonly #hasher: TokenHasher
@@ -99,6 +103,8 @@ export class SupportService {
   constructor(
     events: EventRepository,
     contacts: ContactRepository,
+    forms: FormRepository,
+    portalResources: PortalResourceRepository,
     support: SupportRepository,
     captured: CapturedMessageRepository,
     hasher: TokenHasher,
@@ -108,6 +114,8 @@ export class SupportService {
   ) {
     this.#events = events
     this.#contacts = contacts
+    this.#forms = forms
+    this.#portalResources = portalResources
     this.#support = support
     this.#captured = captured
     this.#hasher = hasher
@@ -224,9 +232,40 @@ export class SupportService {
     const chat = await this.#requireOwnChat(input)
     const userMessage = await this.#append(chat, 'user', input.content, null)
     const event = await this.#events.findBySlug(input.eventSlug)
+    if (event === null) throw new ApplicationError('not_found', 'Event not found')
+    const [forms, resources] = await Promise.all([
+      this.#forms.listByEvent(event.id),
+      this.#portalResources.listByEvent(event.id),
+    ])
+    const publicForms = forms.filter((form) => form.purpose === 'public')
+    const now = Date.parse(this.#clock.now())
+    const cfpState = publicForms.some((form) => {
+      if (form.status !== 'published') return false
+      const opens = form.limits.opensAt === null ? null : Date.parse(form.limits.opensAt)
+      const closes = form.limits.closesAt === null ? null : Date.parse(form.limits.closesAt)
+      return (opens === null || opens <= now) && (closes === null || now <= closes)
+    })
+      ? 'open'
+      : 'closed or unavailable'
+    const publicContext = [
+      `status=${event.status}`,
+      `timezone=${event.timezone}`,
+      event.dates === null
+        ? 'dates=not published'
+        : `starts=${event.dates.startsAt}; ends=${event.dates.endsAt}`,
+      event.venue ? `venue=${event.venue}` : 'venue=not published',
+      `CFP=${cfpState}`,
+      `speaker resources=${
+        resources
+          .filter((resource) => resource.published)
+          .map((resource) => resource.title)
+          .join(', ') || 'none published'
+      }`,
+    ].join('; ')
     const history = await this.#support.listMessages(chat.id)
     const reply = await this.#orby.reply({
-      eventName: event?.name ?? 'this event',
+      eventName: event.name,
+      publicContext,
       history: history.map((message) => ({
         role: message.senderType === 'admin' ? 'assistant' : 'user',
         content: message.content,

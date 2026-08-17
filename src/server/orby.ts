@@ -14,7 +14,7 @@ interface OpenRouterResponse {
   readonly choices?: readonly { readonly message?: { readonly content?: unknown } }[]
 }
 
-function systemPrompt(eventName: string): string {
+function systemPrompt(eventName: string, publicContext: string): string {
   return [
     `You are ${ORBY_NAME}, the friendly support assistant for ${eventName} on Open Events.`,
     'Give direct, practical answers in one or two short paragraphs.',
@@ -23,6 +23,7 @@ function systemPrompt(eventName: string): string {
     'You cannot see private account data, unpublished sessions, scores, decisions, email delivery, or organizer actions. Never claim that you performed an action or that a private status is confirmed.',
     'Never ask for passwords, login codes, payment details, or API keys.',
     'If the answer depends on private event information, say what is missing and direct the person to the organizer. If the question is unclear, ask one short clarifying question.',
+    publicContext.length > 0 ? `Current public event facts: ${publicContext}` : '',
   ].join(' ')
 }
 
@@ -51,7 +52,7 @@ export function createOpenRouterOrby(config: {
   return {
     async reply(input) {
       const messages: OpenRouterMessage[] = [
-        { role: 'system', content: systemPrompt(input.eventName) },
+        { role: 'system', content: systemPrompt(input.eventName, input.publicContext) },
         ...input.history.slice(-MAX_HISTORY_TURNS).map((turn) => ({
           role: turn.role === 'assistant' ? ('assistant' as const) : ('user' as const),
           content: turn.content,

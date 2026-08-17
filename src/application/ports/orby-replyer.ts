@@ -7,6 +7,8 @@ export interface OrbyTurn {
 export interface OrbyReplyer {
   reply(input: {
     readonly eventName: string
+    /** Public, server-authored event facts only. Never include private submissions or identities. */
+    readonly publicContext: string
     readonly history: readonly OrbyTurn[]
   }): Promise<string | null>
 }

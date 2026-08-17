@@ -2,7 +2,11 @@ import { useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import { DOCUMENT_CONTENT_TYPES, DOCUMENT_MAX_BYTES } from '../../../application/services/documents'
+import {
+  DOCUMENT_CONTENT_TYPES,
+  DOCUMENT_MAX_BYTES,
+  documentContentTypeForFile,
+} from '../../../application/services/documents'
 import { getApiErrorCode, requestJson } from '../../api/admin-events'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Button } from '../../../components/ui/button'
@@ -30,8 +34,7 @@ export const FILE_INPUT_CLASS =
 const MAX_MEGABYTES = Math.round(DOCUMENT_MAX_BYTES / (1024 * 1024))
 
 /**
- * REQ-007 supporting document (PDF or plain text — deliberately no slide-deck
- * claim). Mirrors the server allow-list client-side, uploads real bytes with
+ * REQ-007 supporting material and presentation decks. Mirrors the server allow-list client-side, uploads real bytes with
  * the explicit x-file-name header, and shows the stored metadata the server
  * answered — never an optimistic success. Composable section, no h1.
  */
@@ -47,8 +50,11 @@ export default function DocumentUploader() {
     if (input !== null && input !== undefined) input.value = ''
     if (file === undefined) return
     setRejection(null)
-    if (!DOCUMENT_CONTENT_TYPES.some((allowed) => allowed === file.type)) {
-      setRejection('That file type is not supported — upload a PDF or plain text file.')
+    const contentType = documentContentTypeForFile(file.name, file.type)
+    if (contentType === null) {
+      setRejection(
+        'That file type is not supported. Upload a PDF, PowerPoint, Keynote, OpenDocument presentation, or plain text file.',
+      )
       return
     }
     if (file.size === 0) {
@@ -59,17 +65,20 @@ export default function DocumentUploader() {
       setRejection(`That file is larger than the ${MAX_MEGABYTES} MB limit.`)
       return
     }
-    upload.mutate(file, {
-      onSuccess: () => toast.success('Supporting document uploaded'),
-      // A refusal and a failure are different answers, and only one of them
-      // is worth choosing the file again for.
-      onError: (error) =>
-        setRejection(
-          getApiErrorCode(error) === 'forbidden'
-            ? 'You do not have permission to upload a document here.'
-            : 'The document could not be uploaded.',
-        ),
-    })
+    upload.mutate(
+      { file, contentType },
+      {
+        onSuccess: () => toast.success('Supporting document uploaded'),
+        // A refusal and a failure are different answers, and only one of them
+        // is worth choosing the file again for.
+        onError: (error) =>
+          setRejection(
+            getApiErrorCode(error) === 'forbidden'
+              ? 'You do not have permission to upload a document here.'
+              : 'The document could not be uploaded.',
+          ),
+      },
+    )
   }
 
   const stored = upload.data ?? storedQuery.data ?? undefined
@@ -95,14 +104,15 @@ export default function DocumentUploader() {
               id={INPUT_ID}
               ref={inputRef}
               type="file"
-              accept="application/pdf,text/plain"
+              accept={`${DOCUMENT_CONTENT_TYPES.join(',')},.pdf,.txt,.ppt,.pptx,.key,.odp`}
               className={FILE_INPUT_CLASS}
               aria-invalid={rejection !== null ? true : undefined}
               aria-describedby={rejection !== null ? `${INPUT_ID}-error` : undefined}
               onChange={onPick}
             />
             <p className="text-xs text-muted-foreground">
-              One PDF or plain text file, {MAX_MEGABYTES} MB max.
+              PDF, PowerPoint, Keynote, OpenDocument presentation, or plain text; {MAX_MEGABYTES} MB
+              max.
             </p>
             {rejection !== null ? (
               <FieldError id={`${INPUT_ID}-error`}>{rejection}</FieldError>
@@ -127,7 +137,7 @@ export default function DocumentUploader() {
             <EmptyState
               icon={<DocumentIcon size={20} />}
               title="Add a supporting document"
-              description="No supporting document uploaded yet. A written outline or an accessibility note helps organizers place your session."
+              description="Upload slides, a written outline, or an accessibility note for the organizers."
             />
           )}
           {shown === undefined ? <DocumentVersionsAndComments /> : null}

@@ -9,15 +9,37 @@ import type {
   UploadedFileRepository,
 } from '../ports/uploaded-file-repository'
 
-/**
- * Frozen supporting-document envelope (REQ-007): an explicit small allow-list
- * and a hard byte bound. Slide decks (pptx/keynote) are deliberately NOT on
- * the list — the product claims "supporting document (PDF or plain text)",
- * nothing more.
- */
-export const DOCUMENT_MAX_BYTES = 5 * 1024 * 1024
-export const DOCUMENT_CONTENT_TYPES = ['application/pdf', 'text/plain'] as const
+/** Supporting material remains download-only and is bounded before R2 writes. */
+export const DOCUMENT_MAX_BYTES = 20 * 1024 * 1024
+export const DOCUMENT_CONTENT_TYPES = [
+  'application/pdf',
+  'text/plain',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.apple.keynote',
+  'application/vnd.oasis.opendocument.presentation',
+] as const
 export const DOCUMENT_FILE_NAME_MAX_LENGTH = 200
+
+type DocumentContentType = (typeof DOCUMENT_CONTENT_TYPES)[number]
+type DocumentContainer = 'pdf' | 'text' | 'ole' | 'zip'
+
+const DOCUMENT_POLICIES: Readonly<
+  Record<
+    DocumentContentType,
+    { readonly extensions: readonly string[]; readonly container: DocumentContainer }
+  >
+> = {
+  'application/pdf': { extensions: ['pdf'], container: 'pdf' },
+  'text/plain': { extensions: ['txt'], container: 'text' },
+  'application/vnd.ms-powerpoint': { extensions: ['ppt'], container: 'ole' },
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': {
+    extensions: ['pptx'],
+    container: 'zip',
+  },
+  'application/vnd.apple.keynote': { extensions: ['key'], container: 'zip' },
+  'application/vnd.oasis.opendocument.presentation': { extensions: ['odp'], container: 'zip' },
+}
 
 const DOCUMENT_KIND: UploadedFileKind = 'document'
 
@@ -49,6 +71,13 @@ export class DocumentFileNameError extends ApplicationError {
   }
 }
 
+export class DocumentContainerMismatchError extends ApplicationError {
+  constructor() {
+    super('validation_failed', 'Document type, extension, and container do not agree')
+    this.name = 'DocumentContainerMismatchError'
+  }
+}
+
 /**
  * The single seam every caller passes a client-supplied display name through.
  * The result is a bounded plain label, never a path: separators, traversal,
@@ -62,6 +91,70 @@ export function sanitizeDocumentFileName(raw: string): string | null {
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null
   return trimmed
+}
+
+function startsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
+  return signature.every((value, index) => bytes[index] === value)
+}
+
+function isUtf8Text(bytes: Uint8Array): boolean {
+  try {
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    // Plain text may contain tabs and line breaks, but not binary control bytes.
+    // eslint-disable-next-line no-control-regex
+    return !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(decoded)
+  } catch {
+    return false
+  }
+}
+
+function matchesContainer(container: DocumentContainer, bytes: Uint8Array): boolean {
+  if (container === 'pdf') return startsWith(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])
+  if (container === 'ole') {
+    return startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
+  }
+  if (container === 'zip') {
+    return (
+      startsWith(bytes, [0x50, 0x4b, 0x03, 0x04]) ||
+      startsWith(bytes, [0x50, 0x4b, 0x05, 0x06]) ||
+      startsWith(bytes, [0x50, 0x4b, 0x07, 0x08])
+    )
+  }
+  return isUtf8Text(bytes)
+}
+
+function isDocumentContentType(value: string): value is DocumentContentType {
+  return DOCUMENT_CONTENT_TYPES.some((allowed) => allowed === value)
+}
+
+export function documentContentTypeForFile(
+  fileName: string,
+  declaredContentType: string,
+): DocumentContentType | null {
+  const normalized = declaredContentType.trim().toLowerCase()
+  const extension = fileName.toLowerCase().split('.').at(-1) ?? ''
+  if (isDocumentContentType(normalized)) {
+    return DOCUMENT_POLICIES[normalized].extensions.includes(extension) ? normalized : null
+  }
+  if (normalized !== '' && normalized !== 'application/octet-stream') return null
+  const entry = Object.entries(DOCUMENT_POLICIES).find(([, policy]) =>
+    policy.extensions.includes(extension),
+  )
+  return (entry?.[0] as DocumentContentType | undefined) ?? null
+}
+
+export function documentFileMatchesType(
+  fileName: string,
+  contentType: string,
+  body: ArrayBuffer,
+): boolean {
+  if (!isDocumentContentType(contentType)) return false
+  const extension = fileName.toLowerCase().split('.').at(-1) ?? ''
+  const policy = DOCUMENT_POLICIES[contentType]
+  return (
+    policy.extensions.includes(extension) &&
+    matchesContainer(policy.container, new Uint8Array(body))
+  )
 }
 
 /** Public metadata of the stored document; never the storage key. */
@@ -120,7 +213,7 @@ export class DocumentService {
 
   async storeDocument(actor: SubmitterActor, input: StoreDocumentInput): Promise<DocumentDto> {
     assertSubmitterCapability(actor, 'portal')
-    if (!DOCUMENT_CONTENT_TYPES.some((allowed) => allowed === input.contentType)) {
+    if (!isDocumentContentType(input.contentType)) {
       throw new DocumentUnsupportedTypeError()
     }
     const fileName = sanitizeDocumentFileName(input.fileName)
@@ -132,6 +225,9 @@ export class DocumentService {
     }
     if (input.bytes.byteLength > DOCUMENT_MAX_BYTES) {
       throw new DocumentTooLargeError()
+    }
+    if (!documentFileMatchesType(fileName, input.contentType, input.bytes)) {
+      throw new DocumentContainerMismatchError()
     }
     const now = this.#clock.now()
     const existing = await this.#files.findOwn(actor.eventId, actor.contactId, DOCUMENT_KIND)

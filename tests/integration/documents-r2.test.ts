@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import migration0008Sql from '../../migrations/0008_create_uploaded_files_table.sql?raw'
 import migration0014Sql from '../../migrations/0014_widen_uploaded_file_kinds.sql?raw'
+import migration0030Sql from '../../migrations/0030_allow_presentation_documents.sql?raw'
 import app from '../../src/server'
 import { applyMigrations, seedDemoConf, splitSqlStatements } from './m2b-helpers'
 import { ALLOWED_ORIGIN, bindings, cookieHeader, submitterPortalCookie } from './m2c-helpers'
@@ -16,7 +17,7 @@ import { ALLOWED_ORIGIN, bindings, cookieHeader, submitterPortalCookie } from '.
 
 const DOCUMENT_URL = '/api/public/profile/document'
 const HEADSHOT_URL = '/api/public/profile/headshot'
-const DOCUMENT_MAX = 5 * 1024 * 1024
+const DOCUMENT_MAX = 20 * 1024 * 1024
 
 beforeEach(async () => {
   await reset()
@@ -27,6 +28,10 @@ beforeEach(async () => {
       name: '0014_widen_uploaded_file_kinds.sql',
       queries: splitSqlStatements(migration0014Sql),
     },
+    {
+      name: '0030_allow_presentation_documents.sql',
+      queries: splitSqlStatements(migration0030Sql),
+    },
   ])
   await seedDemoConf(env.DB)
 })
@@ -34,6 +39,19 @@ beforeEach(async () => {
 function bytes(length: number): ArrayBuffer {
   return new Uint8Array(length).fill(7).buffer
 }
+
+function signedBytes(signature: readonly number[], length = 64): ArrayBuffer {
+  const value = new Uint8Array(Math.max(length, signature.length))
+  value.fill(7)
+  value.set(signature)
+  return value.buffer
+}
+
+const pdfBytes = (length = 64): ArrayBuffer => signedBytes([0x25, 0x50, 0x44, 0x46, 0x2d], length)
+const zipBytes = (length = 64): ArrayBuffer => signedBytes([0x50, 0x4b, 0x03, 0x04], length)
+const oleBytes = (length = 64): ArrayBuffer =>
+  signedBytes([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1], length)
+const textBytes = (value = 'Speaker notes'): ArrayBuffer => new TextEncoder().encode(value).buffer
 
 async function putDocument(
   cookie: string,
@@ -63,7 +81,7 @@ async function getDocument(cookie: string): Promise<Response> {
   return app.request(DOCUMENT_URL, { headers: { cookie: cookieHeader(cookie) } }, bindings())
 }
 
-describe('migration 0014', () => {
+describe('presentation document migration', () => {
   it('widens the kind check and preserves an existing headshot row', async () => {
     // The migration ran in beforeEach; prove a document row is insertable and
     // a headshot row still is too, and that the frozen 0008 image rules were
@@ -83,7 +101,7 @@ describe('migration 0014', () => {
       bindings(),
     )
     expect(headshot.status).toBe(200)
-    const document = await putDocument(speaker, bytes(64))
+    const document = await putDocument(speaker, pdfBytes())
     expect(document.status).toBe(200)
     const rows = await env.DB.prepare(
       'SELECT kind, COUNT(*) AS n FROM uploaded_files GROUP BY kind ORDER BY kind',
@@ -96,9 +114,9 @@ describe('migration 0014', () => {
 })
 
 describe('document upload validation', () => {
-  it('accepts pdf and plain text within bounds and reports safe metadata', async () => {
+  it('accepts documents and presentation containers within bounds', async () => {
     const speaker = await submitterPortalCookie(env.DB)
-    const response = await putDocument(speaker, bytes(1024), 'application/pdf', 'notes v2.pdf')
+    const response = await putDocument(speaker, pdfBytes(1024), 'application/pdf', 'notes v2.pdf')
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
       contentType: string
@@ -110,8 +128,55 @@ describe('document upload validation', () => {
     expect(body.fileName).toBe('notes v2.pdf')
     expect(JSON.stringify(body)).not.toMatch(/events\//)
 
-    const text = await putDocument(speaker, bytes(16), 'text/plain', 'abstract.txt')
+    const text = await putDocument(speaker, textBytes(), 'text/plain', 'abstract.txt')
     expect(text.status).toBe(200)
+
+    const pptx = await putDocument(
+      speaker,
+      zipBytes(),
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'slides.pptx',
+    )
+    expect(pptx.status).toBe(200)
+    const ppt = await putDocument(
+      speaker,
+      oleBytes(),
+      'application/vnd.ms-powerpoint',
+      'slides.ppt',
+    )
+    expect(ppt.status).toBe(200)
+    const keynote = await putDocument(
+      speaker,
+      zipBytes(),
+      'application/vnd.apple.keynote',
+      'slides.key',
+    )
+    expect(keynote.status).toBe(200)
+  })
+
+  it('rejects extension, declared-type, and signature mismatches before storage', async () => {
+    const speaker = await submitterPortalCookie(env.DB)
+    expect((await putDocument(speaker, zipBytes(), 'application/pdf', 'slides.pdf')).status).toBe(
+      400,
+    )
+    expect((await putDocument(speaker, pdfBytes(), 'application/pdf', 'slides.pptx')).status).toBe(
+      400,
+    )
+    expect(
+      (
+        await putDocument(
+          speaker,
+          pdfBytes(),
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'slides.pptx',
+        )
+      ).status,
+    ).toBe(400)
+    const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM uploaded_files').first<{
+      n: number
+    }>()
+    expect(count?.n).toBe(0)
+    expect((await env.FILES.list()).objects).toHaveLength(0)
   })
 
   it('rejects disallowed types, empty bodies, and oversize uploads', async () => {
@@ -153,8 +218,8 @@ describe('document upload validation', () => {
 describe('document ownership and retrieval', () => {
   it('serves the own document back and replaces it atomically', async () => {
     const speaker = await submitterPortalCookie(env.DB)
-    await putDocument(speaker, bytes(64), 'application/pdf', 'v1.pdf')
-    await putDocument(speaker, bytes(128), 'text/plain', 'v2.txt')
+    await putDocument(speaker, pdfBytes(), 'application/pdf', 'v1.pdf')
+    await putDocument(speaker, textBytes('v2'.repeat(64)), 'text/plain', 'v2.txt')
 
     const read = await getDocument(speaker)
     expect(read.status).toBe(200)
@@ -179,7 +244,7 @@ describe('document ownership and retrieval', () => {
 
   it('denies another speaker access to the stored document', async () => {
     const ada = await submitterPortalCookie(env.DB)
-    await putDocument(ada, bytes(64))
+    await putDocument(ada, pdfBytes())
     const grace = await submitterPortalCookie(env.DB, {}, 'speaker.grace@example.test')
     const denied = await getDocument(grace)
     expect(denied.status).toBe(404)

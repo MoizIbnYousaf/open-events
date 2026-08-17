@@ -19,6 +19,7 @@ import {
 import {
   DOCUMENT_MAX_BYTES,
   DocumentEmptyError,
+  DocumentContainerMismatchError,
   DocumentFileNameError,
   DocumentTooLargeError,
   DocumentUnsupportedTypeError,
@@ -734,7 +735,11 @@ export async function handlePutOwnDocument(context: ServerContext): Promise<Resp
     if (error instanceof DocumentTooLargeError) {
       return toErrorResponse(context, 'validation_failed', 413)
     }
-    if (error instanceof DocumentEmptyError || error instanceof DocumentFileNameError) {
+    if (
+      error instanceof DocumentEmptyError ||
+      error instanceof DocumentFileNameError ||
+      error instanceof DocumentContainerMismatchError
+    ) {
       return validationFailedResponse(context)
     }
     throw error

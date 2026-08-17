@@ -61,12 +61,15 @@ export function useOwnDocument() {
 }
 
 /** PUT /api/public/profile/document — bytes plus the explicit x-file-name header. */
-export async function putOwnDocument(file: File): Promise<DocumentDto> {
+export async function putOwnDocument(input: {
+  readonly file: File
+  readonly contentType: string
+}): Promise<DocumentDto> {
   const response = await fetch('/api/public/profile/document', {
     method: 'PUT',
     credentials: 'include',
-    headers: { 'content-type': file.type, 'x-file-name': file.name },
-    body: await file.arrayBuffer(),
+    headers: { 'content-type': input.contentType, 'x-file-name': input.file.name },
+    body: await input.file.arrayBuffer(),
   })
   if (!response.ok) throw await toApiError(response)
   return (await response.json()) as DocumentDto
@@ -75,7 +78,8 @@ export async function putOwnDocument(file: File): Promise<DocumentDto> {
 export function useUploadDocument() {
   const queryClient = useQueryClient()
   return useServerMutation({
-    mutationFn: (file: File) => putOwnDocument(file),
+    mutationFn: (input: { readonly file: File; readonly contentType: string }) =>
+      putOwnDocument(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: publicProfileQueryKeys.document })
       await queryClient.invalidateQueries({ queryKey: ['public', 'document-versions'] })

@@ -28,6 +28,7 @@ import migration0026Sql from '../../migrations/0026_submitter_token_purpose.sql?
 import migration0027Sql from '../../migrations/0027_email_delivery_outbox.sql?raw'
 import migration0028Sql from '../../migrations/0028_resend_webhook_events.sql?raw'
 import migration0029Sql from '../../migrations/0029_acceptance_reset.sql?raw'
+import migration0030Sql from '../../migrations/0030_allow_presentation_documents.sql?raw'
 import seedProgrammeSql from '../../src/db/seed-programme.sql?raw'
 import seedShowcaseSql from '../../src/db/seed-showcase.sql?raw'
 import migration0016Sql from '../../migrations/0016_create_submission_decisions.sql?raw'
@@ -130,6 +131,10 @@ export const MIGRATIONS: D1Migration[] = [
   {
     name: '0029_acceptance_reset.sql',
     queries: splitSqlStatements(migration0029Sql),
+  },
+  {
+    name: '0030_allow_presentation_documents.sql',
+    queries: splitSqlStatements(migration0030Sql),
   },
 ]
 

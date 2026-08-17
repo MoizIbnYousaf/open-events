@@ -8,7 +8,7 @@ import DocumentUploader from '../../../src/app/features/public/DocumentUploader'
 
 // O3 P5: the supporting-document uploader sends the real bytes with the
 // explicit x-file-name header, mirrors the server allow-list client-side with
-// honest copy (PDF or plain text — no slides claim), and reports the stored
+// honest document and presentation copy, and reports the stored
 // document metadata after a re-read, never an optimistic success.
 
 const DOCUMENT_URL = '/api/public/profile/document'
@@ -91,12 +91,13 @@ function renderUploader() {
 }
 
 describe('supporting document uploader', () => {
-  it('claims only pdf/plain-text support and shows the empty state honestly', async () => {
+  it('names the supported deck formats and shows the empty state honestly', async () => {
     renderUploader()
-    expect(await screen.findByText(/no supporting document/i)).toBeInTheDocument()
+    expect(await screen.findByText(/upload slides/i)).toBeInTheDocument()
     const copy = document.body.textContent ?? ''
     expect(copy).toMatch(/pdf/i)
-    expect(copy).not.toMatch(/slide|pptx|keynote/i)
+    expect(copy).toMatch(/powerpoint/i)
+    expect(copy).toMatch(/keynote/i)
     // The surrounding copy calls this file optional, so the control must not
     // claim otherwise: `required` put the input in an invalid state on first
     // paint with nothing wrong and no user action.
@@ -118,7 +119,7 @@ describe('supporting document uploader', () => {
     expect(await screen.findByText('outline.pdf')).toBeInTheDocument()
   })
 
-  it('refuses a disallowed type client-side without a network write', async () => {
+  it('uploads a PowerPoint deck through the same bounded document path', async () => {
     renderUploader()
     const input = (await screen.findByLabelText(/supporting document/i, {
       selector: 'input',
@@ -126,9 +127,24 @@ describe('supporting document uploader', () => {
     const file = new File(['abc'], 'deck.pptx', {
       type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     })
+    await userEvent.upload(input, file)
+    await waitFor(() => expect(storedDocument?.fileName).toBe('deck.pptx'))
+    expect(storedDocument?.contentType).toBe(
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    )
+  })
+
+  it('refuses a disallowed type client-side without a network write', async () => {
+    renderUploader()
+    const input = (await screen.findByLabelText(/supporting document/i, {
+      selector: 'input',
+    })) as HTMLInputElement
+    const file = new File(['abc'], 'installer.exe', {
+      type: 'application/vnd.microsoft.portable-executable',
+    })
     await userEvent.upload(input, file, { applyAccept: false })
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/pdf|plain text|not supported/i)
+    expect(alert).toHaveTextContent(/presentation|pdf|plain text|not supported/i)
     expect(
       fetchMock.mock.calls.some(
         ([, init]) => ((init as RequestInit | undefined)?.method ?? 'GET') === 'PUT',

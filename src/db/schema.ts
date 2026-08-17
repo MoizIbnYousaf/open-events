@@ -862,7 +862,7 @@ export type SubmissionAcceptanceRow = typeof submissionAcceptances.$inferSelect
 export type SubmissionDecisionRow = typeof submissionDecisions.$inferSelect
 export type SpeakerTaskRow = typeof speakerTasks.$inferSelect
 
-/** Drizzle mirror of migrations/0008_create_uploaded_files_table.sql. */
+/** Drizzle mirror of migrations 0008, 0014, and 0030. */
 export const uploadedFiles = sqliteTable(
   'uploaded_files',
   {

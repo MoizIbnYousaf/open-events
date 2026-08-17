@@ -65,6 +65,7 @@ export function createOpenRouterOrby(config: {
             authorization: `Bearer ${config.apiKey}`,
             'content-type': 'application/json',
             'http-referer': 'https://openevents.engineer',
+            'user-agent': 'Open Events Orby/1.0 (+https://openevents.engineer)',
             'x-title': 'Open Events Orby',
           },
           body: JSON.stringify({

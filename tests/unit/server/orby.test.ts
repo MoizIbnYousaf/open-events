@@ -48,7 +48,10 @@ describe('Orby OpenRouter adapter', () => {
     expect(body.messages[0]?.content).toContain('DemoConf Convention Center')
     expect(body.max_tokens).toBe(240)
     expect(body.temperature).toBe(0.2)
-    expect(init.headers).toMatchObject({ authorization: 'Bearer test-key' })
+    expect(init.headers).toMatchObject({
+      authorization: 'Bearer test-key',
+      'user-agent': 'Open Events Orby/1.0 (+https://openevents.engineer)',
+    })
   })
 
   it('bounds the conversation sent to OpenRouter', async () => {

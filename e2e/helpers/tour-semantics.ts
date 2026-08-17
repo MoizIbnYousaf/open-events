@@ -118,8 +118,8 @@ export async function expectTourSemantics(page: Page, step: TourStep): Promise<v
       await expect(target).toContainText('Each room has HDMI and USB-C adapters')
       return
     case 'readiness':
-      await expect(target).toContainText('30%')
-      await expect(target).toContainText('5/8')
+      await expect(target).toContainText('25%')
+      await expect(target).toContainText('5/9')
       await expect(target).toContainText('Submit headshot')
       return
     case 'palette':

@@ -102,7 +102,7 @@ function popoverStyle(rect: TargetRect | null, popover: BoxSize): CSSProperties 
   })
   return {
     top: placement.mode === 'dock' ? undefined : placement.top,
-    bottom: placement.mode === 'dock' ? 8 : undefined,
+    bottom: placement.mode === 'dock' ? 12 : undefined,
     left: placement.left,
     width: placement.width,
     maxWidth: 'calc(100vw - 16px)',
@@ -595,7 +595,11 @@ export function ProductTour({
     try {
       await endingRef.current
       if (resumeStep.access === 'public') {
-        await endTourSession()
+        const result = await startTourSession('public')
+        if (result.mode === 'redirect') {
+          window.location.assign(result.url)
+          return
+        }
       } else {
         const result = await startTourSession(resumeStep.access satisfies TourAccess)
         if (result.mode === 'redirect') {

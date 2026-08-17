@@ -8,7 +8,7 @@ export type TourSessionStart =
     }
   | { readonly mode: 'redirect'; readonly url: string }
 
-export type TourAccess = 'organizer' | 'portal' | 'evaluation'
+export type TourAccess = 'public' | 'organizer' | 'portal' | 'evaluation'
 
 async function tourRequest(
   method: 'POST' | 'DELETE',

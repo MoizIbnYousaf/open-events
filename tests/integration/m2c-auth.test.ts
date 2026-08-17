@@ -265,6 +265,45 @@ describe('guided tour session', () => {
     },
   )
 
+  it('opens a public tour state without minting authority and clears a prior tour role', async () => {
+    const organizer = await app.request(
+      '/api/tour/session',
+      { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+    const token = organizer.headers.get('set-cookie')?.match(/sp_tour_session=([^;]+)/)?.[1] ?? ''
+    const before = await countRows(env.DB, 'sessions')
+
+    const response = await app.request(
+      '/api/tour/session',
+      {
+        method: 'POST',
+        headers: {
+          origin: ALLOWED_ORIGIN,
+          'content-type': 'application/json',
+          cookie: `sp_tour_session=${token}`,
+        },
+        body: JSON.stringify({ access: 'public' }),
+      },
+      bindings({ DEPLOY_ENVIRONMENT: 'acceptance' }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      mode: 'ready',
+      expiresAt: expect.any(String),
+      eventSlug: 'demo-conf-2026',
+    })
+    expect(response.headers.get('set-cookie')).toContain('sp_tour_session=;')
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+    expect(await countRows(env.DB, 'sessions')).toBe(before)
+    expect(
+      await env.DB.prepare('SELECT consumed_at FROM sessions WHERE token_hash = ?')
+        .bind(await createSha256TokenHasher().hash(token))
+        .first<{ consumed_at: string | null }>(),
+    ).toMatchObject({ consumed_at: expect.any(String) })
+  })
+
   it('rejects unknown tour roles without creating a session', async () => {
     const before = await countRows(env.DB, 'sessions')
     const response = await app.request(
@@ -286,7 +325,11 @@ describe('guided tour session', () => {
     const before = await countRows(env.DB, 'sessions')
     const response = await app.request(
       '/api/tour/session',
-      { method: 'POST', headers: { origin: ALLOWED_ORIGIN } },
+      {
+        method: 'POST',
+        headers: { origin: ALLOWED_ORIGIN, 'content-type': 'application/json' },
+        body: JSON.stringify({ access: 'public' }),
+      },
       bindings({
         DEPLOY_ENVIRONMENT: 'production',
         TOUR_APP_URL: 'https://open-events-acceptance.speakerops.workers.dev',

@@ -26,7 +26,7 @@ const TOUR_EVENT_ID = 'a1f6c0d4-6b1a-4f2e-9c3d-8e7f6a5b4c3d'
 const TOUR_SPEAKER_CONTACT_ID = 'd0000000-0000-4000-8000-000000000610'
 const TOUR_REVIEWER_CONTACT_ID = 'c0000000-0000-4000-8000-000000000601'
 const TOUR_SESSION_TTL_MS = 10 * 60 * 1000
-type TourAccess = 'organizer' | 'portal' | 'evaluation'
+type TourAccess = 'public' | 'organizer' | 'portal' | 'evaluation'
 
 function secureRequest(context: ServerContext): boolean {
   return new URL(context.req.url).protocol === 'https:'
@@ -75,12 +75,17 @@ async function requestedAccess(context: ServerContext): Promise<TourAccess | nul
   }
   if (typeof body !== 'object' || body === null || !('access' in body)) return null
   const access = (body as { readonly access?: unknown }).access
-  return access === 'organizer' || access === 'portal' || access === 'evaluation' ? access : null
+  return access === 'public' ||
+    access === 'organizer' ||
+    access === 'portal' ||
+    access === 'evaluation'
+    ? access
+    : null
 }
 
 async function issueSubmitterTourSession(
   context: ServerContext,
-  access: Exclude<TourAccess, 'organizer'>,
+  access: Extract<TourAccess, 'portal' | 'evaluation'>,
   ttlMs: number,
 ): Promise<{ readonly token: string; readonly expiresAt: string } | null> {
   const db = getDatabaseBinding(context)
@@ -148,6 +153,10 @@ async function handleStartTourSession(context: ServerContext): Promise<Response>
   if (deps === null) return databaseUnavailableResponse(context)
   const previousTourToken = readTourSessionToken(context)
   if (previousTourToken !== null) await deps.session.revokeSession(previousTourToken)
+  if (access === 'public') {
+    context.header('Set-Cookie', serializeExpiredTourSessionCookie(secureRequest(context)))
+    return context.json({ mode: 'ready', expiresAt: deps.clock.now(), eventSlug: TOUR_EVENT_SLUG })
+  }
   const configuredTtl = getTtlConfig(context).organizerSessionMs
   const ttlMs = Math.min(configuredTtl, TOUR_SESSION_TTL_MS, MAX_ORGANIZER_SESSION_TTL_MS)
   const result =

@@ -139,7 +139,7 @@ test('a cold visitor completes every guided-tour step without credentials or den
   await expect(dialog).toHaveCount(0)
   const adminAfterTour = await page.request.get('/api/admin/events/demo-conf-2026')
   expect(adminAfterTour.status()).toBe(401)
-  expect(observer.accessStarts()).toBe(3)
+  expect(observer.accessStarts()).toBe(4)
   observer.assertClean()
 })
 

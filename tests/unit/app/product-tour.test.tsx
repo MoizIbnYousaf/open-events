@@ -363,11 +363,8 @@ describe('product tour', () => {
 
   it('keeps the coach visible until authority cleanup finishes', async () => {
     let finishDelete: (() => void) | undefined
-    let deleteCalls = 0
     vi.mocked(fetch).mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'DELETE') {
-        deleteCalls += 1
-        if (deleteCalls !== 2) return Promise.resolve(new Response(null, { status: 204 }))
         return new Promise<Response>((resolve) => {
           finishDelete = () => resolve(new Response(null, { status: 204 }))
         })
@@ -391,7 +388,7 @@ describe('product tour', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
 
     expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(
-      0,
+      1,
     )
     finishDelete?.()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -399,14 +396,14 @@ describe('product tour', () => {
     toggleTour()
     expect(await screen.findByRole('dialog')).toHaveAccessibleName(/from proposal to programme/i)
     expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(
-      0,
+      2,
     )
   })
 
   it('supersedes a delayed role response and revokes it after Pause', async () => {
     let finishPost: (() => void) | undefined
     vi.mocked(fetch).mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'POST') {
+      if (init?.method === 'POST' && init.body === JSON.stringify({ access: 'organizer' })) {
         return new Promise<Response>((resolve) => {
           finishPost = () =>
             resolve(
@@ -421,6 +418,18 @@ describe('product tour', () => {
             )
         })
       }
+      if (init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              mode: 'ready',
+              expiresAt: '2026-08-16T07:00:00.000Z',
+              eventSlug: DEFAULT_EVENT_SLUG,
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        )
+      }
       return Promise.resolve(new Response(null, { status: 204 }))
     })
 
@@ -432,7 +441,7 @@ describe('product tour', () => {
     await waitFor(() =>
       expect(
         vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
-      ).toHaveLength(1),
+      ).toHaveLength(2),
     )
 
     await user.click(screen.getByRole('button', { name: /pause tour/i }))
@@ -442,7 +451,7 @@ describe('product tour', () => {
     await waitFor(() =>
       expect(
         vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'DELETE'),
-      ).toHaveLength(3),
+      ).toHaveLength(2),
     )
     expect(onNavigate).not.toHaveBeenCalledWith('/admin/events/$slug', expect.anything())
     expect(JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? '{}')).toMatchObject({

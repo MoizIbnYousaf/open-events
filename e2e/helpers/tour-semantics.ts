@@ -19,10 +19,11 @@ export async function expectTourSemantics(page: Page, step: TourStep): Promise<v
 
   switch (step.id) {
     case 'welcome':
+      await expect(target).toContainText('Ask Orby')
       await expect(
-        target.getByRole('heading', { name: 'Your event, finally in sync.' }),
+        page.getByRole('heading', { name: 'Your event, finally in sync.' }),
       ).toBeVisible()
-      await expect(target.getByText(/DemoConf 2026/).first()).toBeVisible()
+      await expect(page.getByText(/DemoConf 2026/).first()).toBeVisible()
       return
     case 'admin-signin':
       await expect(target.getByRole('heading', { name: 'Admin sign in' })).toBeVisible()

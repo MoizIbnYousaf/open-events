@@ -251,6 +251,7 @@ export default function OrbyWidget() {
       ) : null}
       <Button
         type="button"
+        data-tour="orby-launcher"
         className="pointer-events-auto relative h-14 rounded-full border border-primary/30 bg-card pr-2 pl-4 text-foreground shadow-popover transition-transform hover:scale-[1.03] hover:bg-card"
         aria-expanded={open}
         aria-label={unread > 0 ? `${ORBY_NAME}, ${unread} unread` : `Chat with ${ORBY_NAME}`}

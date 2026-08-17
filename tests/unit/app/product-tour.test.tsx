@@ -150,7 +150,7 @@ describe('tour steps', () => {
   it('starts centered, tours the organizer rail, and ends on the public loop', () => {
     expect(TOUR_STEPS[0]?.id).toBe('welcome')
     expect(TOUR_STEPS[0]?.route).toBeUndefined()
-    expect(TOUR_STEPS[0]?.target).toBeUndefined()
+    expect(TOUR_STEPS[0]?.target).toBe('orby-launcher')
     expect(TOUR_STEPS.at(-1)?.id).toBe('itinerary')
     const ids = TOUR_STEPS.map((step) => step.id)
     expect(new Set(ids).size).toBe(ids.length)

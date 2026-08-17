@@ -224,7 +224,7 @@ export function createContactRepository(db: D1Database): ContactRepository {
                   c.email                 AS email,
                   COALESCE(c.name, '')    AS name,
                   c.bio                   AS bio,
-                  COUNT(DISTINCT sc.submission_id) AS proposal_count,
+                  COUNT(DISTINCT CASE WHEN ps.source = 'cfp' THEN sc.submission_id END) AS proposal_count,
                   (SELECT COUNT(*) FROM agenda_session_speakers a
                     WHERE a.event_id = ? AND a.contact_id = c.id) AS session_count,
                   (SELECT COUNT(*) FROM speaker_tasks t
@@ -249,6 +249,8 @@ export function createContactRepository(db: D1Database): ContactRepository {
                ON p.event_id = ? AND p.contact_id = c.id
              LEFT JOIN submission_contributors sc
                ON sc.event_id = ? AND sc.contact_id = c.id
+             LEFT JOIN proposal_submissions ps
+               ON ps.event_id = sc.event_id AND ps.id = sc.submission_id
             GROUP BY c.id
             ORDER BY LOWER(COALESCE(c.name, '')), LOWER(c.email)`,
         )
@@ -744,6 +746,14 @@ export function createSubmissionRepository(db: D1Database): SubmissionRepository
         .orderBy(desc(proposalSubmissions.submittedAt))
       return rows.map(toProposalSubmission)
     },
+    async listCfpByEvent(eventId: string) {
+      const rows = await database
+        .select()
+        .from(proposalSubmissions)
+        .where(and(eq(proposalSubmissions.eventId, eventId), eq(proposalSubmissions.source, 'cfp')))
+        .orderBy(desc(proposalSubmissions.submittedAt))
+      return rows.map(toProposalSubmission)
+    },
     async listByOwner(eventId: string, ownerContactId: string) {
       const rows = await database
         .select()
@@ -886,11 +896,26 @@ export function createFormRepository(db: D1Database): FormRepository {
       const row = rows[0]
       return row === undefined ? null : toCfpForm(row)
     },
+    async findPublicById(id: string) {
+      const rows = await database
+        .select()
+        .from(cfpForms)
+        .where(and(eq(cfpForms.id, id), eq(cfpForms.purpose, 'public')))
+        .limit(1)
+      const row = rows[0]
+      return row === undefined ? null : toCfpForm(row)
+    },
     async findByEventAndSlug(eventId: string, slug: string) {
       const rows = await database
         .select()
         .from(cfpForms)
-        .where(and(eq(cfpForms.eventId, eventId), eq(cfpForms.slug, slug)))
+        .where(
+          and(
+            eq(cfpForms.eventId, eventId),
+            eq(cfpForms.slug, slug),
+            eq(cfpForms.purpose, 'public'),
+          ),
+        )
         .limit(1)
       const row = rows[0]
       return row === undefined ? null : toCfpForm(row)
@@ -899,7 +924,7 @@ export function createFormRepository(db: D1Database): FormRepository {
       const rows = await database
         .select()
         .from(cfpForms)
-        .where(eq(cfpForms.eventId, eventId))
+        .where(and(eq(cfpForms.eventId, eventId), eq(cfpForms.purpose, 'public')))
         .orderBy(asc(cfpForms.slug))
       return rows.map(toCfpForm)
     },

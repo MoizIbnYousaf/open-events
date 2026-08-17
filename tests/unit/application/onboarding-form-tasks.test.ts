@@ -48,6 +48,7 @@ const onboardingForm: CfpForm = {
   eventId: EVENT_ID,
   slug: 'av-requirements',
   status: 'published',
+  purpose: 'public',
   publishedVersionId: VERSION_ID,
   limits: { opensAt: null, closesAt: null, totalCap: null, perIdentityLimit: null },
 }

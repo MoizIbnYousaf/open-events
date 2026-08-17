@@ -20,6 +20,7 @@ function row(
     id,
     title,
     status: 'pending',
+    source: 'cfp',
     formId: 'form',
     formSlug: 'cfp',
     version: 1,

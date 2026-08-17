@@ -85,15 +85,22 @@ export class InMemoryFormRepository implements FormRepository {
     return this.#forms.get(id) ?? null
   }
 
+  async findPublicById(id: FormId): Promise<CfpForm | null> {
+    const form = this.#forms.get(id)
+    return form?.purpose === 'public' ? form : null
+  }
+
   async findByEventAndSlug(eventId: string, slug: string): Promise<CfpForm | null> {
     for (const form of this.#forms.values()) {
-      if (form.eventId === eventId && form.slug === slug) return form
+      if (form.eventId === eventId && form.slug === slug && form.purpose === 'public') return form
     }
     return null
   }
 
   async listByEvent(eventId: string): Promise<readonly CfpForm[]> {
-    return [...this.#forms.values()].filter((form) => form.eventId === eventId)
+    return [...this.#forms.values()].filter(
+      (form) => form.eventId === eventId && form.purpose === 'public',
+    )
   }
 
   /** Mirrors the adapter: scoped by BOTH event and form id, never by id alone. */
@@ -336,6 +343,12 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
 
   async listByEvent(eventId: string): Promise<readonly ProposalSubmission[]> {
     return [...this.#submissions.values()].filter((submission) => submission.eventId === eventId)
+  }
+
+  async listCfpByEvent(eventId: string): Promise<readonly ProposalSubmission[]> {
+    return [...this.#submissions.values()].filter(
+      (submission) => submission.eventId === eventId && submission.source === 'cfp',
+    )
   }
 
   async listByOwner(

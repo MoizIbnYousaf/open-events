@@ -124,6 +124,7 @@ describe('optimistic publish', () => {
       eventId: DEMO_CONF_2026_ID,
       slug: 'cfp-draft',
       status: 'draft',
+      purpose: 'public',
       publishedVersionId: null,
       limits: { opensAt: null, closesAt: null, totalCap: null, perIdentityLimit: null },
     }
@@ -190,6 +191,7 @@ describe('optimistic publish', () => {
       eventId: DEMO_CONF_2026_ID,
       slug: 'cfp-fresh',
       status: 'draft',
+      purpose: 'public',
       publishedVersionId: null,
       limits: { opensAt: null, closesAt: null, totalCap: null, perIdentityLimit: null },
     }

@@ -21,6 +21,7 @@ import { CapturedMessageService } from '../application/services/captured-message
 import { CommunicationsService } from '../application/services/communications'
 import { DocumentService } from '../application/services/documents'
 import { DraftService } from '../application/services/drafts'
+import { DirectSessionService } from '../application/services/direct-sessions'
 import { EvaluationService } from '../application/services/evaluations'
 import { EventConfigService } from '../application/services/event-config'
 import { EventBrandingService } from '../application/services/event-branding'
@@ -64,6 +65,7 @@ import { createProgrammeRepository } from '../db/programme-repository'
 import { createSessionUnitOfWork } from '../db/session-unit-of-work'
 import { createSpeakerTaskRepository } from '../db/speaker-task-repository'
 import { createSubmitUnitOfWork } from '../db/submit-unit-of-work'
+import { createDirectSessionUnitOfWork } from '../db/direct-session-unit-of-work'
 import { createSupportRepository } from '../db/support-repository'
 import { createUploadedFileRepository } from '../db/uploaded-file-repository'
 import { createPortalResourceRepository } from '../db/portal-resource-repository'
@@ -104,6 +106,7 @@ export interface ServerDeps {
   readonly taxonomy: TaxonomyService
   readonly formBuilder: FormBuilderService
   readonly drafts: DraftService
+  readonly directSessions: DirectSessionService
   readonly submit: SubmitService
   readonly onboarding: OnboardingService
   readonly profile: ProfileService
@@ -197,6 +200,14 @@ export function buildServerDeps(
       clock,
     ),
     drafts: new DraftService(createDraftRepository(db), forms, versions, clock),
+    directSessions: new DirectSessionService(
+      events,
+      contacts,
+      createTaxonomyRepository(db),
+      createDirectSessionUnitOfWork(db),
+      createSha256TokenHasher(),
+      clock,
+    ),
     submit: new SubmitService(
       createDraftRepository(db),
       createSubmissionRepository(db),

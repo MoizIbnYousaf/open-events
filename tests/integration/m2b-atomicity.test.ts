@@ -141,6 +141,7 @@ describe('publish unit-of-work atomic rollback', () => {
       eventId: DEMO_CONF_2026_ID,
       slug: 'cfp-draft',
       status: 'draft',
+      purpose: 'public',
       publishedVersionId: null,
       limits: { opensAt: null, closesAt: null, totalCap: null, perIdentityLimit: null },
     }

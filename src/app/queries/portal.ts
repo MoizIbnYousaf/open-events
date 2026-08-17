@@ -36,6 +36,7 @@ export interface PortalSubmission {
   readonly id: string
   readonly title: string
   readonly status: SubmissionStatus
+  readonly source: 'cfp' | 'direct'
   readonly accepted: boolean
   readonly decision: SubmissionOutcome
   /**

@@ -307,7 +307,7 @@ export class SessionService implements RoleAccessIssuer {
       if (record.formId === null) {
         throw new ApplicationError('not_found', `Form for token '${record.id}' not found`)
       }
-      const form = await this.#forms.findById(record.formId)
+      const form = await this.#forms.findPublicById(record.formId)
       if (form === null || form.eventId !== record.eventId) {
         throw new ApplicationError('not_found', `Form for token '${record.id}' not found`)
       }

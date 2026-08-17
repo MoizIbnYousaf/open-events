@@ -7,6 +7,8 @@ export type FormSlug = string
 export const FORM_STATUSES = ['draft', 'published'] as const
 
 export type FormStatus = (typeof FORM_STATUSES)[number]
+export const FORM_PURPOSES = ['public', 'direct'] as const
+export type FormPurpose = (typeof FORM_PURPOSES)[number]
 
 /**
  * Submission capacity. `null` means unlimited; any non-null value is a positive
@@ -31,6 +33,7 @@ export interface CfpForm {
   readonly eventId: EventId
   readonly slug: FormSlug
   readonly status: FormStatus
+  readonly purpose: FormPurpose
   readonly publishedVersionId: VersionId | null
   readonly limits: FormLimits
 }

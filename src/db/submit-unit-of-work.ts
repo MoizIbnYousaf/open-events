@@ -29,7 +29,7 @@ export function createSubmitUnitOfWork(
       const row = await db
         .prepare(
           `SELECT ps.id, ps.event_id, ps.owner_contact_id, ps.form_version_id,
-                  ps.origin_draft_id, ps.status, ps.title, ps.answers_json,
+                  ps.origin_draft_id, ps.status, ps.source, ps.title, ps.answers_json,
                   ps.content_hash, ps.routing_json, ps.created_at, ps.submitted_at,
                   s.id AS portal_session_id, s.expires_at AS portal_expires_at
            FROM submit_session_handoffs h
@@ -382,7 +382,7 @@ export function createSubmitUnitOfWork(
         db
           .prepare(
             `SELECT id, event_id, owner_contact_id, form_version_id, origin_draft_id,
-                    status, title, answers_json, content_hash, routing_json,
+                    status, source, title, answers_json, content_hash, routing_json,
                     created_at, submitted_at
              FROM proposal_submissions WHERE origin_draft_id = ?`,
           )

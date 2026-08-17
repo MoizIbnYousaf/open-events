@@ -216,6 +216,7 @@ export function toProposalSubmission(row: ProposalSubmissionRow): ProposalSubmis
     formVersionId: row.formVersionId,
     originDraftId: row.originDraftId,
     status: row.status,
+    source: row.source,
     title: row.title,
     answers: parseAnswerMap(row.answersJson),
     contentHash: row.contentHash,
@@ -233,6 +234,7 @@ export interface RawProposalSubmissionRow {
   readonly form_version_id: string
   readonly origin_draft_id: string
   readonly status: string
+  readonly source: string
   readonly title: string
   readonly answers_json: string
   readonly content_hash: string
@@ -246,6 +248,9 @@ export function toProposalSubmissionFromRaw(row: RawProposalSubmissionRow): Prop
   if (row.status !== 'pending') {
     throw new DbDecodeError(`submission row carries unknown status '${row.status}'`)
   }
+  if (row.source !== 'cfp' && row.source !== 'direct') {
+    throw new DbDecodeError(`submission row carries unknown source '${row.source}'`)
+  }
   return {
     id: row.id,
     eventId: row.event_id,
@@ -253,6 +258,7 @@ export function toProposalSubmissionFromRaw(row: RawProposalSubmissionRow): Prop
     formVersionId: row.form_version_id,
     originDraftId: row.origin_draft_id,
     status: 'pending',
+    source: row.source,
     title: row.title,
     answers: parseAnswerMap(row.answers_json),
     contentHash: row.content_hash,
@@ -289,6 +295,7 @@ export function toCfpForm(row: CfpFormRow): CfpForm {
     eventId: row.eventId,
     slug: row.slug,
     status: row.status,
+    purpose: row.purpose,
     publishedVersionId: row.publishedVersionId,
     limits: {
       opensAt: row.opensAt,

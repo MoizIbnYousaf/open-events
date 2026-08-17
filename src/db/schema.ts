@@ -15,11 +15,15 @@ import { CAPTURED_MESSAGE_KINDS } from '../domain/confirmation'
 import { CONTACT_ROLES } from '../domain/contact'
 import { EVALUATION_ROUND_STATUSES } from '../domain/evaluation'
 import { EVENT_STATUSES } from '../domain/event'
-import { FORM_STATUSES } from '../domain/form'
+import { FORM_PURPOSES, FORM_STATUSES } from '../domain/form'
 import { ELEMENT_KINDS, PAGE_KINDS, QUESTION_TYPES, VERSION_STATUSES } from '../domain/form-version'
 import { CONDITION_EFFECTS, CONDITION_OPERATORS, ROUTING_ACTIONS } from '../domain/rules'
 import { ALL_SPEAKER_TASK_KINDS, SPEAKER_TASK_STATUSES } from '../domain/speaker-task'
-import { SUBMISSION_DECISION_OUTCOMES, SUBMISSION_STATUSES } from '../domain/submission'
+import {
+  SUBMISSION_DECISION_OUTCOMES,
+  SUBMISSION_SOURCES,
+  SUBMISSION_STATUSES,
+} from '../domain/submission'
 import { TAXONOMY_KINDS } from '../domain/taxonomy'
 import { PORTAL_RESOURCE_KINDS } from '../domain/portal-resource'
 
@@ -206,6 +210,9 @@ export const cfpForms = sqliteTable(
     id: text('id').notNull(),
     slug: text('slug').notNull(),
     status: text('status', { enum: [...FORM_STATUSES] }).notNull(),
+    purpose: text('purpose', { enum: [...FORM_PURPOSES] })
+      .notNull()
+      .default('public'),
     publishedVersionId: text('published_version_id'),
     opensAt: text('opens_at'),
     closesAt: text('closes_at'),
@@ -401,6 +408,9 @@ export const proposalSubmissions = sqliteTable(
     formVersionId: text('form_version_id').notNull(),
     originDraftId: text('origin_draft_id').notNull().unique(),
     status: text('status', { enum: [...SUBMISSION_STATUSES] }).notNull(),
+    source: text('source', { enum: [...SUBMISSION_SOURCES] })
+      .notNull()
+      .default('cfp'),
     title: text('title').notNull(),
     answersJson: text('answers_json').notNull(),
     contentHash: text('content_hash').notNull(),

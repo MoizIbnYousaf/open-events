@@ -109,7 +109,7 @@ export class FormBuilderService {
     input: { readonly opensAt: UtcInstant | null; readonly closesAt: UtcInstant | null },
   ): Promise<FormSummaryDto> {
     assertActorCanMutate(actor)
-    const form = await this.#forms.findById(formId)
+    const form = await this.#forms.findPublicById(formId)
     // Event scope before anything else: a form belonging to another event is a
     // safe not-found, never someone else's window to move.
     if (form === null || form.eventId !== eventId) {
@@ -137,7 +137,7 @@ export class FormBuilderService {
     if (outcome === 'not-found') {
       throw new ApplicationError('not_found', `Form '${formId}' does not belong to this event`)
     }
-    const updated = await this.#forms.findById(formId)
+    const updated = await this.#forms.findPublicById(formId)
     if (updated === null) {
       throw new ApplicationError('not_found', `Form '${formId}' vanished during the update`)
     }
@@ -300,7 +300,7 @@ export class FormBuilderService {
   }
 
   async #requireForm(formId: FormId, eventId: EventId): Promise<CfpForm> {
-    const form = await this.#forms.findById(formId)
+    const form = await this.#forms.findPublicById(formId)
     if (form === null || form.eventId !== eventId) {
       // Cross-event and absent are deliberately the same safe answer.
       throw new ApplicationError('not_found', `Form '${formId}' not found`)

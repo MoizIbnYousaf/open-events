@@ -31,6 +31,7 @@ export interface AgendaOptionDto {
 export interface AgendaSessionDto {
   readonly submissionId: SubmissionId
   readonly title: string
+  readonly source?: 'cfp' | 'direct'
   readonly day: string
   readonly start: UtcInstant
   readonly end: UtcInstant

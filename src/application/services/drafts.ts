@@ -84,7 +84,7 @@ export class DraftService {
     if (version.eventId !== actor.eventId || version.formId !== input.formId) {
       throw new ApplicationError('not_found', 'Draft version does not belong to this event/form')
     }
-    const form = await this.#forms.findById(version.formId)
+    const form = await this.#forms.findPublicById(version.formId)
     if (form === null || form.eventId !== actor.eventId) {
       throw new ApplicationError('not_found', `Form '${input.formId}' not found`)
     }

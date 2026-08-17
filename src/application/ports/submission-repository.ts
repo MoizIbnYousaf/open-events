@@ -37,6 +37,8 @@ export interface SubmissionRepository {
   }): Promise<'updated' | 'not-found'>
   findByOriginDraftId(originDraftId: DraftId): Promise<ProposalSubmission | null>
   listByEvent(eventId: EventId): Promise<readonly ProposalSubmission[]>
+  /** Public-CFP intake only; organizer submission and evaluation surfaces use this. */
+  listCfpByEvent(eventId: EventId): Promise<readonly ProposalSubmission[]>
   /**
    * The owner's own submissions for their own event, newest submission first
    * with the id as the deterministic tie-break.

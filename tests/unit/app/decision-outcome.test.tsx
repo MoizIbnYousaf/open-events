@@ -29,6 +29,7 @@ const BASE: PortalSubmission = {
   id: 'submission-1',
   title: 'Deterministic conflict detection at scale',
   status: 'pending',
+  source: 'cfp',
   accepted: false,
   decision: 'pending',
   inviteAvailable: false,

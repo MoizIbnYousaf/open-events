@@ -834,6 +834,40 @@ export async function handleListFiles(context: ServerContext): Promise<Response>
   return context.json(await deps.contentLibrary.listFiles(actor, slug))
 }
 
+export async function handleCreateDirectSession(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  const slug = context.req.param('slug')
+  if (actor === null) return forbiddenResponse(context)
+  if (slug === undefined) return notFoundResponse(context)
+  const body = await readJsonBody(context)
+  if (
+    body === null ||
+    typeof body.requestId !== 'string' ||
+    typeof body.speakerContactId !== 'string' ||
+    typeof body.title !== 'string' ||
+    typeof body.abstract !== 'string' ||
+    typeof body.formatId !== 'string' ||
+    !(body.trackId === null || typeof body.trackId === 'string') ||
+    typeof body.durationMinutes !== 'number' ||
+    typeof body.notes !== 'string'
+  ) {
+    return validationFailedResponse(context)
+  }
+  const receipt = await deps.directSessions.create(actor, slug, {
+    requestId: body.requestId,
+    speakerContactId: body.speakerContactId,
+    title: body.title,
+    abstract: body.abstract,
+    formatId: body.formatId,
+    trackId: body.trackId,
+    durationMinutes: body.durationMinutes,
+    notes: body.notes,
+  })
+  return context.json(receipt, receipt.created ? 201 : 200)
+}
+
 function portalResourceInput(
   body: Record<string, unknown> | null,
 ): (PortalResourceInput & { readonly published: boolean }) | null {
@@ -2084,6 +2118,13 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleListFiles,
+  )
+  app.post(
+    '/api/admin/events/:slug/direct-sessions',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleCreateDirectSession,
   )
   app.get(
     '/api/admin/events/:slug/resources',

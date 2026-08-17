@@ -453,6 +453,7 @@ export class AgendaService {
         .filter((submissionId) => !rejected.has(submissionId)),
     )
     const titles = new Map(submissions.map((submission) => [submission.id, submission.title]))
+    const sources = new Map(submissions.map((submission) => [submission.id, submission.source]))
     const labels = new Map(items.map((item) => [item.id, item.label]))
     const sessions = stored.filter((session) => accepted.has(session.submissionId))
 
@@ -488,6 +489,7 @@ export class AgendaService {
       sessions: sessions.map((session): AgendaSessionDto => ({
         submissionId: session.submissionId,
         title: titles.get(session.submissionId) ?? '',
+        source: sources.get(session.submissionId) ?? 'cfp',
         day: session.day,
         start: session.start,
         end: session.end,

@@ -564,7 +564,7 @@ export class EvaluationService {
     }
 
     const track = typeof input.track === 'string' ? input.track.trim() : ''
-    const submissions = (await this.#submissions.listByEvent(eventId)).filter(
+    const submissions = (await this.#submissions.listCfpByEvent(eventId)).filter(
       (submission) => track === '' || submission.answers['track'] === track,
     )
 
@@ -1037,7 +1037,7 @@ export class EvaluationService {
     actor: OrganizerActor,
     eventId: EventId,
   ): Promise<readonly EvaluationResultRowDto[]> {
-    const submissions = await this.#submissions.listByEvent(eventId)
+    const submissions = await this.#submissions.listCfpByEvent(eventId)
     const [summaries, decisions, contributorLists] = await Promise.all([
       Promise.all(
         submissions.map((submission) => this.weightedSummary(actor, eventId, submission.id)),

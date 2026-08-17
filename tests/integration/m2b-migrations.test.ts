@@ -104,6 +104,7 @@ describe('migration apply from an empty local D1', () => {
       '0031_add_event_branding.sql',
       '0032_add_session_provenance.sql',
       '0033_portal_resources.sql',
+      '0034_direct_sessions.sql',
     ])
 
     const tables = await env.DB.prepare(

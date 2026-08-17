@@ -148,6 +148,9 @@ export default function PortalPage({ onUnauthenticated }: PortalPageProps) {
                 >
                   <div className="grid min-w-0 flex-1 gap-0.5">
                     <span className="truncate text-sm font-medium">{submission.title}</span>
+                    {submission.source === 'direct' ? (
+                      <Badge variant="outline">Invited session</Badge>
+                    ) : null}
                     <InviteLink submission={submission} />
                   </div>
                   <ProposalDisclosure

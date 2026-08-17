@@ -2,6 +2,7 @@ import type { CfpForm, EventId, FormId, FormSlug, UtcInstant } from '../../domai
 
 export interface FormRepository {
   findById(id: FormId): Promise<CfpForm | null>
+  findPublicById(id: FormId): Promise<CfpForm | null>
   findByEventAndSlug(eventId: EventId, slug: FormSlug): Promise<CfpForm | null>
   listByEvent(eventId: EventId): Promise<readonly CfpForm[]>
   /**

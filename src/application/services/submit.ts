@@ -197,7 +197,7 @@ export class SubmitService {
     if (version === null) {
       throw new ApplicationError('not_found', `Form version '${input.formVersionId}' not found`)
     }
-    const form = await this.#forms.findById(version.formId)
+    const form = await this.#forms.findPublicById(version.formId)
     if (form === null || form.eventId !== actor.eventId || version.eventId !== actor.eventId) {
       throw new ApplicationError('not_found', `Form for version '${input.formVersionId}' not found`)
     }
@@ -222,6 +222,7 @@ export class SubmitService {
       formVersionId: version.id,
       originDraftId: input.originDraftId,
       status: 'pending',
+      source: 'cfp',
       title: input.title,
       answers: input.answers,
       contentHash: await computeSubmissionContentHash(input.title, input.answers, version.id),
@@ -308,7 +309,7 @@ export class SubmitService {
     eventId: EventId,
   ): Promise<readonly SubmissionListItemDto[]> {
     const [submissions, standing] = await Promise.all([
-      this.#submissions.listByEvent(eventId),
+      this.#submissions.listCfpByEvent(eventId),
       this.#standingDecisions(eventId),
     ])
     return Promise.all(
@@ -390,7 +391,7 @@ export class SubmitService {
         `Form version '${submission.formVersionId}' not found`,
       )
     }
-    const form = await this.#forms.findById(version.formId)
+    const form = await this.#forms.findPublicById(version.formId)
     if (form === null || form.eventId !== actor.eventId) {
       throw new ApplicationError('not_found', `Form for submission '${id}' not found`)
     }

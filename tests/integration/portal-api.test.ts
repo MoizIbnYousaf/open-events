@@ -219,6 +219,7 @@ describe('speaker portal API', () => {
         'id',
         'inviteAvailable',
         'primarySpeaker',
+        'source',
         'status',
         'submittedAt',
         'title',

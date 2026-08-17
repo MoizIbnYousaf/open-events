@@ -3,6 +3,8 @@ import type {
   AgendaBoardDto,
   AgendaPublishResultDto,
   PlaceAgendaSessionInput,
+  CreateDirectSessionInput,
+  DirectSessionReceiptDto,
 } from '../../application'
 import type { EventSlug, SubmissionId } from '../../domain'
 
@@ -50,4 +52,14 @@ export function autoPlaceAgenda(slug: EventSlug): Promise<AgendaAutoPlaceResultD
 /** POST /api/admin/events/:slug/agenda/publish — idempotent, scheduled-only. */
 export function publishAgenda(slug: EventSlug): Promise<AgendaPublishResultDto> {
   return requestJson(`${agendaPath(slug)}/publish`, { method: 'POST' })
+}
+
+export function createDirectSession(
+  slug: EventSlug,
+  input: CreateDirectSessionInput,
+): Promise<DirectSessionReceiptDto> {
+  return requestJson(`/api/admin/events/${encodeURIComponent(slug)}/direct-sessions`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }

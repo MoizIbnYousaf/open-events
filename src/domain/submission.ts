@@ -10,6 +10,8 @@ export type SubmissionId = string
 export const SUBMISSION_STATUSES = ['pending'] as const
 
 export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number]
+export const SUBMISSION_SOURCES = ['cfp', 'direct'] as const
+export type SubmissionSource = (typeof SUBMISSION_SOURCES)[number]
 
 /**
  * Persisted proposal submission. `originDraftId` is the idempotency key: a
@@ -23,6 +25,7 @@ export interface ProposalSubmission {
   readonly formVersionId: VersionId
   readonly originDraftId: DraftId
   readonly status: SubmissionStatus
+  readonly source: SubmissionSource
   readonly title: string
   readonly answers: AnswerMap
   readonly contentHash: string

@@ -36,6 +36,7 @@ const SUBMISSION_DETAIL: SubmissionDetailDto = {
   versionId: VERSION_ID,
   version: 1,
   status: 'pending',
+  source: 'cfp',
   title: 'My talk',
   answers: { title: 'My talk' },
   routing: null,

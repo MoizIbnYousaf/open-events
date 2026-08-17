@@ -399,7 +399,7 @@ export class OnboardingService {
     if (!contributors.some((contributor) => contributor.contactId === input.contactId)) {
       throw new ApplicationError('not_found', `Contact is not a contributor on '${submissionId}'`)
     }
-    const form = await this.#forms.findById(input.formId)
+    const form = await this.#forms.findPublicById(input.formId)
     if (form === null || form.eventId !== submission.eventId) {
       throw new ApplicationError('not_found', `Form '${input.formId}' not found`)
     }
@@ -449,7 +449,7 @@ export class OnboardingService {
       throw new ApplicationError('not_found', `Task '${id}' not found`)
     }
     const [form, version, event] = await Promise.all([
-      this.#forms.findById(task.formId),
+      this.#forms.findPublicById(task.formId),
       this.#versions.findById(task.formVersionId),
       this.#events.findById(task.eventId),
     ])

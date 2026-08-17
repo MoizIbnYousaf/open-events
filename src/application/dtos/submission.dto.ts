@@ -38,6 +38,7 @@ export interface SubmissionDetailDto {
   readonly versionId: VersionId
   readonly version: VersionNumber
   readonly status: SubmissionStatus
+  readonly source: 'cfp' | 'direct'
   readonly title: string
   readonly answers: AnswerMap
   readonly routing: RoutingOutcome | null
@@ -59,6 +60,7 @@ export interface SubmissionListItemDto {
   readonly id: SubmissionId
   readonly title: string
   readonly status: SubmissionStatus
+  readonly source: 'cfp' | 'direct'
   readonly formId: FormId
   readonly formSlug: FormSlug
   readonly version: VersionNumber
@@ -169,13 +171,16 @@ export function toSubmissionDetailDto(
     versionId: version.id,
     version: version.version,
     status: submission.status,
+    source: submission.source,
     title: submission.title,
     answers: submission.answers,
     routing: submission.routing,
     contributors,
     createdAt: submission.createdAt,
     submittedAt: submission.submittedAt,
-    editable: isSubmissionEditable(form.limits, now) || extras.accepted === true,
+    editable:
+      submission.source === 'cfp' &&
+      (isSubmissionEditable(form.limits, now) || extras.accepted === true),
     contentStatus: extras.contentStatus ?? 'approved',
   }
 }
@@ -195,6 +200,7 @@ export function toSubmissionListItemDto(
     id: submission.id,
     title: submission.title,
     status: submission.status,
+    source: submission.source,
     formId: form.id,
     formSlug: form.slug,
     version: version.version,
@@ -222,6 +228,7 @@ export function toOwnSubmissionListItemDto(
     id: item.id,
     title: item.title,
     status: item.status,
+    source: item.source,
     formId: item.formId,
     formSlug: item.formSlug,
     version: item.version,

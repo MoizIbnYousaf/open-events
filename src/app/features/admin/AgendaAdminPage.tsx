@@ -59,6 +59,7 @@ import {
   type AgendaPlacementRequest,
   type AgendaPreconditionId,
 } from './agenda-board'
+import DirectSessionForm from './DirectSessionForm'
 
 // dnd-kit is reachable only from here, and only through this dynamic import, so
 // it stays out of the shell chunk and out of the agenda route chunk.
@@ -516,6 +517,7 @@ function SessionPlacementForm({
         >
           {session.status === 'published' ? 'Published' : 'Draft'}
         </Badge>
+        {session.source === 'direct' ? <Badge variant="outline">Invited session</Badge> : null}
         <span className="text-sm text-muted-foreground">{placementSummary(session)}</span>
       </div>
       {/* Worth saying in every state, unlike the notice below: a board short of
@@ -1091,6 +1093,8 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
           </Button>
         </PageHeaderActions>
       </PageHeader>
+
+      <DirectSessionForm eventSlug={eventSlug} />
 
       <StatusLive aria-live="polite" aria-label="Scheduling result">
         {autoPlace.isPending ? null : autoPlaceOutcome}

@@ -40,7 +40,7 @@ This repository is one pnpm package and one deployable: a React app and a Hono A
 - **Publishing.** Responsive agenda, speaker-gallery, and itinerary widgets;
   sessions and speakers JSON feeds; and a full-schedule iCalendar feed. The
   creation API rejects XML and unsupported kind/format cross-products.
-- **Organizer desk.** Speaker roster (add, CSV, mail), a list-and-peek submissions desk, a files library with a version trail, and a log of every message intent the event has recorded.
+- **Organizer desk.** Speaker roster (add, CSV, mail), a list-and-peek submissions desk with answer facets, shareable saved views and page-bounded selection, a source-backed programme timeline, a files library with a version trail, and a log of every message intent the event has recorded.
 - **Orby.** A floating support widget on the public site. One conversation per person, stored in D1. Orby answers through OpenRouter (`openai/gpt-5.6-luna`) when `OPENROUTER_API_KEY` is set; organizers can still take over from **Orby** in the rail. If a reply sits unread for five minutes, the application records a capture-only reminder. The widget polls; this Worker does not open a WebSocket.
 
 ![Orby is live](public/og/orby.png)
@@ -145,6 +145,23 @@ docs/             Demo data, evaluator guide, and timed walkthrough
 The Worker never talks to the database from a route handler through ad-hoc SQL. Routes resolve a container (`src/server/container.ts`), call an application service, and return a DTO. Repositories in `src/db` implement the ports. Domain modules own the CHECKs that migrations also enforce.
 
 UTC instants are ISO-8601 text. Event-scoped parents use composite `(event_id, id)` keys so children can take composite foreign keys.
+
+### Programme timeline
+
+`/admin/events/:slug/timeline` is a bounded read model over the existing
+lifecycle tables. The repository issues ten fixed, indexed D1 statements and
+merges at most the latest 100 matching milestones; it does not write a generic
+activity table. Submissions, assignments, recusals, append-only decisions,
+speaker tasks, immutable message intents, and current agenda placement remain
+owned by their original stores.
+
+The screen distinguishes retained history from current snapshots. Decisions,
+message intents, task changes, and recusals are recorded events. A review entry
+is the latest saved state for its assignment, and a schedule entry is the
+current placement, because those tables do not retain every edit. Category
+filters are URL-backed, and the client invalidates one canonical event cache
+map after organizer lifecycle writes; cross-role changes remain covered by the
+bounded polling interval.
 
 ### Auth
 

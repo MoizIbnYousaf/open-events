@@ -37,7 +37,7 @@ wait two minutes, then retry.
 
 ## Five-minute walkthrough
 
-1. Start the guided tour from the landing page. Its six chapters cover all 26
+1. Start the guided tour from the landing page. Its six chapters cover all 27
    moments from public entry through organizer operations, speaker readiness,
    review, programme discovery, and itinerary export. Pause and resume keeps
    the exact checkpoint; temporary role access is read-only and closes on exit.
@@ -45,8 +45,9 @@ wait two minutes, then retry.
    session, and export My schedule. Open the speaker gallery and a detail page.
 3. In a speaker context on acceptance, submit a proposal once. Observe the
    focused confirmation and continue to the portal. Complete profile/task work.
-4. In the organizer context, filter the submissions desk, export the displayed
-   queue, inspect the proposal, assign review, record a decision, and open the
+4. In the organizer context, filter and save a submissions view, export a
+   selected page-bounded queue, inspect the proposal, assign review, record a
+   decision, inspect the source-backed Programme timeline, and open the
    blocker-first Readiness desk.
 5. In a reviewer context, score the assigned proposal or record a conflict so
    the organizer can reassign it.
@@ -65,6 +66,9 @@ The complete context-by-context script is in [demo-script.md](demo-script.md).
   uploaded image is automatically promoted into the gallery.
 - Acceptance is the only destructive test target. Production is read-only
   during judging.
+- The Programme timeline does not claim edit history the source tables do not
+  retain: review rows are latest-saved snapshots and schedule rows are current
+  placement. Its disclosure says this on the page.
 
 ## Known limitations
 

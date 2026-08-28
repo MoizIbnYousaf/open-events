@@ -127,6 +127,26 @@ describe('acceptance event reset', () => {
     )
       .bind(DEMO_CONF_2026_ID)
       .run()
+    const savedState = JSON.stringify({
+      schemaVersion: 1,
+      q: '',
+      decision: 'all',
+      routing: 'all',
+      sort: 'submitted-desc',
+      facets: [],
+    })
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO submission_saved_views
+             (event_id, id, name, schema_version, state_json, created_at, updated_at)
+           VALUES (?, 'reset-view', 'Reset view', 1, ?, ?, ?)`,
+      ).bind(DEMO_CONF_2026_ID, savedState, '2026-08-15T12:00:00.000Z', '2026-08-15T12:00:00.000Z'),
+      env.DB.prepare(
+        `INSERT INTO submission_saved_views
+             (event_id, id, name, schema_version, state_json, created_at, updated_at)
+           VALUES (?, 'other-view', 'Other view', 1, ?, ?, ?)`,
+      ).bind(otherEventId, savedState, '2026-08-15T12:00:00.000Z', '2026-08-15T12:00:00.000Z'),
+    ])
     await env.DB.prepare(
       `INSERT INTO email_delivery_jobs
          (id, captured_message_id, event_id, mode, status, recipient_fingerprint,
@@ -165,10 +185,16 @@ describe('acceptance event reset', () => {
       await env.DB.prepare("SELECT id FROM portal_resources WHERE id = 'reset-resource'").first(),
     ).toBeNull()
     expect(
+      await env.DB.prepare("SELECT id FROM submission_saved_views WHERE id = 'reset-view'").first(),
+    ).toBeNull()
+    expect(
       await env.DB.prepare('SELECT id FROM events WHERE id = ?').bind(otherEventId).first(),
     ).toEqual({
       id: otherEventId,
     })
+    expect(
+      await env.DB.prepare("SELECT id FROM submission_saved_views WHERE id = 'other-view'").first(),
+    ).toEqual({ id: 'other-view' })
     expect(await env.FILES.get(targetOne)).toBeNull()
     expect(await env.FILES.get(targetTwo)).toBeNull()
     expect(await env.FILES.get(unrelated)).not.toBeNull()

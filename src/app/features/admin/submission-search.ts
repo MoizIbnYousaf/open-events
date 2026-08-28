@@ -10,6 +10,10 @@ import {
   type SubmissionDeskQuery,
   type SubmissionFacetSelection,
 } from '../../../application/dtos/submission-desk.dto'
+import {
+  SUBMISSION_VIEW_SCHEMA_VERSION,
+  type SubmissionViewState,
+} from '../../../application/dtos/submission-view.dto'
 import { APP_SEARCH_PARAM_KEYS } from '../../lib/search-param-keys'
 
 const keys = APP_SEARCH_PARAM_KEYS.submissions
@@ -126,6 +130,20 @@ export function toSubmissionDeskQuery(search: SubmissionSearch): SubmissionDeskQ
 
 export function defaultSubmissionDeskQuery(): SubmissionDeskQuery {
   return DEFAULT_SUBMISSION_DESK_QUERY
+}
+
+export function toSubmissionViewState(search: SubmissionSearch): SubmissionViewState {
+  return {
+    schemaVersion: SUBMISSION_VIEW_SCHEMA_VERSION,
+    q: search.q,
+    decision: search.decision,
+    routing: search.routing,
+    sort: search.sort,
+    facets: search.facets.map((facet) => ({
+      elementId: facet.elementId,
+      values: [...facet.values],
+    })),
+  }
 }
 
 /** Omits validated defaults so links stay readable while retaining meaningful state. */

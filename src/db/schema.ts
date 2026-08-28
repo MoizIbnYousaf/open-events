@@ -60,6 +60,26 @@ export const events = sqliteTable('events', {
   backgroundUpdatedAt: text('background_updated_at'),
 })
 
+export const submissionSavedViews = sqliteTable(
+  'submission_saved_views',
+  {
+    eventId: text('event_id').notNull(),
+    id: text('id').notNull(),
+    name: text('name').notNull(),
+    schemaVersion: integer('schema_version').notNull(),
+    stateJson: text('state_json').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.id] }),
+    uniqueIndex('submission_saved_views_event_name').on(table.eventId, table.name),
+    index('idx_submission_saved_views_event_name').on(table.eventId, table.name, table.id),
+    foreignKey({ columns: [table.eventId], foreignColumns: [events.id] }),
+    check('submission_saved_views_schema_version', sql`${table.schemaVersion} = 1`),
+  ],
+)
+
 export const portalResources = sqliteTable(
   'portal_resources',
   {
@@ -912,6 +932,7 @@ export type AgendaSessionRow = typeof agendaSessions.$inferSelect
 export type AgendaSessionSpeakerRow = typeof agendaSessionSpeakers.$inferSelect
 export type SubmissionAcceptanceRow = typeof submissionAcceptances.$inferSelect
 export type SubmissionDecisionRow = typeof submissionDecisions.$inferSelect
+export type SubmissionSavedViewRow = typeof submissionSavedViews.$inferSelect
 export type SpeakerTaskRow = typeof speakerTasks.$inferSelect
 
 /** Drizzle mirror of migrations 0008, 0014, and 0030. */

@@ -43,12 +43,14 @@ import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
 import { preserveDeskLinkNavigation } from './programme-spotlight'
 import { useControlledProgrammeSpotlight } from './useProgrammeSpotlight'
 import { SubmissionFacetFilters } from './SubmissionFacetFilters'
+import { SubmissionViews } from './SubmissionViews'
 import { submissionsCsv } from './submission-operations'
 import {
   DEFAULT_SUBMISSION_SEARCH,
   compactSubmissionSearch,
   submissionSearchSchema,
   toSubmissionDeskQuery,
+  toSubmissionViewState,
   type SubmissionSearch,
   type SubmissionSearchInput,
 } from './submission-search'
@@ -348,6 +350,37 @@ export default function SubmissionList() {
                   }
                 />
               </Field>
+              <SubmissionViews
+                eventSlug={slug ?? ''}
+                activeViewId={search.view}
+                currentState={toSubmissionViewState(search)}
+                onApply={(view) =>
+                  setSearch({
+                    q: view.state.q,
+                    decision: view.state.decision,
+                    routing: view.state.routing,
+                    sort: view.state.sort,
+                    facets: view.state.facets.map((facet) => ({
+                      elementId: facet.elementId,
+                      values: [...facet.values],
+                    })),
+                    page: 1,
+                    view: view.id,
+                  })
+                }
+                onDeleted={(id) => {
+                  if (search.view !== id) return
+                  setSearch({
+                    q: search.q,
+                    decision: search.decision,
+                    routing: search.routing,
+                    sort: search.sort,
+                    facets: search.facets,
+                    page: search.page,
+                    view: undefined,
+                  })
+                }}
+              />
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 <NativeSelect
                   aria-label="Filter by decision"

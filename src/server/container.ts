@@ -33,6 +33,7 @@ import { ProfileService } from '../application/services/profile'
 import { SessionService } from '../application/services/session'
 import { SubmitService } from '../application/services/submit'
 import { SubmissionDeskService } from '../application/services/submission-desk'
+import { SubmissionViewService } from '../application/services/submission-views'
 import { TaxonomyService } from '../application/services/taxonomy'
 import type { AgendaRepository } from '../application/ports/agenda-repository'
 import type { Clock } from '../application/ports/clock'
@@ -71,6 +72,7 @@ import { createSupportRepository } from '../db/support-repository'
 import { createUploadedFileRepository } from '../db/uploaded-file-repository'
 import { createPortalResourceRepository } from '../db/portal-resource-repository'
 import { createSubmissionDeskRepository } from '../db/submission-desk-repository'
+import { createSubmissionViewRepository } from '../db/submission-view-repository'
 
 import type { ServerContext } from './env'
 import {
@@ -111,6 +113,7 @@ export interface ServerDeps {
   readonly directSessions: DirectSessionService
   readonly submit: SubmitService
   readonly submissionDesk: SubmissionDeskService
+  readonly submissionViews: SubmissionViewService
   readonly onboarding: OnboardingService
   readonly profile: ProfileService
   readonly evaluations: EvaluationService
@@ -224,6 +227,9 @@ export function buildServerDeps(
       events,
     ),
     submissionDesk: new SubmissionDeskService(createSubmissionDeskRepository(db)),
+    submissionViews: new SubmissionViewService(createSubmissionViewRepository(db), clock, () =>
+      crypto.randomUUID(),
+    ),
     profile: new ProfileService(contacts, createProgrammeRepository(db), clock),
     onboarding: new OnboardingService(
       createSubmissionRepository(db),

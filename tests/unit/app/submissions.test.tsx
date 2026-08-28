@@ -16,6 +16,7 @@ import type {
   SubmissionDetailDto,
   SubmissionListItemDto,
 } from '../../../src/application'
+import type { SubmissionViewDto } from '../../../src/application/dtos/submission-view.dto'
 import SubmissionDetail from '../../../src/app/features/admin/SubmissionDetail'
 import SubmissionList from '../../../src/app/features/admin/SubmissionList'
 import { submissionSearchValidator } from '../../../src/app/routes/-submission-search-validator'
@@ -25,6 +26,22 @@ const EVENT_SLUG = 'demo-conf-2026'
 const SUBMISSION_ID = 'submission-1'
 const FORM_ID = 'f0000000-0000-4000-8000-000000000001'
 const VERSION_ID = 'f0000000-0000-4000-8000-000000000002'
+
+const SAVED_VIEW: SubmissionViewDto = {
+  eventId: 'event-1',
+  id: 'view-1',
+  name: 'Needs review',
+  state: {
+    schemaVersion: 1,
+    q: 'My',
+    decision: 'pending',
+    routing: 'all',
+    sort: 'title-asc',
+    facets: [],
+  },
+  createdAt: '2026-08-28T12:00:00.000Z',
+  updatedAt: '2026-08-28T12:00:00.000Z',
+}
 
 const SUBMISSION_LIST_ITEM: SubmissionListItemDto = {
   id: SUBMISSION_ID,
@@ -117,6 +134,7 @@ const FORM_VERSION_DETAIL: FormVersionDetailDto = {
 
 let fetchMock: ReturnType<typeof vi.fn>
 let fetchHandler: (url: string, init?: RequestInit) => Response | Promise<Response>
+let savedViews: readonly SubmissionViewDto[]
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -131,6 +149,10 @@ function requestUrl(input: RequestInfo | URL): string {
 
 function listUrl() {
   return `/api/admin/events/${EVENT_SLUG}/submission-desk`
+}
+
+function viewsUrl() {
+  return `/api/admin/events/${EVENT_SLUG}/submission-views`
 }
 
 function deskResponse(rows: readonly SubmissionListItemDto[]) {
@@ -291,6 +313,7 @@ async function mountDetail(
 }
 
 beforeEach(() => {
+  savedViews = []
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
     if (method === 'GET' && url === listUrl()) {
@@ -320,7 +343,11 @@ beforeEach(() => {
     )
   }
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    return fetchHandler(requestUrl(input), init)
+    const url = requestUrl(input)
+    if ((init?.method ?? 'GET') === 'GET' && url === viewsUrl()) {
+      return jsonResponse(savedViews)
+    }
+    return fetchHandler(url, init)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
@@ -487,11 +514,13 @@ describe('organizer submissions', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/unable to load/i)
     expect(alert).not.toHaveTextContent('boom')
-    expect(fetchMock.mock.calls.length).toBe(1)
+    const listCalls = () =>
+      fetchMock.mock.calls.filter(([input]) => requestUrl(input).startsWith(listUrl()))
+    expect(listCalls()).toHaveLength(1)
     await user.click(screen.getByRole('button', { name: /retry/i }))
     expect(await screen.findByRole('table')).toBeInTheDocument()
-    expect(fetchMock.mock.calls.length).toBe(2)
-    const retried = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit?] | undefined
+    expect(listCalls()).toHaveLength(2)
+    const retried = listCalls()[1] as [RequestInfo | URL, RequestInit?] | undefined
     expect(retried).toBeDefined()
     expect(requestUrl(retried?.[0] ?? '')).toBe(listUrl())
     expect(retried?.[1]?.method ?? 'GET').toBe('GET')
@@ -684,10 +713,8 @@ describe('organizer submissions', () => {
     expect(screen.getByLabelText(/search submissions/i)).toHaveValue('My')
     expect(screen.getByLabelText('Filter by decision')).toHaveValue('pending')
 
-    const firstRequest = new URL(
-      requestUrl(fetchMock.mock.calls[0]?.[0] ?? ''),
-      'https://local.test',
-    )
+    const deskCall = fetchMock.mock.calls.find(([input]) => requestUrl(input).startsWith(listUrl()))
+    const firstRequest = new URL(requestUrl(deskCall?.[0] ?? ''), 'https://local.test')
     expect(firstRequest.pathname).toBe(listUrl())
     expect(firstRequest.searchParams.get('q')).toBe('My')
     expect(firstRequest.searchParams.get('decision')).toBe('pending')
@@ -699,6 +726,40 @@ describe('organizer submissions', () => {
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({ q: 'Workshop', tour: '1' })
     })
+  })
+
+  it('applies a shared saved view and clears its identity after a manual filter change', async () => {
+    const user = userEvent.setup()
+    savedViews = [SAVED_VIEW]
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url.startsWith(listUrl())) {
+        return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM]))
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+
+    const { router } = await mountList()
+    const viewSelect = await screen.findByRole('combobox', { name: 'Saved submission view' })
+    await screen.findByRole('option', { name: 'Needs review' })
+    await user.selectOptions(viewSelect, SAVED_VIEW.id)
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        q: 'My',
+        decision: 'pending',
+        sort: 'title-asc',
+        view: SAVED_VIEW.id,
+      })
+    })
+    expect(screen.getByLabelText(/search submissions/i)).toHaveValue('My')
+
+    await user.selectOptions(screen.getByLabelText('Filter by decision'), 'accepted')
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({ decision: 'accepted' })
+      expect(router.state.location.search).not.toHaveProperty('view')
+    })
+    expect(viewSelect).toHaveValue('')
   })
 
   it('renders no dashboard summary elements beyond the filtered row count', async () => {
@@ -1020,10 +1081,21 @@ describe('organizer submissions', () => {
   it('issues the exact committed GET sets per load with no unrelated fetches', async () => {
     await mountList()
     await screen.findByRole('table')
-    expect(fetchMock.mock.calls.length).toBe(1)
-    expect(requestUrl(fetchMock.mock.calls[0]?.[0] ?? '')).toBe(listUrl())
-    expect(fetchMock.mock.calls[0]?.[1]?.method ?? 'GET').toBe('GET')
-    expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe('include')
+    await screen.findByRole('combobox', { name: 'Saved submission view' })
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2))
+    const listReads = fetchMock.mock.calls
+      .map(([input, init]) => ({
+        url: requestUrl(input),
+        method: init?.method ?? 'GET',
+        credentials: init?.credentials,
+      }))
+      .sort((left, right) => left.url.localeCompare(right.url))
+    expect(listReads).toEqual(
+      [
+        { url: listUrl(), method: 'GET', credentials: 'include' },
+        { url: viewsUrl(), method: 'GET', credentials: 'include' },
+      ].sort((left, right) => left.url.localeCompare(right.url)),
+    )
 
     cleanup()
     fetchMock.mockClear()

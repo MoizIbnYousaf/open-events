@@ -25,6 +25,7 @@ const EXPECTED_INDEXES = [
   'idx_cfp_elements_event_version',
   'idx_cfp_condition_rules_event_version',
   'idx_cfp_routing_rules_event_version',
+  'idx_submission_saved_views_event_name',
 ] as const
 
 describe('lookup indexes (migration 0003)', () => {
@@ -67,6 +68,11 @@ describe('lookup indexes (migration 0003)', () => {
         DEMO_CONF_2026_FORM_ID,
       ),
       planFor(`SELECT * FROM proposal_submissions WHERE id = ?`, 'submission-1'),
+      planFor(
+        `SELECT * FROM submission_saved_views
+          WHERE event_id = ? ORDER BY name COLLATE NOCASE, id`,
+        'event-1',
+      ),
     ])
 
     expect(plans[0]).toContain('USING INDEX idx_cfp_form_versions_form_version')
@@ -79,6 +85,8 @@ describe('lookup indexes (migration 0003)', () => {
     expect(plans[3]).not.toContain('TEMP B-TREE')
     expect(plans[4]).toContain('USING INDEX idx_proposal_submissions_id')
     expect(plans[4]).not.toContain('SCAN')
+    expect(plans[5]).toContain('USING INDEX idx_submission_saved_views_event_name')
+    expect(plans[5]).not.toContain('TEMP B-TREE')
   })
 
   it('uses the unique ID indexes with SEARCH on the ID-only lookups', async () => {

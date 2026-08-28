@@ -35,6 +35,7 @@ const EVENT_DELETE_STATEMENTS = [
   'DELETE FROM session_content_status WHERE event_id = ?',
   'DELETE FROM speaker_profiles WHERE event_id = ?',
   'DELETE FROM portal_resources WHERE event_id = ?',
+  'DELETE FROM submission_saved_views WHERE event_id = ?',
   'DELETE FROM embeds WHERE event_id = ?',
   'DELETE FROM speaker_tasks WHERE event_id = ?',
   'DELETE FROM submission_decisions WHERE event_id = ?',

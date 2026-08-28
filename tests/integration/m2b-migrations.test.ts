@@ -48,6 +48,7 @@ const EXPECTED_TABLES = [
   'speaker_assignment_assignees',
   'event_email_templates',
   'portal_resources',
+  'submission_saved_views',
   'evaluation_criteria',
   'evaluation_rounds',
   'evaluation_assignments',
@@ -105,6 +106,7 @@ describe('migration apply from an empty local D1', () => {
       '0032_add_session_provenance.sql',
       '0033_portal_resources.sql',
       '0034_direct_sessions.sql',
+      '0035_submission_saved_views.sql',
     ])
 
     const tables = await env.DB.prepare(

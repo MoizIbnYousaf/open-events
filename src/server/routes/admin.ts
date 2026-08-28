@@ -15,6 +15,7 @@ import type {
 } from '../../application'
 import { ApplicationError } from '../../application/errors'
 import { submissionDeskQuerySchema } from '../../application/dtos/submission-desk-query'
+import { submissionViewStateSchema } from '../../application/dtos/submission-view.dto'
 import { EVENT_STATUSES, type EventDates, type EventStatus } from '../../domain/event'
 import type { FormElement, FormPage } from '../../domain/form-version'
 import type { ElementRule, RoutingRule } from '../../domain/rules'
@@ -1366,6 +1367,49 @@ export async function handleSubmissionDesk(context: ServerContext): Promise<Resp
   return context.json(await deps.submissionDesk.list(actor, eventId, query))
 }
 
+async function submissionViewContext(context: ServerContext) {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  return eventId === null ? notFoundResponse(context) : { deps, actor, eventId }
+}
+
+/** GET /api/admin/events/:slug/submission-views — event-wide organizer views. */
+export async function handleListSubmissionViews(context: ServerContext): Promise<Response> {
+  const resolved = await submissionViewContext(context)
+  if (resolved instanceof Response) return resolved
+  return context.json(await resolved.deps.submissionViews.list(resolved.actor, resolved.eventId))
+}
+
+/** POST /api/admin/events/:slug/submission-views — save the current filter snapshot. */
+export async function handleCreateSubmissionView(context: ServerContext): Promise<Response> {
+  const resolved = await submissionViewContext(context)
+  if (resolved instanceof Response) return resolved
+  const body = await readJsonBody(context)
+  if (body === null || typeof body.name !== 'string') return validationFailedResponse(context)
+  const state = submissionViewStateSchema.safeParse(body.state)
+  if (!state.success) return validationFailedResponse(context)
+  const created = await resolved.deps.submissionViews.create(resolved.actor, resolved.eventId, {
+    name: body.name,
+    state: state.data,
+  })
+  return context.json(created, 201)
+}
+
+/** DELETE /api/admin/events/:slug/submission-views/:id — event-scoped safe delete. */
+export async function handleDeleteSubmissionView(context: ServerContext): Promise<Response> {
+  const resolved = await submissionViewContext(context)
+  if (resolved instanceof Response) return resolved
+  const id = context.req.param('id')
+  if (id === undefined) return notFoundResponse(context)
+  await resolved.deps.submissionViews.delete(resolved.actor, resolved.eventId, id)
+  return context.json({ deleted: true })
+}
+
 /** GET /api/admin/events/:slug/submissions/:id. */
 export async function handleGetSubmissionDetail(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -2287,6 +2331,26 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleSubmissionDesk,
+  )
+  app.get(
+    '/api/admin/events/:slug/submission-views',
+    requireSession(),
+    requireActor('organizer'),
+    handleListSubmissionViews,
+  )
+  app.post(
+    '/api/admin/events/:slug/submission-views',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleCreateSubmissionView,
+  )
+  app.delete(
+    '/api/admin/events/:slug/submission-views/:id',
+    csrfGate(),
+    requireSession(),
+    requireActor('organizer'),
+    handleDeleteSubmissionView,
   )
   app.get(
     '/api/admin/events/:slug/submissions',

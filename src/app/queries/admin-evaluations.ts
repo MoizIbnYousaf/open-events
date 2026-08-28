@@ -28,6 +28,7 @@ import {
 } from '../api/admin-evaluations'
 import type { DistributeRoundBody } from '../api/admin-evaluations'
 import type { EventSlug, EvaluationRoundId, SubmissionId } from '../../domain'
+import { invalidateEventReadModels } from './event-read-model-cache'
 
 export const adminEvaluationQueryKeys = {
   criteria: (slug: EventSlug) => ['admin', 'events', slug, 'criteria'] as const,
@@ -71,9 +72,13 @@ export function useConfigureRound(slug: EventSlug, roundId: string) {
   })
 }
 
-/** Nudging changes nothing an organizer is looking at, so nothing is refetched. */
+/** Nudging records event-wide message intents, so both audit reads refetch. */
 export function useRemindReviewers(slug: EventSlug) {
-  return useServerMutation({ mutationFn: () => remindReviewers(slug) })
+  const queryClient = useQueryClient()
+  return useServerMutation({
+    mutationFn: () => remindReviewers(slug),
+    onSuccess: () => invalidateEventReadModels(queryClient, slug, 'communication'),
+  })
 }
 
 /**
@@ -88,6 +93,7 @@ export function useDistributeRound(slug: EventSlug, roundId: string) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.committee(slug) })
       await queryClient.invalidateQueries({ queryKey: roundConfigQueryKeys.pool(slug, roundId) })
+      await invalidateEventReadModels(queryClient, slug, 'review-assignment')
     },
   })
 }
@@ -244,6 +250,7 @@ export function useAssignEvaluator(slug: EventSlug, submissionId: SubmissionId) 
         queryClient.invalidateQueries({
           queryKey: adminEvaluationQueryKeys.committee(slug),
         }),
+        invalidateEventReadModels(queryClient, slug, 'review-assignment'),
       ])
     },
   })

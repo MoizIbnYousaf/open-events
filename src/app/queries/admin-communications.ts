@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useServerMutation } from '../../../adapters/tanstack-react-query'
 import { queriesInvalidatedOnVerdict } from './verdict-invalidation'
+import { invalidateEventReadModels } from './event-read-model-cache'
 
 import {
   acceptSubmission,
@@ -123,6 +124,7 @@ export function useSendAcceptance(slug: EventSlug, submissionId: SubmissionId) {
         queryClient.invalidateQueries({
           queryKey: adminCommunicationQueryKeys.acceptancePreview(submissionId),
         }),
+        invalidateEventReadModels(queryClient, slug, 'communication'),
       ])
     },
   })
@@ -152,6 +154,7 @@ export function useSendReminder(slug: EventSlug, submissionId: SubmissionId) {
         queryClient.invalidateQueries({
           queryKey: adminCommunicationQueryKeys.reminderPreview(submissionId),
         }),
+        invalidateEventReadModels(queryClient, slug, 'communication'),
       ])
     },
   })

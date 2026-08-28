@@ -10,6 +10,7 @@ import type {
 } from '../../application'
 import type { AnswerMap, SpeakerTaskKind, SpeakerTaskStatus } from '../../domain'
 import { requestJson } from '../api/admin-events'
+import { eventReadModelQueryKeys } from './event-read-model-cache'
 
 /**
  * One speaker-portal task row (REQ-011), projected from the SpeakerTaskDto the
@@ -61,7 +62,7 @@ export const READINESS_POLL_INTERVAL_MS = 30_000
 export const portalTaskQueryKeys = {
   tasks: () => ['portal', 'tasks'] as const,
   taskForm: (taskId: string) => ['portal', 'tasks', taskId, 'form'] as const,
-  readiness: (eventSlug: string) => ['admin', 'events', eventSlug, 'readiness'] as const,
+  readiness: eventReadModelQueryKeys.readiness,
 }
 
 function toPortalTask(task: SpeakerTaskDto): PortalTask {

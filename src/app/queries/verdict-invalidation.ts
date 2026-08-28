@@ -1,6 +1,6 @@
 import type { EventSlug, SubmissionId } from '../../domain'
 import { adminCommunicationQueryKeys } from './admin-communications'
-import { adminSubmissionQueryKeys } from './admin-submissions'
+import { eventReadModelKeysFor } from './event-read-model-cache'
 
 /**
  * Queries that must refetch after an accept or reject.
@@ -11,7 +11,6 @@ import { adminSubmissionQueryKeys } from './admin-submissions'
 export function queriesInvalidatedOnVerdict(slug: EventSlug, submissionId: SubmissionId) {
   return [
     adminCommunicationQueryKeys.acceptancePreview(submissionId),
-    adminSubmissionQueryKeys.list(slug),
-    adminSubmissionQueryKeys.detail(slug, submissionId),
+    ...eventReadModelKeysFor(slug, 'verdict'),
   ] as const
 }

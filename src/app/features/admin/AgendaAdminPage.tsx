@@ -44,6 +44,7 @@ import {
   unplaceAgendaSession,
 } from '../../api/admin-agenda'
 import { adminAgendaQueryKeys, useAgendaBoard } from '../../queries/admin-agenda'
+import { invalidateEventReadModels } from '../../queries/event-read-model-cache'
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
 import {
@@ -891,7 +892,7 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
       queryClient.setQueryData(queryKey, board)
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void invalidateEventReadModels(queryClient, eventSlug, 'agenda')
     },
   })
   const unplace = useMutation({
@@ -900,7 +901,7 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
       queryClient.setQueryData(queryKey, board)
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void invalidateEventReadModels(queryClient, eventSlug, 'agenda')
     },
   })
   const autoPlace = useMutation({
@@ -916,7 +917,7 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
       )
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void invalidateEventReadModels(queryClient, eventSlug, 'agenda')
     },
   })
   const publish = useMutation({
@@ -925,7 +926,7 @@ function AgendaAdminScreen({ eventSlug }: AgendaAdminPageProps) {
       queryClient.setQueryData(queryKey, result.board)
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void invalidateEventReadModels(queryClient, eventSlug, 'agenda')
     },
   })
   const [selectedDay, setSelectedDay] = useState<string | null>(null)

@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 
 import { listSpeakers } from '../api/admin-speakers'
 import type { EventSlug } from '../../domain'
+import { eventReadModelQueryKeys } from './event-read-model-cache'
 
 export const speakerQueryKeys = {
-  roster: (slug: EventSlug) => ['admin', 'events', slug, 'speakers'] as const,
+  roster: eventReadModelQueryKeys.speakers,
 }
 
 export function useSpeakerRoster(slug: EventSlug) {

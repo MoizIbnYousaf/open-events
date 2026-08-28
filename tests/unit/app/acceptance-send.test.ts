@@ -14,9 +14,11 @@ describe('acceptanceSendComplete', () => {
 })
 
 describe('queriesInvalidatedOnVerdict', () => {
-  it('refetches the submissions list as well as the preview', () => {
+  it('refetches both submission reads, downstream desks, and the timeline', () => {
     const keys = queriesInvalidatedOnVerdict('demo-conf-2026', 'sub-1')
     expect(keys).toContainEqual(['admin', 'events', 'demo-conf-2026', 'submissions'])
+    expect(keys).toContainEqual(['admin', 'events', 'demo-conf-2026', 'submission-desk'])
+    expect(keys).toContainEqual(['admin', 'events', 'demo-conf-2026', 'programme-timeline'])
     expect(keys).toContainEqual(['admin', 'submissions', 'sub-1', 'acceptance-preview'])
   })
 })

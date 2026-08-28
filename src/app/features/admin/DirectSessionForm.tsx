@@ -9,9 +9,9 @@ import { Input } from '../../../components/ui/input'
 import { NativeSelect } from '../../../components/ui/native-select'
 import { Textarea } from '../../../components/ui/textarea'
 import { createDirectSession } from '../../api/admin-agenda'
-import { adminAgendaQueryKeys } from '../../queries/admin-agenda'
+import { invalidateEventReadModels } from '../../queries/event-read-model-cache'
 import { useTaxonomies } from '../../queries/admin-events'
-import { speakerQueryKeys, useSpeakerRoster } from '../../queries/admin-speakers'
+import { useSpeakerRoster } from '../../queries/admin-speakers'
 
 export default function DirectSessionForm({ eventSlug }: { readonly eventSlug: string }) {
   const [open, setOpen] = useState(false)
@@ -71,9 +71,7 @@ function DirectSessionFields({
       setTitle('')
       setAbstract('')
       setNotes('')
-      void client.invalidateQueries({ queryKey: adminAgendaQueryKeys.board(eventSlug) })
-      void client.invalidateQueries({ queryKey: speakerQueryKeys.roster(eventSlug) })
-      void client.invalidateQueries({ queryKey: ['admin', 'events', eventSlug, 'readiness'] })
+      void invalidateEventReadModels(client, eventSlug, 'direct-session')
     },
   })
   const people = speakers.data ?? []

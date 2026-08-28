@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 
 import { listMessages } from '../api/admin-messages'
 import type { EventSlug } from '../../domain'
+import { eventReadModelQueryKeys } from './event-read-model-cache'
 
 export const messageQueryKeys = {
-  log: (slug: EventSlug) => ['admin', 'events', slug, 'messages'] as const,
+  log: eventReadModelQueryKeys.messages,
 }
 
 export function useMessageLog(slug: EventSlug) {

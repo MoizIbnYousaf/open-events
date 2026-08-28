@@ -27,6 +27,8 @@ import {
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import { requestJson } from '../../api/admin-events'
+import { invalidateEventReadModels } from '../../queries/event-read-model-cache'
+import { useMessageLog } from '../../queries/admin-messages'
 import { speakerQueryKeys, useSpeakerRoster } from '../../queries/admin-speakers'
 import type { EventSlug } from '../../../domain'
 import type { SpeakerRosterEntryDto } from '../../../application'
@@ -363,6 +365,7 @@ function SpeakerRow({
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: speakerQueryKeys.roster(eventSlug) })
+      void invalidateEventReadModels(client, eventSlug, 'communication')
     },
   })
   return (
@@ -541,6 +544,7 @@ function FormTaskAssign({
   readonly eventSlug: EventSlug
   readonly people: readonly SpeakerRosterEntryDto[]
 }) {
+  const client = useQueryClient()
   const [formId, setFormId] = useState('')
   const [submissionId, setSubmissionId] = useState('')
   const [contactId, setContactId] = useState('')
@@ -571,6 +575,7 @@ function FormTaskAssign({
         method: 'POST',
         body: JSON.stringify({ formId, contactId }),
       }),
+    onSuccess: () => invalidateEventReadModels(client, eventSlug, 'onboarding'),
   })
   return (
     <section className="grid gap-2" aria-labelledby="form-task-heading">
@@ -775,6 +780,7 @@ function SpeakerMailForm({
   readonly eventSlug: EventSlug
   readonly people: readonly SpeakerRosterEntryDto[]
 }) {
+  const client = useQueryClient()
   const templates = useQuery({
     queryKey: ['admin', 'speaker-templates', eventSlug],
     queryFn: () =>
@@ -782,13 +788,7 @@ function SpeakerMailForm({
         `/api/admin/events/${eventSlug}/speakers/templates`,
       ),
   })
-  const history = useQuery({
-    queryKey: ['admin', 'messages', eventSlug],
-    queryFn: () =>
-      requestJson<readonly { toEmail: string; subject: string; createdAt: string }[]>(
-        `/api/admin/events/${eventSlug}/messages`,
-      ),
-  })
+  const history = useMessageLog(eventSlug)
   const first = templates.data?.[0]
   const [subject, setSubject] = useState(first?.subject ?? 'Welcome to {{eventName}} speakers')
   const [body, setBody] = useState(first?.body ?? 'Hi {{name}},\n\nWelcome to {{eventName}}.')
@@ -811,7 +811,7 @@ function SpeakerMailForm({
         body: JSON.stringify({ subject, body, contactIds }),
       }),
     onSuccess: () => {
-      void history.refetch()
+      void invalidateEventReadModels(client, eventSlug, 'communication')
     },
   })
   const outstandingIds = people

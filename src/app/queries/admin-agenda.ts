@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 
 import { getAgendaBoard } from '../api/admin-agenda'
 import type { EventSlug } from '../../domain'
+import { eventReadModelQueryKeys } from './event-read-model-cache'
 
 export const adminAgendaQueryKeys = {
-  board: (slug: EventSlug) => ['admin', 'events', slug, 'agenda'] as const,
+  board: eventReadModelQueryKeys.agenda,
 }
 
 export function useAgendaBoard(slug: EventSlug | undefined) {

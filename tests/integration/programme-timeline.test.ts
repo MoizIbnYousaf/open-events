@@ -61,6 +61,26 @@ describe('programme timeline repository', () => {
     expect(source.items.some((item) => item.detail.includes('Other event secret'))).toBe(false)
   })
 
+  it('never treats a provisional email-shaped contact name as display copy', async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE contacts SET name = email
+          WHERE id = 'c0000000-0000-4000-8000-000000000601'`,
+      ),
+      env.DB.prepare(
+        `UPDATE contacts SET name = email
+            WHERE id IN (SELECT contact_id FROM speaker_tasks WHERE event_id = ?)`,
+      ).bind(DEMO_CONF_2026_ID),
+    ])
+
+    const source = await createProgrammeTimelineRepository(env.DB).listLatest(DEMO_CONF_2026_ID)
+    const review = source.items.find((item) => item.kind === 'review_assigned')
+    const onboarding = source.items.find((item) => item.kind === 'speaker_task_assigned')
+    expect(review?.detail).toContain('Reviewer')
+    expect(onboarding?.detail).toContain('Speaker')
+    expect(JSON.stringify([review, onboarding])).not.toContain('@example.test')
+  })
+
   it('uses the same fixed ten statements before and after the event grows', async () => {
     function countingDb() {
       let prepares = 0

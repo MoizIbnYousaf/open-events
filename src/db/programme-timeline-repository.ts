@@ -194,8 +194,13 @@ const SCHEDULE_SQL = `
    ORDER BY agenda.updated_at DESC, agenda.submission_id ASC
    LIMIT ?`
 
+function personLabel(name: string, fallback: 'Reviewer' | 'Speaker'): string {
+  const normalized = name.trim()
+  return normalized === '' || normalized.includes('@') ? fallback : normalized
+}
+
 function reviewDetail(row: RawReviewEvent): string {
-  return `${row.evaluator_name} · ${row.round_name} · ${row.submission_title}`
+  return `${personLabel(row.evaluator_name, 'Reviewer')} · ${row.round_name} · ${row.submission_title}`
 }
 
 function reviewItem(
@@ -376,7 +381,7 @@ export function createProgrammeTimelineRepository(db: D1Database): ProgrammeTime
             category: 'onboarding',
             occurredAt: row.occurred_at,
             title: completed ? 'Speaker task completed' : 'Speaker task assigned',
-            detail: `${taskLabel(row.kind)} · ${row.contact_name} · ${row.submission_title}`,
+            detail: `${taskLabel(row.kind)} · ${personLabel(row.contact_name, 'Speaker')} · ${row.submission_title}`,
             submissionId: row.submission_id,
             submissionTitle: row.submission_title,
           })

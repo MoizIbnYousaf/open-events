@@ -8,7 +8,6 @@ import {
   MAX_SUBMISSION_FACET_VALUES,
   MAX_SUBMISSION_QUERY_LENGTH,
   MAX_SUBMISSION_SELECTED_VALUES,
-  type SubmissionDeskQuery,
 } from './submission-desk.dto'
 
 export const submissionFacetValuesSchema = z
@@ -57,7 +56,3 @@ export const submissionDeskQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   facets: submissionFacetSelectionsSchema.default([]),
 })
-
-export function parseSubmissionDeskQuery(value: unknown): SubmissionDeskQuery {
-  return submissionDeskQuerySchema.parse(value)
-}

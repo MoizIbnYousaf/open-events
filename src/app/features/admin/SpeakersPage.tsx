@@ -27,9 +27,11 @@ import {
 import { Skeleton } from '../../../components/ui/skeleton'
 import { StatusLive } from '../../../components/ui/status-live'
 import { requestJson } from '../../api/admin-events'
+import { useFormsList } from '../../queries/admin-events'
 import { invalidateEventReadModels } from '../../queries/event-read-model-cache'
 import { useMessageLog } from '../../queries/admin-messages'
 import { speakerQueryKeys, useSpeakerRoster } from '../../queries/admin-speakers'
+import { useSubmissionList } from '../../queries/admin-submissions'
 import type { EventSlug } from '../../../domain'
 import type { SpeakerRosterEntryDto } from '../../../application'
 import { useProgrammeSpotlight } from './useProgrammeSpotlight'
@@ -548,25 +550,8 @@ function FormTaskAssign({
   const [formId, setFormId] = useState('')
   const [submissionId, setSubmissionId] = useState('')
   const [contactId, setContactId] = useState('')
-  const forms = useQuery({
-    queryKey: ['admin', 'forms', eventSlug],
-    queryFn: () =>
-      requestJson<readonly { formId: string; slug: string; publishedVersionId: string | null }[]>(
-        `/api/admin/events/${eventSlug}/forms`,
-      ),
-  })
-  const submissions = useQuery({
-    queryKey: ['admin', 'events', eventSlug, 'submissions'],
-    queryFn: () =>
-      requestJson<
-        readonly {
-          id: string
-          title: string
-          decision: string
-          primarySpeaker: { contactId: string }
-        }[]
-      >(`/api/admin/events/${eventSlug}/submissions`),
-  })
+  const forms = useFormsList(eventSlug)
+  const submissions = useSubmissionList(eventSlug)
   const published = (forms.data ?? []).filter((form) => form.publishedVersionId !== null)
   const accepted = (submissions.data ?? []).filter((row) => row.decision === 'accepted')
   const assign = useMutation({

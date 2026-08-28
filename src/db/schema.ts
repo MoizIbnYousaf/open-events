@@ -74,7 +74,6 @@ export const submissionSavedViews = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.eventId, table.id] }),
     uniqueIndex('submission_saved_views_event_name').on(table.eventId, table.name),
-    index('idx_submission_saved_views_event_name').on(table.eventId, table.name, table.id),
     foreignKey({ columns: [table.eventId], foreignColumns: [events.id] }),
     check('submission_saved_views_schema_version', sql`${table.schemaVersion} = 1`),
   ],

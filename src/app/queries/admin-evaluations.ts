@@ -91,9 +91,11 @@ export function useDistributeRound(slug: EventSlug, roundId: string) {
   return useServerMutation({
     mutationFn: (body: DistributeRoundBody) => distributeRound(slug, roundId, body),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.committee(slug) })
-      await queryClient.invalidateQueries({ queryKey: roundConfigQueryKeys.pool(slug, roundId) })
-      await invalidateEventReadModels(queryClient, slug, 'review-assignment')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.committee(slug) }),
+        queryClient.invalidateQueries({ queryKey: roundConfigQueryKeys.pool(slug, roundId) }),
+        invalidateEventReadModels(queryClient, slug, 'review-assignment'),
+      ])
     },
   })
 }

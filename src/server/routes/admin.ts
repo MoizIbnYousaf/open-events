@@ -1334,6 +1334,17 @@ export async function handleListSubmissions(context: ServerContext): Promise<Res
   return context.json(submissions)
 }
 
+async function organizerEventContext(context: ServerContext) {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  return eventId === null ? notFoundResponse(context) : { deps, actor, eventId }
+}
+
 function readSubmissionDeskQuery(context: ServerContext) {
   const search = new URL(context.req.url).searchParams
   let facets: unknown = undefined
@@ -1358,28 +1369,13 @@ function readSubmissionDeskQuery(context: ServerContext) {
 
 /** GET /api/admin/events/:slug/submission-desk — bounded organizer read model. */
 export async function handleSubmissionDesk(context: ServerContext): Promise<Response> {
-  const deps = depsFromContext(context)
-  if (deps === null) return databaseUnavailableResponse(context)
-  const actor = requireOrganizer(context)
-  if (actor === null) return forbiddenResponse(context)
-  const slug = context.req.param('slug')
-  if (slug === undefined) return notFoundResponse(context)
-  const eventId = await resolveEventId(deps, slug)
-  if (eventId === null) return notFoundResponse(context)
+  const resolved = await organizerEventContext(context)
+  if (resolved instanceof Response) return resolved
   const query = readSubmissionDeskQuery(context)
   if (query === null) return validationFailedResponse(context)
-  return context.json(await deps.submissionDesk.list(actor, eventId, query))
-}
-
-async function organizerEventContext(context: ServerContext) {
-  const deps = depsFromContext(context)
-  if (deps === null) return databaseUnavailableResponse(context)
-  const actor = requireOrganizer(context)
-  if (actor === null) return forbiddenResponse(context)
-  const slug = context.req.param('slug')
-  if (slug === undefined) return notFoundResponse(context)
-  const eventId = await resolveEventId(deps, slug)
-  return eventId === null ? notFoundResponse(context) : { deps, actor, eventId }
+  return context.json(
+    await resolved.deps.submissionDesk.list(resolved.actor, resolved.eventId, query),
+  )
 }
 
 /** GET /api/admin/events/:slug/submission-views — event-wide organizer views. */

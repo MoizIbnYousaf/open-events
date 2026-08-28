@@ -34,15 +34,6 @@ export interface SubmissionDeskQuery {
   readonly facets: readonly SubmissionFacetSelection[]
 }
 
-export const DEFAULT_SUBMISSION_DESK_QUERY: SubmissionDeskQuery = {
-  q: '',
-  decision: 'all',
-  routing: 'all',
-  sort: 'submitted-desc',
-  page: 1,
-  facets: [],
-}
-
 export interface SubmissionFacetOptionDto {
   readonly value: string
   readonly count: number

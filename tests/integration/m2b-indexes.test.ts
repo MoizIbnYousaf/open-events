@@ -25,7 +25,7 @@ const EXPECTED_INDEXES = [
   'idx_cfp_elements_event_version',
   'idx_cfp_condition_rules_event_version',
   'idx_cfp_routing_rules_event_version',
-  'idx_submission_saved_views_event_name',
+  'submission_saved_views_event_name',
   'idx_proposal_submissions_event_submitted',
   'idx_evaluation_assignments_event_created',
   'idx_evaluation_assignments_event_recused',
@@ -95,7 +95,7 @@ describe('lookup indexes (migration 0003)', () => {
     expect(plans[3]).not.toContain('TEMP B-TREE')
     expect(plans[4]).toContain('USING INDEX idx_proposal_submissions_id')
     expect(plans[4]).not.toContain('SCAN')
-    expect(plans[5]).toContain('USING INDEX idx_submission_saved_views_event_name')
+    expect(plans[5]).toContain('USING INDEX submission_saved_views_event_name')
     expect(plans[5]).not.toContain('TEMP B-TREE')
   })
 

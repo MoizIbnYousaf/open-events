@@ -6,6 +6,7 @@ import {
   type ProgrammeTimelineKind,
 } from '../application/dtos/programme-timeline.dto'
 import type { ProgrammeTimelineRepository } from '../application/ports/programme-timeline-repository'
+import { isSubmissionDecisionOutcome } from '../domain'
 import { DbDecodeError } from './mappers'
 
 const SOURCE_LIMIT = PROGRAMME_TIMELINE_LIMIT + 1
@@ -314,21 +315,19 @@ export function createProgrammeTimelineRepository(db: D1Database): ProgrammeTime
         D1Result<unknown>,
         D1Result<unknown>,
       ]
-      const sources = [
-        sourceRows<RawSubmissionEvent>(submissionResult),
-        sourceRows<RawReviewEvent>(assignmentResult),
-        sourceRows<RawReviewEvent>(recusalResult),
-        sourceRows<RawReviewEvent>(legacyReviewResult),
-        sourceRows<RawReviewEvent>(roundReviewResult),
-        sourceRows<RawDecisionEvent>(decisionResult),
-        sourceRows<RawTaskEvent>(taskCreatedResult),
-        sourceRows<RawTaskEvent>(taskCompletedResult),
-        sourceRows<RawMessageEvent>(messageResult),
-        sourceRows<RawScheduleEvent>(scheduleResult),
-      ] as const
+      const submissionRows = sourceRows<RawSubmissionEvent>(submissionResult)
+      const assignmentRows = sourceRows<RawReviewEvent>(assignmentResult)
+      const recusalRows = sourceRows<RawReviewEvent>(recusalResult)
+      const legacyReviewRows = sourceRows<RawReviewEvent>(legacyReviewResult)
+      const roundReviewRows = sourceRows<RawReviewEvent>(roundReviewResult)
+      const decisionRows = sourceRows<RawDecisionEvent>(decisionResult)
+      const taskCreatedRows = sourceRows<RawTaskEvent>(taskCreatedResult)
+      const taskCompletedRows = sourceRows<RawTaskEvent>(taskCompletedResult)
+      const messageRows = sourceRows<RawMessageEvent>(messageResult)
+      const scheduleRows = sourceRows<RawScheduleEvent>(scheduleResult)
       const items: ProgrammeTimelineItemDto[] = []
 
-      for (const row of sources[0]) {
+      for (const row of submissionRows) {
         if (row.source !== 'cfp' && row.source !== 'direct') {
           throw new DbDecodeError(
             `programme timeline submission carries unknown source '${row.source}'`,
@@ -346,13 +345,13 @@ export function createProgrammeTimelineRepository(db: D1Database): ProgrammeTime
           submissionTitle: row.title,
         })
       }
-      items.push(...sources[1].map((row) => reviewItem(row, 'review_assigned')))
-      items.push(...sources[2].map((row) => reviewItem(row, 'review_recused')))
-      items.push(...sources[3].map((row) => reviewItem(row, 'review_saved')))
-      items.push(...sources[4].map((row) => reviewItem(row, 'review_saved')))
+      items.push(...assignmentRows.map((row) => reviewItem(row, 'review_assigned')))
+      items.push(...recusalRows.map((row) => reviewItem(row, 'review_recused')))
+      items.push(...legacyReviewRows.map((row) => reviewItem(row, 'review_saved')))
+      items.push(...roundReviewRows.map((row) => reviewItem(row, 'review_saved')))
 
-      for (const row of sources[5]) {
-        if (row.outcome !== 'accepted' && row.outcome !== 'rejected') {
+      for (const row of decisionRows) {
+        if (!isSubmissionDecisionOutcome(row.outcome)) {
           throw new DbDecodeError(
             `programme timeline decision carries unknown outcome '${row.outcome}'`,
           )
@@ -371,8 +370,8 @@ export function createProgrammeTimelineRepository(db: D1Database): ProgrammeTime
       }
 
       for (const [rows, completed] of [
-        [sources[6], false],
-        [sources[7], true],
+        [taskCreatedRows, false],
+        [taskCompletedRows, true],
       ] as const) {
         for (const row of rows) {
           items.push({
@@ -388,7 +387,7 @@ export function createProgrammeTimelineRepository(db: D1Database): ProgrammeTime
         }
       }
 
-      for (const row of sources[8]) {
+      for (const row of messageRows) {
         const kind = messageKind(row.kind)
         items.push({
           id: `${kind}:${row.id}`,
@@ -405,7 +404,7 @@ export function createProgrammeTimelineRepository(db: D1Database): ProgrammeTime
         })
       }
 
-      for (const row of sources[9]) {
+      for (const row of scheduleRows) {
         items.push({
           id: `schedule_current:${row.submission_id}`,
           kind: 'schedule_current',
@@ -421,16 +420,20 @@ export function createProgrammeTimelineRepository(db: D1Database): ProgrammeTime
       return {
         items,
         truncatedCategories: [
-          ...(sources[0].length > PROGRAMME_TIMELINE_LIMIT ? (['submissions'] as const) : []),
-          ...(sources.slice(1, 5).some((rows) => rows.length > PROGRAMME_TIMELINE_LIMIT)
+          ...(submissionRows.length > PROGRAMME_TIMELINE_LIMIT ? (['submissions'] as const) : []),
+          ...([assignmentRows, recusalRows, legacyReviewRows, roundReviewRows].some(
+            (rows) => rows.length > PROGRAMME_TIMELINE_LIMIT,
+          )
             ? (['reviews'] as const)
             : []),
-          ...(sources[5].length > PROGRAMME_TIMELINE_LIMIT ? (['decisions'] as const) : []),
-          ...(sources.slice(6, 8).some((rows) => rows.length > PROGRAMME_TIMELINE_LIMIT)
+          ...(decisionRows.length > PROGRAMME_TIMELINE_LIMIT ? (['decisions'] as const) : []),
+          ...([taskCreatedRows, taskCompletedRows].some(
+            (rows) => rows.length > PROGRAMME_TIMELINE_LIMIT,
+          )
             ? (['onboarding'] as const)
             : []),
-          ...(sources[8].length > PROGRAMME_TIMELINE_LIMIT ? (['communications'] as const) : []),
-          ...(sources[9].length > PROGRAMME_TIMELINE_LIMIT ? (['schedule'] as const) : []),
+          ...(messageRows.length > PROGRAMME_TIMELINE_LIMIT ? (['communications'] as const) : []),
+          ...(scheduleRows.length > PROGRAMME_TIMELINE_LIMIT ? (['schedule'] as const) : []),
         ],
       }
     },

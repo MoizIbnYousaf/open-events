@@ -13,13 +13,8 @@ import { SUBMISSION_DESK_PAGE_SIZE } from '../dtos/submission-desk.dto'
 import type { SubmissionDeskRepository } from '../ports/submission-desk-repository'
 
 interface PreparedFacet {
-  readonly definition: SubmissionDeskChoiceField
   readonly dto: SubmissionFacetDto
   readonly values: ReadonlySet<string>
-}
-
-function facetKey(elementId: string): string {
-  return elementId
 }
 
 function answerValues(value: AnswerValue | null | undefined): readonly string[] {
@@ -71,7 +66,6 @@ function prepareFacets(
       if (options.length === 0) return []
       return [
         {
-          definition,
           dto: {
             elementId: definition.elementId,
             versionId: definition.versionId,
@@ -112,11 +106,11 @@ function matchesFacets(
   facets: ReadonlyMap<string, PreparedFacet>,
 ): boolean {
   for (const requested of selected) {
-    const facet = facets.get(facetKey(requested.elementId))
-    if (facet === undefined || record.formVersionId !== facet.definition.versionId) return false
+    const facet = facets.get(requested.elementId)
+    if (facet === undefined || record.formVersionId !== facet.dto.versionId) return false
     const valid = requested.values.filter((value) => facet.values.has(value))
     if (valid.length !== requested.values.length || valid.length === 0) return false
-    const actual = new Set(answerValues(record.answers[facet.definition.fieldKey]))
+    const actual = new Set(answerValues(record.answers[facet.dto.fieldKey]))
     if (!valid.some((value) => actual.has(value))) return false
   }
   return true
@@ -127,7 +121,7 @@ function invalidFacetSelections(
   facets: ReadonlyMap<string, PreparedFacet>,
 ): readonly SubmissionFacetSelection[] {
   return selected.filter((selection) => {
-    const facet = facets.get(facetKey(selection.elementId))
+    const facet = facets.get(selection.elementId)
     return (
       facet === undefined ||
       selection.values.length === 0 ||
@@ -183,7 +177,7 @@ export class SubmissionDeskService {
   ): Promise<SubmissionDeskDto> {
     const source = await this.#repository.listByEvent(eventId)
     const prepared = prepareFacets(source.records, source.choiceFields)
-    const byId = new Map(prepared.map((facet) => [facetKey(facet.dto.elementId), facet]))
+    const byId = new Map(prepared.map((facet) => [facet.dto.elementId, facet]))
     const invalid = invalidFacetSelections(query.facets, byId)
     const matching =
       invalid.length > 0

@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 
 import {
+  SUBMISSION_VIEW_SCHEMA_VERSION,
   parseSubmissionViewState,
   type SubmissionViewRecord,
 } from '../application/dtos/submission-view.dto'
@@ -18,7 +19,7 @@ interface RawViewRow {
 }
 
 function toView(row: RawViewRow): SubmissionViewRecord {
-  if (row.schema_version !== 1) {
+  if (row.schema_version !== SUBMISSION_VIEW_SCHEMA_VERSION) {
     throw new DbDecodeError(`saved submission view carries schema version '${row.schema_version}'`)
   }
   let parsed: unknown

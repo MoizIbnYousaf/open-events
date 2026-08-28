@@ -289,7 +289,7 @@ export default function SubmissionList() {
     search.spotlight,
     selectSpotlight,
   )
-  const selected = matches.find((row) => row.id === spotlightId) ?? matches[0] ?? null
+  const spotlightRow = matches.find((row) => row.id === spotlightId) ?? matches[0] ?? null
   const hasRows = desk !== undefined && desk.total > 0
 
   if (listQuery.isError) {
@@ -391,7 +391,7 @@ export default function SubmissionList() {
         ) : desk !== undefined ? (
           <div
             data-slot="submissions-canvas"
-            data-spotlight={selected?.id ?? undefined}
+            data-spotlight={spotlightRow?.id ?? undefined}
             className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_26rem] xl:items-start"
           >
             <div className="grid min-w-0 gap-3">
@@ -657,7 +657,7 @@ export default function SubmissionList() {
                       <TableRow
                         key={row.id}
                         className={ROW_EMPHASIS}
-                        data-selected={selected?.id === row.id ? '' : undefined}
+                        data-selected={spotlightRow?.id === row.id ? '' : undefined}
                         data-state={selectedIds.has(row.id) ? 'selected' : undefined}
                         onClick={() => select(row.id)}
                       >
@@ -702,7 +702,7 @@ export default function SubmissionList() {
                 </Table>
               )}
             </div>
-            {selected !== null ? <SubmissionPeek row={selected} slug={slug ?? ''} /> : null}
+            {spotlightRow !== null ? <SubmissionPeek row={spotlightRow} slug={slug ?? ''} /> : null}
           </div>
         ) : null}
       </section>
@@ -713,14 +713,14 @@ export default function SubmissionList() {
 function downloadSubmissionCsv(
   slug: string,
   rows: readonly SubmissionListItemDto[],
-  selected = false,
+  selectedOnly = false,
 ) {
   const url = URL.createObjectURL(
     new Blob([submissionsCsv(rows)], { type: 'text/csv;charset=utf-8' }),
   )
   const link = document.createElement('a')
   link.href = url
-  link.download = `${slug}-${selected ? 'selected-' : ''}submissions.csv`
+  link.download = `${slug}-${selectedOnly ? 'selected-' : ''}submissions.csv`
   link.click()
   URL.revokeObjectURL(url)
 }

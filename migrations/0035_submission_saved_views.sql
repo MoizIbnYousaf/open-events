@@ -17,9 +17,8 @@ CREATE TABLE submission_saved_views (
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
   PRIMARY KEY (event_id, id),
-  UNIQUE (event_id, name),
   FOREIGN KEY (event_id) REFERENCES events(id)
 );
 
-CREATE INDEX idx_submission_saved_views_event_name
-  ON submission_saved_views(event_id, name, id);
+CREATE UNIQUE INDEX submission_saved_views_event_name
+  ON submission_saved_views(event_id, name);

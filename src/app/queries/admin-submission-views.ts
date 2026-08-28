@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { useServerMutation } from '../../../adapters/tanstack-react-query'
 import type { SubmissionViewState } from '../../application/dtos/submission-view.dto'
 import type { EventSlug } from '../../domain'
 import {
@@ -21,7 +22,7 @@ export function useSubmissionViews(slug: EventSlug) {
 
 export function useCreateSubmissionView(slug: EventSlug) {
   const client = useQueryClient()
-  return useMutation({
+  return useServerMutation({
     mutationFn: (input: { readonly name: string; readonly state: SubmissionViewState }) =>
       createSubmissionView(slug, input),
     onSuccess: () => client.invalidateQueries({ queryKey: submissionViewQueryKeys.list(slug) }),
@@ -30,7 +31,7 @@ export function useCreateSubmissionView(slug: EventSlug) {
 
 export function useDeleteSubmissionView(slug: EventSlug) {
   const client = useQueryClient()
-  return useMutation({
+  return useServerMutation({
     mutationFn: (id: string) => deleteSubmissionView(slug, id),
     onSuccess: () => client.invalidateQueries({ queryKey: submissionViewQueryKeys.list(slug) }),
   })

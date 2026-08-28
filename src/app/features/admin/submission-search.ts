@@ -1,5 +1,4 @@
 import {
-  DEFAULT_SUBMISSION_DESK_QUERY,
   MAX_SUBMISSION_FACETS,
   MAX_SUBMISSION_FACET_TOKEN_LENGTH,
   MAX_SUBMISSION_FACET_VALUES,
@@ -126,10 +125,6 @@ export function toSubmissionDeskQuery(search: SubmissionSearch): SubmissionDeskQ
     page: search.page,
     facets: search.facets,
   }
-}
-
-export function defaultSubmissionDeskQuery(): SubmissionDeskQuery {
-  return DEFAULT_SUBMISSION_DESK_QUERY
 }
 
 export function toSubmissionViewState(search: SubmissionSearch): SubmissionViewState {

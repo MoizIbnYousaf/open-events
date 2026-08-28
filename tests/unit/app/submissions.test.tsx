@@ -18,6 +18,7 @@ import type {
 } from '../../../src/application'
 import SubmissionDetail from '../../../src/app/features/admin/SubmissionDetail'
 import SubmissionList from '../../../src/app/features/admin/SubmissionList'
+import { submissionSearchValidator } from '../../../src/app/routes/-submission-search-validator'
 import { createQueryClient } from '../../../src/app/query-client'
 
 const EVENT_SLUG = 'demo-conf-2026'
@@ -129,7 +130,22 @@ function requestUrl(input: RequestInfo | URL): string {
 }
 
 function listUrl() {
-  return `/api/admin/events/${EVENT_SLUG}/submissions`
+  return `/api/admin/events/${EVENT_SLUG}/submission-desk`
+}
+
+function deskResponse(rows: readonly SubmissionListItemDto[]) {
+  return {
+    rows,
+    total: rows.length,
+    matchingTotal: rows.length,
+    page: 1,
+    pageSize: 50,
+    pageCount: rows.length === 0 ? 0 : 1,
+    truncated: false,
+    invalidFacetSelections: [],
+    routingOptions: [],
+    facetCounts: [],
+  }
 }
 
 function detailUrl() {
@@ -226,6 +242,7 @@ async function mountList(initialEntry = `/admin/events/${EVENT_SLUG}/submissions
   const listRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/admin/events/$slug/submissions',
+    validateSearch: submissionSearchValidator,
     component: SubmissionList,
   })
   const router = createRouter({
@@ -242,11 +259,14 @@ async function mountList(initialEntry = `/admin/events/${EVENT_SLUG}/submissions
   return { queryClient, router }
 }
 
-async function mountDetail() {
+async function mountDetail(
+  initialEntry = `/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}`,
+) {
   const rootRoute = createRootRoute()
   const listRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/admin/events/$slug/submissions',
+    validateSearch: submissionSearchValidator,
     component: SubmissionList,
   })
   const detailRoute = createRoute({
@@ -257,7 +277,7 @@ async function mountDetail() {
   const router = createRouter({
     routeTree: rootRoute.addChildren([listRoute, detailRoute]),
     history: createMemoryHistory({
-      initialEntries: [`/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}`],
+      initialEntries: [initialEntry],
     }),
   })
   await router.load()
@@ -274,7 +294,7 @@ beforeEach(() => {
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
     if (method === 'GET' && url === listUrl()) {
-      return jsonResponse([SUBMISSION_LIST_ITEM])
+      return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM]))
     }
     if (method === 'GET' && url === detailUrl()) {
       return jsonResponse(SUBMISSION_DETAIL)
@@ -343,7 +363,7 @@ describe('organizer submissions', () => {
     })
     expect(rowLink).toHaveAttribute(
       'href',
-      `/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}`,
+      `/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}?spotlight=${SUBMISSION_ID}`,
     )
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
   })
@@ -363,10 +383,12 @@ describe('organizer submissions', () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
       if (method === 'GET' && url === listUrl()) {
-        return jsonResponse([
-          { ...SUBMISSION_LIST_ITEM, id: 's-acc', title: 'Yes talk', decision: 'accepted' },
-          { ...SUBMISSION_LIST_ITEM, id: 's-rej', title: 'No talk', decision: 'rejected' },
-        ])
+        return jsonResponse(
+          deskResponse([
+            { ...SUBMISSION_LIST_ITEM, id: 's-acc', title: 'Yes talk', decision: 'accepted' },
+            { ...SUBMISSION_LIST_ITEM, id: 's-rej', title: 'No talk', decision: 'rejected' },
+          ]),
+        )
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
@@ -426,7 +448,7 @@ describe('organizer submissions', () => {
     const region = await screen.findByRole('region', { name: /submissions/i })
     expect(region).toHaveAttribute('aria-busy', 'true')
 
-    resolveList?.(jsonResponse([SUBMISSION_LIST_ITEM]))
+    resolveList?.(jsonResponse(deskResponse([SUBMISSION_LIST_ITEM])))
     expect(await screen.findByRole('table')).toBeInTheDocument()
     expect(region).toHaveAttribute('aria-busy', 'false')
   })
@@ -435,7 +457,7 @@ describe('organizer submissions', () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
       if (method === 'GET' && url === listUrl()) {
-        return jsonResponse([])
+        return jsonResponse(deskResponse([]))
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
@@ -456,7 +478,7 @@ describe('organizer submissions', () => {
           fails = false
           return jsonResponse({ error: { code: 'internal', message: 'boom' } }, 500)
         }
-        return jsonResponse([SUBMISSION_LIST_ITEM])
+        return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM]))
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
@@ -532,7 +554,7 @@ describe('organizer submissions', () => {
   it('keeps the count sentence out of the way until there are rows', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) return jsonResponse([])
+      if (method === 'GET' && url === listUrl()) return jsonResponse(deskResponse([]))
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
     await mountList()
@@ -560,7 +582,8 @@ describe('organizer submissions', () => {
     }
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) return jsonResponse([SUBMISSION_LIST_ITEM, second])
+      if (method === 'GET' && url === listUrl())
+        return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM, second]))
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
     await mountList()
@@ -573,7 +596,7 @@ describe('organizer submissions', () => {
     )
     expect(screen.getByRole('link', { name: /open proposal/i })).toHaveAttribute(
       'href',
-      `/admin/events/${EVENT_SLUG}/submissions/submission-2`,
+      `/admin/events/${EVENT_SLUG}/submissions/submission-2?spotlight=submission-2`,
     )
   })
 
@@ -592,10 +615,11 @@ describe('organizer submissions', () => {
     }
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) return jsonResponse([SUBMISSION_LIST_ITEM, second])
+      if (method === 'GET' && url === listUrl())
+        return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM, second]))
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
-    await mountList()
+    const { router } = await mountList()
     await screen.findByRole('table')
     await user.keyboard('j')
     await user.keyboard('j')
@@ -603,7 +627,7 @@ describe('organizer submissions', () => {
       'data-spotlight',
       'submission-2',
     )
-    expect(window.location.search).toContain('spotlight=submission-2')
+    expect(router.state.location.search).toMatchObject({ spotlight: 'submission-2' })
     expect(document.querySelector('[data-slot="submissions-peek"]')).toHaveTextContent(
       'Workshop on incremental builds',
     )
@@ -624,14 +648,57 @@ describe('organizer submissions', () => {
     }
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) return jsonResponse([SUBMISSION_LIST_ITEM, second])
+      if (method === 'GET' && url.startsWith(listUrl())) {
+        const q = new URL(url, 'https://local.test').searchParams.get('q') ?? ''
+        return jsonResponse(
+          deskResponse(
+            q.toLowerCase().includes('workshop') ? [second] : [SUBMISSION_LIST_ITEM, second],
+          ),
+        )
+      }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
     await mountList()
     await screen.findByRole('table')
     await user.type(screen.getByLabelText(/search submissions/i), 'Workshop')
-    expect(screen.getAllByText('Workshop on incremental builds').length).toBeGreaterThan(0)
-    expect(screen.queryByRole('link', { name: /my talk — speaker a/i })).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getAllByText('Workshop on incremental builds').length).toBeGreaterThan(0)
+      expect(screen.queryByRole('link', { name: /my talk — speaker a/i })).not.toBeInTheDocument()
+    })
+  })
+
+  it('loads typed URL filters, sends the canonical desk query, and preserves tour state', async () => {
+    const user = userEvent.setup()
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url.startsWith(listUrl())) {
+        return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM]))
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+
+    const { router } = await mountList(
+      `/admin/events/${EVENT_SLUG}/submissions?q=My&decision=pending&sort=title-asc&tour=1`,
+    )
+    expect(await screen.findByRole('table')).toBeInTheDocument()
+    expect(screen.getByLabelText(/search submissions/i)).toHaveValue('My')
+    expect(screen.getByLabelText('Filter by decision')).toHaveValue('pending')
+
+    const firstRequest = new URL(
+      requestUrl(fetchMock.mock.calls[0]?.[0] ?? ''),
+      'https://local.test',
+    )
+    expect(firstRequest.pathname).toBe(listUrl())
+    expect(firstRequest.searchParams.get('q')).toBe('My')
+    expect(firstRequest.searchParams.get('decision')).toBe('pending')
+    expect(firstRequest.searchParams.get('sort')).toBe('title-asc')
+
+    const search = screen.getByLabelText(/search submissions/i)
+    await user.clear(search)
+    await user.type(search, 'Workshop')
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({ q: 'Workshop', tour: '1' })
+    })
   })
 
   it('renders no dashboard summary elements beyond the filtered row count', async () => {
@@ -666,6 +733,18 @@ describe('organizer submissions', () => {
     // The answers stay read-only: the only controls on the page are the
     // acceptance actions, and nothing on the snapshot is editable.
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('preserves the organizer desk view on the explicit back link', async () => {
+    await mountDetail(
+      `/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}?q=My&decision=pending&spotlight=${SUBMISSION_ID}`,
+    )
+
+    expect(await screen.findByRole('heading', { name: 'My talk' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back to submissions/i })).toHaveAttribute(
+      'href',
+      `/admin/events/${EVENT_SLUG}/submissions?q=My&decision=pending&spotlight=${SUBMISSION_ID}`,
+    )
   })
 
   // TA6-T8: the page a judge spends the most time on never said when the

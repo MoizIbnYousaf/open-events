@@ -46,6 +46,7 @@ function BackToList({ slug }: { readonly slug: string }) {
     <BackLink
       to="/admin/events/$slug/submissions"
       params={{ slug }}
+      search
       /* Exact matching, or the list path prefix-matches this detail page and
          the back link is announced as the current page. */
       activeOptions={{ exact: true }}

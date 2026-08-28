@@ -14,6 +14,7 @@ import type {
   UpdateEventConfigInput,
 } from '../../application'
 import { ApplicationError } from '../../application/errors'
+import { submissionDeskQuerySchema } from '../../application/dtos/submission-desk-query'
 import { EVENT_STATUSES, type EventDates, type EventStatus } from '../../domain/event'
 import type { FormElement, FormPage } from '../../domain/form-version'
 import type { ElementRule, RoutingRule } from '../../domain/rules'
@@ -1328,6 +1329,43 @@ export async function handleListSubmissions(context: ServerContext): Promise<Res
   return context.json(submissions)
 }
 
+function readSubmissionDeskQuery(context: ServerContext) {
+  const search = new URL(context.req.url).searchParams
+  let facets: unknown = undefined
+  const encodedFacets = search.get('facets')
+  if (encodedFacets !== null) {
+    try {
+      facets = JSON.parse(encodedFacets) as unknown
+    } catch {
+      return null
+    }
+  }
+  const parsed = submissionDeskQuerySchema.safeParse({
+    q: search.get('q') ?? undefined,
+    decision: search.get('decision') ?? undefined,
+    routing: search.get('routing') ?? undefined,
+    sort: search.get('sort') ?? undefined,
+    page: search.get('page') ?? undefined,
+    facets,
+  })
+  return parsed.success ? parsed.data : null
+}
+
+/** GET /api/admin/events/:slug/submission-desk — bounded organizer read model. */
+export async function handleSubmissionDesk(context: ServerContext): Promise<Response> {
+  const deps = depsFromContext(context)
+  if (deps === null) return databaseUnavailableResponse(context)
+  const actor = requireOrganizer(context)
+  if (actor === null) return forbiddenResponse(context)
+  const slug = context.req.param('slug')
+  if (slug === undefined) return notFoundResponse(context)
+  const eventId = await resolveEventId(deps, slug)
+  if (eventId === null) return notFoundResponse(context)
+  const query = readSubmissionDeskQuery(context)
+  if (query === null) return validationFailedResponse(context)
+  return context.json(await deps.submissionDesk.list(actor, eventId, query))
+}
+
 /** GET /api/admin/events/:slug/submissions/:id. */
 export async function handleGetSubmissionDetail(context: ServerContext): Promise<Response> {
   const deps = depsFromContext(context)
@@ -2243,6 +2281,12 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleListForms,
+  )
+  app.get(
+    '/api/admin/events/:slug/submission-desk',
+    requireSession(),
+    requireActor('organizer'),
+    handleSubmissionDesk,
   )
   app.get(
     '/api/admin/events/:slug/submissions',

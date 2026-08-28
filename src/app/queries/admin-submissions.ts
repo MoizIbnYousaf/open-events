@@ -1,12 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { getSubmissionDetail, listSubmissions } from '../api/submissions'
+import { getSubmissionDetail, listSubmissionDesk, listSubmissions } from '../api/submissions'
 import type { EventSlug, SubmissionId } from '../../domain'
+import type { SubmissionDeskQuery } from '../../application/dtos/submission-desk.dto'
 
 export const adminSubmissionQueryKeys = {
   list: (slug: EventSlug) => ['admin', 'events', slug, 'submissions'] as const,
   detail: (slug: EventSlug, submissionId: SubmissionId) =>
     ['admin', 'events', slug, 'submissions', submissionId] as const,
+  desk: (slug: EventSlug, query: SubmissionDeskQuery) =>
+    ['admin', 'events', slug, 'submission-desk', query] as const,
+}
+
+export function useSubmissionDesk(slug: EventSlug | undefined, query: SubmissionDeskQuery) {
+  return useQuery({
+    queryKey: adminSubmissionQueryKeys.desk(slug ?? '', query),
+    queryFn: () => listSubmissionDesk(slug as EventSlug, query),
+    enabled: slug !== undefined,
+  })
 }
 
 export function useSubmissionList(slug: EventSlug | undefined) {

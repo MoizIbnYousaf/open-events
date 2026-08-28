@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 
 import type { SubmissionListItemDto } from '../../../application'
 import { getApiErrorCode } from '../../api/admin-events'
-import { useSubmissionList } from '../../queries/admin-submissions'
+import { useSubmissionDesk } from '../../queries/admin-submissions'
 import { AlertLive } from '../../../components/ui/alert-live'
 import { Field, FieldLabel } from '../../../components/ui/field'
 import { Input } from '../../../components/ui/input'
@@ -41,14 +41,17 @@ import {
 import AppShell from '../nav/AppShell'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
 import { preserveDeskLinkNavigation } from './programme-spotlight'
-import { useProgrammeSpotlight } from './useProgrammeSpotlight'
+import { useControlledProgrammeSpotlight } from './useProgrammeSpotlight'
+import { SubmissionFacetFilters } from './SubmissionFacetFilters'
+import { submissionsCsv } from './submission-operations'
 import {
-  DEFAULT_SUBMISSION_OPERATIONS,
-  operateOnSubmissions,
-  readSubmissionOperations,
-  submissionsCsv,
-  writeSubmissionOperations,
-} from './submission-operations'
+  DEFAULT_SUBMISSION_SEARCH,
+  compactSubmissionSearch,
+  submissionSearchSchema,
+  toSubmissionDeskQuery,
+  type SubmissionSearch,
+  type SubmissionSearchInput,
+} from './submission-search'
 
 /*
  * The persisted submission `status` is pinned to 'pending' for the whole life
@@ -162,12 +165,38 @@ export default function SubmissionList() {
   const params = useParams({ strict: false })
   const slug = params.slug as string | undefined
   const navigate = useNavigate()
-  const listQuery = useSubmissionList(slug)
-  const [term, setTerm] = useState('')
-  const [operations, setOperations] = useState(() =>
-    typeof window === 'undefined'
-      ? DEFAULT_SUBMISSION_OPERATIONS
-      : readSubmissionOperations(window.location.search),
+  const search = submissionSearchSchema.parse(useSearch({ strict: false }))
+  const deskQuery = toSubmissionDeskQuery(search)
+  const listQuery = useSubmissionDesk(slug, deskQuery)
+  const [queryDraft, setQueryDraft] = useState({ url: search.q, input: search.q })
+  if (queryDraft.url !== search.q) setQueryDraft({ url: search.q, input: search.q })
+  const queryText = queryDraft.input
+  const desk = listQuery.data
+
+  const setSearch = useCallback(
+    (update: Partial<SubmissionSearch>, options: { readonly transient?: boolean } = {}) => {
+      if (slug === undefined) return
+      void navigate({
+        to: '/admin/events/$slug/submissions',
+        params: { slug },
+        replace: true,
+        search: (current: SubmissionSearchInput) => {
+          const normalized = submissionSearchSchema.parse(current)
+          return compactSubmissionSearch(
+            submissionSearchSchema.parse({
+              ...normalized,
+              ...update,
+              tour: normalized.tour ?? search.tour,
+              page:
+                options.transient === true ? (update.page ?? normalized.page) : (update.page ?? 1),
+              view: options.transient === true ? normalized.view : update.view,
+              spotlight: options.transient === true ? update.spotlight : undefined,
+            }),
+          )
+        },
+      })
+    },
+    [navigate, search.tour, slug],
   )
 
   useEffect(() => {
@@ -175,29 +204,33 @@ export default function SubmissionList() {
   }, [])
 
   useEffect(() => {
-    const search = writeSubmissionOperations(window.location.search, operations)
-    window.history.replaceState(
-      null,
-      '',
-      `${window.location.pathname}${search}${window.location.hash}`,
-    )
-  }, [operations])
+    if (queryText === search.q) return
+    const timeout = window.setTimeout(() => setSearch({ q: queryText }), 200)
+    return () => window.clearTimeout(timeout)
+  }, [queryText, search.q, setSearch])
 
   useEffect(() => {
-    const syncFromHistory = () => setOperations(readSubmissionOperations(window.location.search))
-    window.addEventListener('popstate', syncFromHistory)
-    return () => window.removeEventListener('popstate', syncFromHistory)
-  }, [])
+    if (desk !== undefined && desk.page !== search.page) {
+      setSearch({ page: desk.page }, { transient: true })
+    }
+  }, [desk, search.page, setSearch])
 
-  const rows = listQuery.data
-  const matches = operateOnSubmissions(rows ?? [], term, operations)
-  const routingOptions = [
-    ...new Set((rows ?? []).flatMap((row) => row.routing?.actionTarget ?? [])),
-  ].sort((left, right) => left.localeCompare(right))
+  const rows = desk?.rows
+  const matches = rows ?? []
+  const routingOptions = desk?.routingOptions ?? []
   const matchIds = matches.map((row) => row.id)
-  const { spotlightId, select } = useProgrammeSpotlight(matchIds)
+  const selectSpotlight = useCallback(
+    (spotlight: string | null) =>
+      setSearch({ spotlight: spotlight ?? undefined }, { transient: true }),
+    [setSearch],
+  )
+  const { spotlightId, select } = useControlledProgrammeSpotlight(
+    matchIds,
+    search.spotlight,
+    selectSpotlight,
+  )
   const selected = matches.find((row) => row.id === spotlightId) ?? matches[0] ?? null
-  const hasRows = rows !== undefined && rows.length > 0
+  const hasRows = desk !== undefined && desk.total > 0
 
   if (listQuery.isError) {
     const code = getApiErrorCode(listQuery.error)
@@ -242,7 +275,7 @@ export default function SubmissionList() {
                 that has an empty state to explain itself. */}
             <PageHeaderDescription>
               {hasRows
-                ? `${rows.length} ${rows.length === 1 ? 'proposal' : 'proposals'} from the call for papers.`
+                ? `${desk?.total ?? 0} ${desk?.total === 1 ? 'proposal' : 'proposals'} from the call for papers.`
                 : 'Proposals arrive here from the call for papers.'}
             </PageHeaderDescription>
           </PageHeaderContent>
@@ -276,7 +309,7 @@ export default function SubmissionList() {
               {listQuery.isFetching ? 'Trying again…' : 'Retry'}
             </Button>
           </div>
-        ) : rows !== undefined && rows.length === 0 ? (
+        ) : desk !== undefined && desk.total === 0 ? (
           <EmptyState
             icon={<InboxIcon size={20} />}
             title="Invite your first proposal"
@@ -295,7 +328,7 @@ export default function SubmissionList() {
               {listQuery.isFetching ? 'Refreshing…' : 'Refresh'}
             </Button>
           </EmptyState>
-        ) : rows !== undefined ? (
+        ) : desk !== undefined ? (
           <div
             data-slot="submissions-canvas"
             data-spotlight={selected?.id ?? undefined}
@@ -309,19 +342,20 @@ export default function SubmissionList() {
                 <Input
                   id="submission-search"
                   type="search"
-                  value={term}
-                  onChange={(event) => setTerm(event.target.value)}
+                  value={queryText}
+                  onChange={(event) =>
+                    setQueryDraft((current) => ({ ...current, input: event.target.value }))
+                  }
                 />
               </Field>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 <NativeSelect
                   aria-label="Filter by decision"
-                  value={operations.decision}
+                  value={search.decision}
                   onChange={(event) =>
-                    setOperations((current) => ({
-                      ...current,
-                      decision: event.target.value as typeof current.decision,
-                    }))
+                    setSearch({
+                      decision: event.target.value as SubmissionSearch['decision'],
+                    })
                   }
                 >
                   <option value="all">All decisions</option>
@@ -331,26 +365,21 @@ export default function SubmissionList() {
                 </NativeSelect>
                 <NativeSelect
                   aria-label="Filter by routing"
-                  value={operations.routing}
-                  onChange={(event) =>
-                    setOperations((current) => ({ ...current, routing: event.target.value }))
-                  }
+                  value={search.routing}
+                  onChange={(event) => setSearch({ routing: event.target.value })}
                 >
                   <option value="all">All routing</option>
                   {routingOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                    <option key={option.value} value={option.value}>
+                      {option.value} ({option.count})
                     </option>
                   ))}
                 </NativeSelect>
                 <NativeSelect
                   aria-label="Sort submissions"
-                  value={operations.sort}
+                  value={search.sort}
                   onChange={(event) =>
-                    setOperations((current) => ({
-                      ...current,
-                      sort: event.target.value as typeof current.sort,
-                    }))
+                    setSearch({ sort: event.target.value as SubmissionSearch['sort'] })
                   }
                 >
                   <option value="submitted-desc">Newest submitted</option>
@@ -364,8 +393,11 @@ export default function SubmissionList() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setTerm('')
-                      setOperations(DEFAULT_SUBMISSION_OPERATIONS)
+                      setQueryDraft((current) => ({ ...current, input: '' }))
+                      setSearch({
+                        ...DEFAULT_SUBMISSION_SEARCH,
+                        tour: search.tour,
+                      })
                     }}
                   >
                     Reset
@@ -381,9 +413,70 @@ export default function SubmissionList() {
                   </Button>
                 </div>
               </div>
+              <SubmissionFacetFilters
+                facets={desk.facetCounts}
+                selections={search.facets}
+                onChange={(facets) =>
+                  setSearch({
+                    facets: facets.map((facet) => ({
+                      elementId: facet.elementId,
+                      values: [...facet.values],
+                    })),
+                  })
+                }
+              />
+              {desk.invalidFacetSelections.length > 0 ? (
+                <div className="grid justify-items-start gap-2">
+                  <AlertLive>
+                    This saved filter references an answer that is no longer available. No proposals
+                    are shown until it is cleared.
+                  </AlertLive>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSearch({ facets: [] })}
+                  >
+                    Clear unavailable filters
+                  </Button>
+                </div>
+              ) : null}
+              {desk.truncated ? (
+                <AlertLive>
+                  This event has more than 1,000 proposals. Refine the filters before acting on this
+                  bounded view.
+                </AlertLive>
+              ) : null}
               <p className="text-sm text-muted-foreground">
-                Showing {matches.length} of {rows.length} proposals
+                {desk.matchingTotal === desk.total
+                  ? `Showing ${matches.length} of ${desk.total} proposals`
+                  : `Showing ${matches.length} matching of ${desk.total} proposals`}
               </p>
+              {desk.pageCount > 1 ? (
+                <div className="flex flex-wrap items-center gap-2" aria-label="Submission pages">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={desk.page <= 1}
+                    onClick={() => setSearch({ page: Math.max(1, desk.page - 1) })}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground tabular-nums">
+                    Page {desk.page} of {desk.pageCount}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={desk.page >= desk.pageCount}
+                    onClick={() => setSearch({ page: Math.min(desk.pageCount, desk.page + 1) })}
+                  >
+                    Next
+                  </Button>
+                </div>
+              ) : null}
               {matches.length === 0 ? (
                 <EmptyState
                   title="Nothing matches that"
@@ -417,6 +510,7 @@ export default function SubmissionList() {
                           <Link
                             to="/admin/events/$slug/submissions/$submissionId"
                             params={{ slug: slug ?? '', submissionId: row.id }}
+                            search
                             aria-label={`${row.title} — ${row.primarySpeaker.name}`}
                             className={linkVariants({ hit: true, className: ROW_LINK_HIT })}
                             onClick={preserveDeskLinkNavigation}
@@ -491,6 +585,7 @@ function SubmissionPeek({
         <Link
           to="/admin/events/$slug/submissions/$submissionId"
           params={{ slug, submissionId: row.id }}
+          search
           className={linkVariants({ hit: true })}
         >
           Open proposal

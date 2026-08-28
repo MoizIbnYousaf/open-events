@@ -355,8 +355,12 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     await expect(organizerPage.getByText('Workshop details')).toBeVisible()
     const detailText = (await organizerPage.textContent('body')) ?? ''
     expect(detailText).not.toContain('workshop_details')
+    const submissionId = new URL(organizerPage.url()).pathname.split('/').at(-1) ?? ''
     const backLink = organizerPage.getByRole('link', { name: /back to submissions/i })
-    await expect(backLink).toHaveAttribute('href', `/admin/events/${EVENT_SLUG}/submissions`)
+    await expect(backLink).toHaveAttribute(
+      'href',
+      `/admin/events/${EVENT_SLUG}/submissions?spotlight=${submissionId}`,
+    )
 
     // 8. Mutation accounting: the whole journey's writes must match the
     //    intended map exactly — an extra or missing write fails here with the

@@ -1,10 +1,10 @@
-import type { AnswerValue, EventId } from '../../domain'
+import type { EventId } from '../../domain'
 import type { OrganizerActor } from '../actors'
 import type {
   SubmissionDeskChoiceField,
   SubmissionDeskDto,
+  SubmissionDeskFacetCount,
   SubmissionDeskQuery,
-  SubmissionDeskRecord,
   SubmissionFacetSelection,
   SubmissionFacetDto,
   SubmissionFacetOptionDto,
@@ -17,23 +17,12 @@ interface PreparedFacet {
   readonly values: ReadonlySet<string>
 }
 
-function answerValues(value: AnswerValue | null | undefined): readonly string[] {
-  if (typeof value === 'string') return value === '' ? [] : [value]
-  if (!Array.isArray(value)) return []
-  return value.filter((item): item is string => typeof item === 'string' && item !== '')
-}
-
 function countOptions(
-  records: readonly SubmissionDeskRecord[],
   definition: SubmissionDeskChoiceField,
+  observed: ReadonlyMap<string, number>,
 ): readonly SubmissionFacetOptionDto[] {
-  const counts = new Map(definition.options.map((value) => [value, 0]))
-  for (const record of records) {
-    if (record.formVersionId !== definition.versionId) continue
-    for (const value of new Set(answerValues(record.answers[definition.fieldKey]))) {
-      counts.set(value, (counts.get(value) ?? 0) + 1)
-    }
-  }
+  const counts = new Map(definition.options.map((value) => [value, observed.get(value) ?? 0]))
+  for (const [value, count] of observed) counts.set(value, count)
   const knownOrder = new Map(definition.options.map((value, index) => [value, index]))
   return [...counts.entries()]
     .sort(
@@ -45,12 +34,18 @@ function countOptions(
 }
 
 function prepareFacets(
-  records: readonly SubmissionDeskRecord[],
   fields: readonly SubmissionDeskChoiceField[],
+  counts: readonly SubmissionDeskFacetCount[],
 ): readonly PreparedFacet[] {
   const byElement = new Map<string, SubmissionDeskChoiceField>()
   for (const field of fields) {
     if (!byElement.has(field.elementId)) byElement.set(field.elementId, field)
+  }
+  const countsByElement = new Map<string, Map<string, number>>()
+  for (const count of counts) {
+    const values = countsByElement.get(count.elementId) ?? new Map<string, number>()
+    values.set(count.value, count.count)
+    countsByElement.set(count.elementId, values)
   }
 
   return [...byElement.values()]
@@ -62,7 +57,10 @@ function prepareFacets(
         left.fieldKey.localeCompare(right.fieldKey, 'en'),
     )
     .flatMap((definition): readonly PreparedFacet[] => {
-      const options = countOptions(records, definition)
+      const options = countOptions(
+        definition,
+        countsByElement.get(definition.elementId) ?? new Map(),
+      )
       if (options.length === 0) return []
       return [
         {
@@ -82,40 +80,6 @@ function prepareFacets(
     })
 }
 
-function decisionRank(value: SubmissionDeskRecord['item']['decision']): number {
-  return value === 'accepted' ? 0 : value === 'pending' ? 1 : 2
-}
-
-function matchesQuery(record: SubmissionDeskRecord, query: SubmissionDeskQuery): boolean {
-  const needle = query.q.trim().toLocaleLowerCase()
-  const matchesText =
-    needle === '' ||
-    record.item.title.toLocaleLowerCase().includes(needle) ||
-    record.item.primarySpeaker.name.toLocaleLowerCase().includes(needle) ||
-    record.item.primarySpeaker.email.toLocaleLowerCase().includes(needle)
-  return (
-    matchesText &&
-    (query.decision === 'all' || record.item.decision === query.decision) &&
-    (query.routing === 'all' || record.item.routing?.actionTarget === query.routing)
-  )
-}
-
-function matchesFacets(
-  record: SubmissionDeskRecord,
-  selected: readonly SubmissionFacetSelection[],
-  facets: ReadonlyMap<string, PreparedFacet>,
-): boolean {
-  for (const requested of selected) {
-    const facet = facets.get(requested.elementId)
-    if (facet === undefined || record.formVersionId !== facet.dto.versionId) return false
-    const valid = requested.values.filter((value) => facet.values.has(value))
-    if (valid.length !== requested.values.length || valid.length === 0) return false
-    const actual = new Set(answerValues(record.answers[facet.dto.fieldKey]))
-    if (!valid.some((value) => actual.has(value))) return false
-  }
-  return true
-}
-
 function invalidFacetSelections(
   selected: readonly SubmissionFacetSelection[],
   facets: ReadonlyMap<string, PreparedFacet>,
@@ -130,39 +94,6 @@ function invalidFacetSelections(
   })
 }
 
-function sortRecords(
-  records: readonly SubmissionDeskRecord[],
-  sort: SubmissionDeskQuery['sort'],
-): readonly SubmissionDeskRecord[] {
-  return records.toSorted((left, right) => {
-    const stable = left.item.id.localeCompare(right.item.id)
-    switch (sort) {
-      case 'submitted-asc':
-        return left.item.submittedAt.localeCompare(right.item.submittedAt) || stable
-      case 'title-asc':
-        return left.item.title.localeCompare(right.item.title, 'en') || stable
-      case 'decision-asc':
-        return decisionRank(left.item.decision) - decisionRank(right.item.decision) || stable
-      case 'submitted-desc':
-        return right.item.submittedAt.localeCompare(left.item.submittedAt) || stable
-    }
-  })
-}
-
-function routingOptions(
-  records: readonly SubmissionDeskRecord[],
-): readonly SubmissionFacetOptionDto[] {
-  const counts = new Map<string, number>()
-  for (const record of records) {
-    const value = record.item.routing?.actionTarget
-    if (value === undefined || value === null || value === '') continue
-    counts.set(value, (counts.get(value) ?? 0) + 1)
-  }
-  return [...counts.entries()]
-    .sort(([left], [right]) => left.localeCompare(right, 'en'))
-    .map(([value, count]) => ({ value, count }))
-}
-
 export class SubmissionDeskService {
   readonly #repository: SubmissionDeskRepository
 
@@ -175,33 +106,20 @@ export class SubmissionDeskService {
     eventId: EventId,
     query: SubmissionDeskQuery,
   ): Promise<SubmissionDeskDto> {
-    const source = await this.#repository.listByEvent(eventId)
-    const prepared = prepareFacets(source.records, source.choiceFields)
+    const source = await this.#repository.listByEvent(eventId, query)
+    const prepared = prepareFacets(source.choiceFields, source.facetCounts)
     const byId = new Map(prepared.map((facet) => [facet.dto.elementId, facet]))
     const invalid = invalidFacetSelections(query.facets, byId)
-    const matching =
-      invalid.length > 0
-        ? []
-        : sortRecords(
-            source.records.filter(
-              (record) => matchesQuery(record, query) && matchesFacets(record, query.facets, byId),
-            ),
-            query.sort,
-          )
-    const pageCount = Math.ceil(matching.length / SUBMISSION_DESK_PAGE_SIZE)
-    const resolvedPage = pageCount === 0 ? 1 : Math.min(query.page, pageCount)
-    const pageStart = (resolvedPage - 1) * SUBMISSION_DESK_PAGE_SIZE
-    const rows = matching.slice(pageStart, pageStart + SUBMISSION_DESK_PAGE_SIZE)
+    const valid = invalid.length === 0
     return {
-      rows: rows.map((record) => record.item),
+      rows: valid ? source.records.map((record) => record.item) : [],
       total: source.total,
-      matchingTotal: matching.length,
-      page: resolvedPage,
+      matchingTotal: valid ? source.matchingTotal : 0,
+      page: valid ? source.page : 1,
       pageSize: SUBMISSION_DESK_PAGE_SIZE,
-      pageCount,
-      truncated: source.truncated,
+      pageCount: valid ? source.pageCount : 0,
       invalidFacetSelections: invalid,
-      routingOptions: routingOptions(source.records),
+      routingOptions: source.routingOptions,
       facetCounts: prepared.map((facet) => facet.dto),
     }
   }

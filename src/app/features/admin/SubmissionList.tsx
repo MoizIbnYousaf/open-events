@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 
 import type { SubmissionListItemDto } from '../../../application'
-import { SUBMISSION_DESK_PAGE_SIZE } from '../../../application/dtos/submission-desk.dto'
+import {
+  MAX_SUBMISSION_QUERY_LENGTH,
+  SUBMISSION_DESK_PAGE_SIZE,
+} from '../../../application/dtos/submission-desk.dto'
 import { getApiErrorCode } from '../../api/admin-events'
 import { useSubmissionDesk } from '../../queries/admin-submissions'
 import { AlertLive } from '../../../components/ui/alert-live'
@@ -196,14 +199,19 @@ export default function SubmissionList() {
   const params = useParams({ strict: false })
   const slug = params.slug as string | undefined
   const navigate = useNavigate()
-  const search = submissionSearchSchema.parse(useSearch({ strict: false }))
-  const deskQuery = toSubmissionDeskQuery(search)
+  const routeSearch = useSearch({ strict: false })
+  const search = submissionSearchSchema.parse(routeSearch)
+  const hasLegacyQuery =
+    routeSearch !== null &&
+    typeof routeSearch === 'object' &&
+    Object.prototype.hasOwnProperty.call(routeSearch, 'q')
+  const linkSearch = compactSubmissionSearch(search)
+  const [queryInput, setQueryInput] = useState('')
+  const [queryText, setQueryText] = useState('')
+  const deskQuery = toSubmissionDeskQuery(search, queryText)
   const listQuery = useSubmissionDesk(slug, deskQuery)
-  const [queryDraft, setQueryDraft] = useState({ url: search.q, input: search.q })
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [copyNotice, setCopyNotice] = useState<number | 'failed' | null>(null)
-  if (queryDraft.url !== search.q) setQueryDraft({ url: search.q, input: search.q })
-  const queryText = queryDraft.input
   const desk = listQuery.data
 
   const navigateSearch = useCallback(
@@ -247,10 +255,18 @@ export default function SubmissionList() {
   }, [])
 
   useEffect(() => {
-    if (queryText === search.q) return
-    const timeout = window.setTimeout(() => setSearch({ q: queryText }), 200)
+    if (!hasLegacyQuery) return
+    navigateSearch({ page: search.page, spotlight: search.spotlight }, { transient: true })
+  }, [hasLegacyQuery, navigateSearch, search.page, search.spotlight])
+
+  useEffect(() => {
+    if (queryInput === queryText) return
+    const timeout = window.setTimeout(() => {
+      setQueryText(queryInput)
+      setSearch({ page: 1, spotlight: undefined })
+    }, 200)
     return () => window.clearTimeout(timeout)
-  }, [queryText, search.q, setSearch])
+  }, [queryInput, queryText, setSearch])
 
   useEffect(() => {
     if (desk !== undefined && desk.page !== search.page) {
@@ -402,11 +418,13 @@ export default function SubmissionList() {
                 <Input
                   id="submission-search"
                   type="search"
-                  value={queryText}
+                  value={queryInput}
+                  maxLength={MAX_SUBMISSION_QUERY_LENGTH}
                   onChange={(event) => {
                     setSelectedIds(new Set())
                     setCopyNotice(null)
-                    setQueryDraft((current) => ({ ...current, input: event.target.value }))
+                    setQueryInput(event.target.value)
+                    if (search.view !== undefined) setSearch({ view: undefined })
                   }}
                 />
               </Field>
@@ -414,9 +432,10 @@ export default function SubmissionList() {
                 eventSlug={slug ?? ''}
                 activeViewId={search.view}
                 currentState={toSubmissionViewState(search)}
-                onApply={(view) =>
+                onApply={(view) => {
+                  setQueryInput('')
+                  setQueryText('')
                   setSearch({
-                    q: view.state.q,
                     decision: view.state.decision,
                     routing: view.state.routing,
                     sort: view.state.sort,
@@ -427,11 +446,10 @@ export default function SubmissionList() {
                     page: 1,
                     view: view.id,
                   })
-                }
+                }}
                 onDeleted={(id) => {
                   if (search.view !== id) return
                   setSearch({
-                    q: search.q,
                     decision: search.decision,
                     routing: search.routing,
                     sort: search.sort,
@@ -486,7 +504,8 @@ export default function SubmissionList() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setQueryDraft((current) => ({ ...current, input: '' }))
+                      setQueryInput('')
+                      setQueryText('')
                       setSearch({
                         ...DEFAULT_SUBMISSION_SEARCH,
                         tour: search.tour,
@@ -533,12 +552,6 @@ export default function SubmissionList() {
                     Clear unavailable filters
                   </Button>
                 </div>
-              ) : null}
-              {desk.truncated ? (
-                <AlertLive>
-                  This event has more than 1,000 proposals. Refine the filters before acting on this
-                  bounded view.
-                </AlertLive>
               ) : null}
               <p className="text-sm text-muted-foreground">
                 {desk.matchingTotal === desk.total
@@ -665,7 +678,7 @@ export default function SubmissionList() {
                           <Link
                             to="/admin/events/$slug/submissions/$submissionId"
                             params={{ slug: slug ?? '', submissionId: row.id }}
-                            search
+                            search={linkSearch}
                             aria-label={`${row.title} — ${row.primarySpeaker.name}`}
                             className={linkVariants({ hit: true, className: ROW_LINK_HIT })}
                             onClick={preserveDeskLinkNavigation}
@@ -702,7 +715,9 @@ export default function SubmissionList() {
                 </Table>
               )}
             </div>
-            {spotlightRow !== null ? <SubmissionPeek row={spotlightRow} slug={slug ?? ''} /> : null}
+            {spotlightRow !== null ? (
+              <SubmissionPeek row={spotlightRow} slug={slug ?? ''} search={linkSearch} />
+            ) : null}
           </div>
         ) : null}
       </section>
@@ -737,9 +752,11 @@ async function copyPrimarySpeakerEmails(rows: readonly SubmissionListItemDto[]):
 function SubmissionPeek({
   row,
   slug,
+  search,
 }: {
   readonly row: SubmissionListItemDto
   readonly slug: string
+  readonly search: SubmissionSearchInput
 }) {
   return (
     <Card data-slot="submissions-peek" className="min-w-0 w-full">
@@ -760,7 +777,7 @@ function SubmissionPeek({
         <Link
           to="/admin/events/$slug/submissions/$submissionId"
           params={{ slug, submissionId: row.id }}
-          search
+          search={search}
           className={linkVariants({ hit: true })}
         >
           Open proposal

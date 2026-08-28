@@ -57,6 +57,7 @@ app.use('/api/*', async (context, next) => {
   // Only a successful mutation can have created fresh delivery work. Refused
   // or unknown requests must not become an unauthenticated drain trigger.
   if (context.res.status >= 400) return
+  if (context.get('suppressEmailDrain') === true) return
   if (context.env.EMAIL_DELIVERY_MODE === 'capture') return
   const deps = depsFromContext(context)
   if (deps !== null) scheduleEmailDrain(context, deps)

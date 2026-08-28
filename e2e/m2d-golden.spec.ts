@@ -4,6 +4,7 @@ import { isConsoleNoise } from './helpers/console-noise'
 import { isExpectedTurnstileLoaderRedirect } from './helpers/external-responses'
 import { capturedMessages, countGoldenRows } from './helpers/golden-rows'
 import { liveTestEmail } from './helpers/live-identity'
+import { isReadOnlyRequest } from './helpers/read-only-requests'
 
 const EMAIL = liveTestEmail('golden-speaker')
 const FORM_ID = 'f0000000-0000-4000-8000-000000000001'
@@ -107,6 +108,10 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
       'http://localhost:4173/api/public/session?token=abc123',
     ].map(normalizeEndpointPath),
   ).toEqual(['/api/public/draft', '/api/public/submit', '/api/public/session'])
+  expect(isReadOnlyRequest('POST', `/api/admin/events/${EVENT_SLUG}/submission-desk/query`)).toBe(
+    true,
+  )
+  expect(isReadOnlyRequest('POST', `/api/admin/events/${EVENT_SLUG}/submissions`)).toBe(false)
 
   // Focused 404-console reconciliation proof: response and console events may
   // arrive in either order, but one exact expected response excuses at most
@@ -133,7 +138,7 @@ test('golden journey: start to redeem to form to submit to organizer list/detail
     // map (normalized endpoint + method); anything else with a mutation method
     // is evidence. Reads pass through. Count drift is checked at the end.
     if (status >= 200 && status < 300) {
-      if (MUTATION_METHODS.has(method)) {
+      if (MUTATION_METHODS.has(method) && !isReadOnlyRequest(method, endpoint)) {
         mutationCounts.set(
           `${method} ${endpoint}`,
           (mutationCounts.get(`${method} ${endpoint}`) ?? 0) + 1,

@@ -29,6 +29,7 @@ import {
   requireActor,
   requireOrganizer,
   requireSession,
+  readOnlyPost,
   serializeSessionCookie,
   sessionCookieMaxAgeSeconds,
 } from '../auth'
@@ -1345,36 +1346,15 @@ async function organizerEventContext(context: ServerContext) {
   return eventId === null ? notFoundResponse(context) : { deps, actor, eventId }
 }
 
-function readSubmissionDeskQuery(context: ServerContext) {
-  const search = new URL(context.req.url).searchParams
-  let facets: unknown = undefined
-  const encodedFacets = search.get('facets')
-  if (encodedFacets !== null) {
-    try {
-      facets = JSON.parse(encodedFacets) as unknown
-    } catch {
-      return null
-    }
-  }
-  const parsed = submissionDeskQuerySchema.safeParse({
-    q: search.get('q') ?? undefined,
-    decision: search.get('decision') ?? undefined,
-    routing: search.get('routing') ?? undefined,
-    sort: search.get('sort') ?? undefined,
-    page: search.get('page') ?? undefined,
-    facets,
-  })
-  return parsed.success ? parsed.data : null
-}
-
-/** GET /api/admin/events/:slug/submission-desk — bounded organizer read model. */
+/** POST /api/admin/events/:slug/submission-desk/query — private filtered read model. */
 export async function handleSubmissionDesk(context: ServerContext): Promise<Response> {
   const resolved = await organizerEventContext(context)
   if (resolved instanceof Response) return resolved
-  const query = readSubmissionDeskQuery(context)
-  if (query === null) return validationFailedResponse(context)
+  const body = await readJsonBody(context)
+  const query = submissionDeskQuerySchema.safeParse(body)
+  if (!query.success) return validationFailedResponse(context)
   return context.json(
-    await resolved.deps.submissionDesk.list(resolved.actor, resolved.eventId, query),
+    await resolved.deps.submissionDesk.list(resolved.actor, resolved.eventId, query.data),
   )
 }
 
@@ -2341,8 +2321,10 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireActor('organizer'),
     handleListForms,
   )
-  app.get(
-    '/api/admin/events/:slug/submission-desk',
+  app.post(
+    '/api/admin/events/:slug/submission-desk/query',
+    readOnlyPost(),
+    csrfGate(),
     requireSession(),
     requireActor('organizer'),
     handleSubmissionDesk,

@@ -11,7 +11,6 @@ export const APP_SEARCH_PARAM_KEYS = {
     tour: 'tour',
   },
   submissions: {
-    query: 'q',
     decision: 'decision',
     routing: 'routing',
     sort: 'sort',

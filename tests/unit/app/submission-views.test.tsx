@@ -10,7 +10,6 @@ import { createQueryClient } from '../../../src/app/query-client'
 
 const STATE = {
   schemaVersion: 1 as const,
-  q: 'agent',
   decision: 'pending' as const,
   routing: 'all',
   sort: 'title-asc' as const,
@@ -110,5 +109,38 @@ describe('SubmissionViews', () => {
 
     await waitFor(() => expect(requests.some((request) => request.method === 'DELETE')).toBe(true))
     expect(onDeleted).toHaveBeenCalledWith('view-1')
+  })
+
+  it('recovers when deletion succeeds remotely but its response is lost', async () => {
+    let deletedRemotely = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (method === 'GET') return Response.json(deletedRemotely ? [] : [VIEW])
+        if (method === 'DELETE') {
+          deletedRemotely = true
+          return Response.json(
+            { error: { code: 'internal', message: 'The response was interrupted.' } },
+            { status: 500 },
+          )
+        }
+        return Response.json(
+          { error: { code: 'internal', message: 'unexpected' } },
+          { status: 500 },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+    const { onDeleted } = mount({ activeViewId: 'view-1' })
+    await screen.findByRole('option', { name: 'Needs review' })
+
+    await user.click(screen.getByRole('button', { name: 'Delete saved view' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm delete view' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The response was interrupted.')
+
+    await user.click(screen.getByRole('button', { name: 'Reload saved views' }))
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledWith('view-1'))
+    expect(screen.queryByRole('option', { name: 'Needs review' })).not.toBeInTheDocument()
   })
 })

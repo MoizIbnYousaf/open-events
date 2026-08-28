@@ -27,7 +27,6 @@ describe('submission route search state', () => {
     })
 
     expect(parsed).toEqual({
-      q: 'applied ai',
       decision: 'all',
       routing: 'ai',
       sort: 'submitted-desc',
@@ -39,7 +38,7 @@ describe('submission route search state', () => {
       spotlight: 'submission-2',
       tour: '1',
     })
-    expect(toSubmissionDeskQuery(parsed)).toEqual({
+    expect(toSubmissionDeskQuery(parsed, 'applied ai')).toEqual({
       q: 'applied ai',
       decision: 'all',
       routing: 'ai',
@@ -55,6 +54,12 @@ describe('submission route search state', () => {
       values: Array.from({ length: 30 }, (__, value) => `value-${value}`),
     }))
     expect(submissionSearchSchema.parse({ facets: oversized })).toEqual(DEFAULT_SUBMISSION_SEARCH)
+  })
+
+  it('never accepts free text as route state', () => {
+    const parsed = submissionSearchSchema.parse({ q: 'speaker@example.test' })
+    expect(parsed).toEqual(DEFAULT_SUBMISSION_SEARCH)
+    expect(APP_SEARCH_PARAM_KEYS.submissions).not.toHaveProperty('query')
   })
 
   it('gives every app-level search feature a unique key', () => {

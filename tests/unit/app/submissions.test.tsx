@@ -17,6 +17,7 @@ import type {
   SubmissionListItemDto,
 } from '../../../src/application'
 import type { SubmissionViewDto } from '../../../src/application/dtos/submission-view.dto'
+import type { SubmissionDeskQuery } from '../../../src/application/dtos/submission-desk.dto'
 import SubmissionDetail from '../../../src/app/features/admin/SubmissionDetail'
 import SubmissionList from '../../../src/app/features/admin/SubmissionList'
 import { submissionSearchValidator } from '../../../src/app/routes/-submission-search-validator'
@@ -33,7 +34,6 @@ const SAVED_VIEW: SubmissionViewDto = {
   name: 'Needs review',
   state: {
     schemaVersion: 1,
-    q: 'My',
     decision: 'pending',
     routing: 'all',
     sort: 'title-asc',
@@ -148,14 +148,22 @@ function requestUrl(input: RequestInfo | URL): string {
 }
 
 function listUrl() {
-  return `/api/admin/events/${EVENT_SLUG}/submission-desk`
+  return `/api/admin/events/${EVENT_SLUG}/submission-desk/query`
 }
 
 function viewsUrl() {
   return `/api/admin/events/${EVENT_SLUG}/submission-views`
 }
 
-function deskResponse(rows: readonly SubmissionListItemDto[]) {
+function deskResponse(
+  rows: readonly SubmissionListItemDto[],
+  overrides: Partial<{
+    readonly total: number
+    readonly matchingTotal: number
+    readonly page: number
+    readonly pageCount: number
+  }> = {},
+) {
   return {
     rows,
     total: rows.length,
@@ -163,11 +171,16 @@ function deskResponse(rows: readonly SubmissionListItemDto[]) {
     page: 1,
     pageSize: 50,
     pageCount: rows.length === 0 ? 0 : 1,
-    truncated: false,
     invalidFacetSelections: [],
     routingOptions: [],
     facetCounts: [],
+    ...overrides,
   }
+}
+
+function deskRequestBody(init?: RequestInit): SubmissionDeskQuery {
+  if (typeof init?.body !== 'string') throw new Error('Expected a JSON submission desk body')
+  return JSON.parse(init.body) as SubmissionDeskQuery
 }
 
 function detailUrl() {
@@ -316,7 +329,7 @@ beforeEach(() => {
   savedViews = []
   fetchHandler = (url, init) => {
     const method = init?.method ?? 'GET'
-    if (method === 'GET' && url === listUrl()) {
+    if (method === 'POST' && url === listUrl()) {
       return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM]))
     }
     if (method === 'GET' && url === detailUrl()) {
@@ -409,7 +422,7 @@ describe('organizer submissions', () => {
   it('shows Accepted and Rejected chips from the list payload', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) {
+      if (method === 'POST' && url === listUrl()) {
         return jsonResponse(
           deskResponse([
             { ...SUBMISSION_LIST_ITEM, id: 's-acc', title: 'Yes talk', decision: 'accepted' },
@@ -463,7 +476,7 @@ describe('organizer submissions', () => {
     let resolveList: ((response: Response) => void) | undefined
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) {
+      if (method === 'POST' && url === listUrl()) {
         return new Promise<Response>((resolve) => {
           resolveList = resolve
         })
@@ -483,7 +496,7 @@ describe('organizer submissions', () => {
   it('renders a polite empty state with the exact action label', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) {
+      if (method === 'POST' && url === listUrl()) {
         return jsonResponse(deskResponse([]))
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -495,12 +508,12 @@ describe('organizer submissions', () => {
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
   })
 
-  it('renders an error alert with a retry that issues exactly one list GET', async () => {
+  it('renders an error alert with a retry that issues exactly one desk request', async () => {
     const user = userEvent.setup()
     let fails = true
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) {
+      if (method === 'POST' && url === listUrl()) {
         if (fails) {
           fails = false
           return jsonResponse({ error: { code: 'internal', message: 'boom' } }, 500)
@@ -523,7 +536,7 @@ describe('organizer submissions', () => {
     const retried = listCalls()[1] as [RequestInfo | URL, RequestInit?] | undefined
     expect(retried).toBeDefined()
     expect(requestUrl(retried?.[0] ?? '')).toBe(listUrl())
-    expect(retried?.[1]?.method ?? 'GET').toBe('GET')
+    expect(retried?.[1]?.method).toBe('POST')
   })
 
   // R4-note: 403 used to print "Not found" here, so an organizer route opened
@@ -538,7 +551,7 @@ describe('organizer submissions', () => {
     ] as const) {
       fetchHandler = (url, init) => {
         const method = init?.method ?? 'GET'
-        if (method === 'GET' && url === listUrl()) {
+        if (method === 'POST' && url === listUrl()) {
           return jsonResponse({ error: { code: state.code, message: 'server copy' } }, state.status)
         }
         return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -583,7 +596,7 @@ describe('organizer submissions', () => {
   it('keeps the count sentence out of the way until there are rows', async () => {
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) return jsonResponse(deskResponse([]))
+      if (method === 'POST' && url === listUrl()) return jsonResponse(deskResponse([]))
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
     await mountList()
@@ -611,7 +624,7 @@ describe('organizer submissions', () => {
     }
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl())
+      if (method === 'POST' && url === listUrl())
         return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM, second]))
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
@@ -644,7 +657,7 @@ describe('organizer submissions', () => {
     }
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl())
+      if (method === 'POST' && url === listUrl())
         return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM, second]))
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
@@ -677,8 +690,8 @@ describe('organizer submissions', () => {
     }
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url.startsWith(listUrl())) {
-        const q = new URL(url, 'https://local.test').searchParams.get('q') ?? ''
+      if (method === 'POST' && url === listUrl()) {
+        const { q } = deskRequestBody(init)
         return jsonResponse(
           deskResponse(
             q.toLowerCase().includes('workshop') ? [second] : [SUBMISSION_LIST_ITEM, second],
@@ -712,7 +725,7 @@ describe('organizer submissions', () => {
     }
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url.startsWith(listUrl())) {
+      if (method === 'POST' && url === listUrl()) {
         return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM, second]))
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -750,6 +763,56 @@ describe('organizer submissions', () => {
     ).not.toBeChecked()
   })
 
+  it('clears page-local selection when the organizer moves to another page', async () => {
+    const user = userEvent.setup()
+    const second = {
+      ...SUBMISSION_LIST_ITEM,
+      id: 'submission-2',
+      title: 'Second-page proposal',
+      primarySpeaker: {
+        ...SUBMISSION_LIST_ITEM.primarySpeaker,
+        contactId: 'contact-2',
+        name: 'Speaker B',
+        email: 'speaker.b@example.test',
+      },
+    }
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'POST' && url === listUrl()) {
+        const page = deskRequestBody(init).page
+        return jsonResponse(
+          deskResponse(page === 2 ? [second] : [SUBMISSION_LIST_ITEM], {
+            total: 2,
+            matchingTotal: 2,
+            page,
+            pageCount: 2,
+          }),
+        )
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+
+    await mountList()
+    await screen.findByRole('table')
+    await user.click(screen.getByRole('checkbox', { name: 'Select My talk' }))
+    expect(screen.getByRole('region', { name: 'Selected proposals' })).toHaveTextContent(
+      '1 selected from this page',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByRole('link', { name: /second-page proposal/i })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Selected proposals' })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Select Second-page proposal' })).not.toBeChecked()
+
+    await user.type(screen.getByLabelText(/search submissions/i), 'proposal')
+    await waitFor(() => {
+      const latestDeskCall = fetchMock.mock.calls
+        .filter(([input]) => requestUrl(input) === listUrl())
+        .at(-1)
+      expect(deskRequestBody(latestDeskCall?.[1])).toMatchObject({ q: 'proposal', page: 1 })
+    })
+  })
+
   it('defensively caps a malformed oversized page at fifty selected rows', async () => {
     const user = userEvent.setup()
     const rows = Array.from({ length: 51 }, (_, index) => ({
@@ -765,7 +828,7 @@ describe('organizer submissions', () => {
     }))
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url === listUrl()) return jsonResponse(deskResponse(rows))
+      if (method === 'POST' && url === listUrl()) return jsonResponse(deskResponse(rows))
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
 
@@ -779,11 +842,11 @@ describe('organizer submissions', () => {
     expect(screen.getByRole('checkbox', { name: 'Select Proposal 51' })).not.toBeChecked()
   })
 
-  it('loads typed URL filters, sends the canonical desk query, and preserves tour state', async () => {
+  it('keeps free text out of URLs while sending the canonical private desk query', async () => {
     const user = userEvent.setup()
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url.startsWith(listUrl())) {
+      if (method === 'POST' && url === listUrl()) {
         return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM]))
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -793,21 +856,33 @@ describe('organizer submissions', () => {
       `/admin/events/${EVENT_SLUG}/submissions?q=My&decision=pending&sort=title-asc&tour=1`,
     )
     expect(await screen.findByRole('table')).toBeInTheDocument()
-    expect(screen.getByLabelText(/search submissions/i)).toHaveValue('My')
+    expect(screen.getByLabelText(/search submissions/i)).toHaveValue('')
     expect(screen.getByLabelText('Filter by decision')).toHaveValue('pending')
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('q'))
+    expect(
+      screen.getByRole('link', { name: /my talk — speaker a/i }).getAttribute('href'),
+    ).not.toContain('q=')
 
-    const deskCall = fetchMock.mock.calls.find(([input]) => requestUrl(input).startsWith(listUrl()))
+    const deskCall = fetchMock.mock.calls.find(([input]) => requestUrl(input) === listUrl())
     const firstRequest = new URL(requestUrl(deskCall?.[0] ?? ''), 'https://local.test')
     expect(firstRequest.pathname).toBe(listUrl())
-    expect(firstRequest.searchParams.get('q')).toBe('My')
-    expect(firstRequest.searchParams.get('decision')).toBe('pending')
-    expect(firstRequest.searchParams.get('sort')).toBe('title-asc')
+    expect(firstRequest.search).toBe('')
+    expect(deskRequestBody(deskCall?.[1])).toMatchObject({
+      q: '',
+      decision: 'pending',
+      sort: 'title-asc',
+    })
 
     const search = screen.getByLabelText(/search submissions/i)
     await user.clear(search)
     await user.type(search, 'Workshop')
     await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({ q: 'Workshop', tour: '1' })
+      const latestDeskCall = fetchMock.mock.calls
+        .filter(([input]) => requestUrl(input) === listUrl())
+        .at(-1)
+      expect(deskRequestBody(latestDeskCall?.[1]).q).toBe('Workshop')
+      expect(router.state.location.search).toMatchObject({ tour: '1' })
+      expect(router.state.location.search).not.toHaveProperty('q')
     })
   })
 
@@ -816,7 +891,7 @@ describe('organizer submissions', () => {
     savedViews = [SAVED_VIEW]
     fetchHandler = (url, init) => {
       const method = init?.method ?? 'GET'
-      if (method === 'GET' && url.startsWith(listUrl())) {
+      if (method === 'POST' && url === listUrl()) {
         return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM]))
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
@@ -829,13 +904,12 @@ describe('organizer submissions', () => {
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        q: 'My',
         decision: 'pending',
         sort: 'title-asc',
         view: SAVED_VIEW.id,
       })
     })
-    expect(screen.getByLabelText(/search submissions/i)).toHaveValue('My')
+    expect(screen.getByLabelText(/search submissions/i)).toHaveValue('')
 
     await user.selectOptions(screen.getByLabelText('Filter by decision'), 'accepted')
     await waitFor(() => {
@@ -879,16 +953,17 @@ describe('organizer submissions', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
-  it('preserves the organizer desk view on the explicit back link', async () => {
-    await mountDetail(
+  it('preserves structural desk state but scrubs legacy private text from the back link', async () => {
+    const { router } = await mountDetail(
       `/admin/events/${EVENT_SLUG}/submissions/${SUBMISSION_ID}?q=My&decision=pending&spotlight=${SUBMISSION_ID}`,
     )
 
     expect(await screen.findByRole('heading', { name: 'My talk' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /back to submissions/i })).toHaveAttribute(
       'href',
-      `/admin/events/${EVENT_SLUG}/submissions?q=My&decision=pending&spotlight=${SUBMISSION_ID}`,
+      `/admin/events/${EVENT_SLUG}/submissions?decision=pending&spotlight=${SUBMISSION_ID}`,
     )
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('q'))
   })
 
   // TA6-T8: the page a judge spends the most time on never said when the
@@ -1161,7 +1236,7 @@ describe('organizer submissions', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('issues the exact committed GET sets per load with no unrelated fetches', async () => {
+  it('issues the exact committed request sets per load with no unrelated fetches', async () => {
     await mountList()
     await screen.findByRole('table')
     await screen.findByRole('combobox', { name: 'Saved submission view' })
@@ -1175,7 +1250,7 @@ describe('organizer submissions', () => {
       .sort((left, right) => left.url.localeCompare(right.url))
     expect(listReads).toEqual(
       [
-        { url: listUrl(), method: 'GET', credentials: 'include' },
+        { url: listUrl(), method: 'POST', credentials: 'include' },
         { url: viewsUrl(), method: 'GET', credentials: 'include' },
       ].sort((left, right) => left.url.localeCompare(right.url)),
     )

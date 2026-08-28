@@ -17,6 +17,16 @@ beforeEach(async () => {
 
 describe('programme timeline repository', () => {
   it('projects every persisted lifecycle lane without exposing recipient addresses', async () => {
+    await env.DB.prepare(
+      `INSERT INTO captured_messages
+         (id, event_id, to_email, subject, body, created_at, submission_id, kind)
+       VALUES ('timeline-private-subject', ?, 'recipient@example.test',
+               'Follow up with recipient@example.test', 'private body',
+               '2026-08-28T12:00:00.000Z', NULL, 'confirmation')`,
+    )
+      .bind(DEMO_CONF_2026_ID)
+      .run()
+
     const source = await createProgrammeTimelineRepository(env.DB).listLatest(DEMO_CONF_2026_ID)
     const categories = new Set(source.items.map((item) => item.category))
     const kinds = new Set(source.items.map((item) => item.kind))

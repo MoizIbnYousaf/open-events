@@ -430,13 +430,15 @@ describe('evaluations UI', () => {
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
-    await renderPage()
+    const { queryClient } = await renderPage()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
     const submit = await screen.findByRole('button', { name: /submit/i })
     submit.focus()
     await user.click(submit)
     expect(postCalls).toBe(1)
     await waitFor(() => expect(getCalls).toBe(2))
+    expect(invalidate).toHaveBeenCalledWith({ predicate: expect.any(Function) })
     expect(submit).toHaveFocus()
 
     failSubmit = true
@@ -787,11 +789,12 @@ describe('evaluations UI', () => {
       if (method === 'GET' && url === EVALUATIONS_URL) return jsonResponse([UNSCORED_ROW])
       if (method === 'POST' && url === `${EVALUATIONS_URL}/recuse`) {
         recused = JSON.parse(String(init?.body))
-        return new Response(null, { status: 204 })
+        return jsonResponse(null)
       }
       return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
     }
-    await renderPage()
+    const { queryClient } = await renderPage()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
     await user.click(await screen.findByRole('button', { name: /declare a conflict of interest/i }))
     // Confirmed rather than instant: it cannot be undone from this surface, and
@@ -800,6 +803,9 @@ describe('evaluations UI', () => {
 
     await waitFor(() =>
       expect(recused).toEqual({ submissionId: 'submission-1', roundId: 'round-1' }),
+    )
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ predicate: expect.any(Function) }),
     )
   })
 

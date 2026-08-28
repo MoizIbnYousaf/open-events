@@ -122,11 +122,21 @@ export function requireSession(): MiddlewareHandler<ServerEnv> {
     if (
       session.provenance === 'tour' &&
       context.req.method !== 'GET' &&
-      context.req.method !== 'HEAD'
+      context.req.method !== 'HEAD' &&
+      context.get('readOnlyRequest') !== true
     ) {
       return forbiddenResponse(context)
     }
     context.set('session', session)
+    await next()
+  }
+}
+
+/** Declares a POST query as read-only for tour authority and delivery draining. */
+export function readOnlyPost(): MiddlewareHandler<ServerEnv> {
+  return async (context, next) => {
+    context.set('readOnlyRequest', true)
+    context.set('suppressEmailDrain', true)
     await next()
   }
 }

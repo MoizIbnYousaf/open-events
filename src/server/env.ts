@@ -93,6 +93,10 @@ export type ServerBindings = Pick<
 export interface ServerVariables {
   readonly session: ValidatedSession
   readonly actor: OrganizerActor | SubmitterActor
+  /** Route-declared POST that reads data and is safe for read-only tour authority. */
+  readonly readOnlyRequest?: boolean
+  /** Explicit opt-out for POST endpoints that are reads and cannot enqueue email. */
+  readonly suppressEmailDrain?: boolean
 }
 
 export type ServerEnv = { Bindings: ServerBindings; Variables: ServerVariables }

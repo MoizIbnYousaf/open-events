@@ -10,7 +10,10 @@ import type {
 } from '../../application'
 import type { AnswerMap, SpeakerTaskKind, SpeakerTaskStatus } from '../../domain'
 import { requestJson } from '../api/admin-events'
-import { eventReadModelQueryKeys } from './event-read-model-cache'
+import {
+  eventReadModelQueryKeys,
+  invalidateCachedOnboardingReadModels,
+} from './event-read-model-cache'
 
 /**
  * One speaker-portal task row (REQ-011), projected from the SpeakerTaskDto the
@@ -143,6 +146,7 @@ export function useCompleteFormTask() {
           previous.map((task) => (task.id === completed.id ? completed : task)),
         )
       }
+      void invalidateCachedOnboardingReadModels(queryClient)
     },
   })
 }
@@ -221,7 +225,10 @@ export function useCompletePortalTask() {
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        invalidateCachedOnboardingReadModels(queryClient),
+      ])
     },
   })
 }

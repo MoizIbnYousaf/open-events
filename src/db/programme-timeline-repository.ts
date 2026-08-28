@@ -50,7 +50,6 @@ interface RawMessageEvent {
   readonly submission_id: string | null
   readonly submission_title: string | null
   readonly kind: string
-  readonly subject: string
   readonly occurred_at: string
 }
 
@@ -169,7 +168,7 @@ const MESSAGES_SQL = `
   SELECT message.id,
          COALESCE(message.submission_id, confirmation.submission_id) AS submission_id,
          submission.title AS submission_title,
-         message.kind, message.subject, message.created_at AS occurred_at
+         message.kind, message.created_at AS occurred_at
     FROM captured_messages message
     LEFT JOIN confirmation_records confirmation
       ON confirmation.captured_message_id = message.id
@@ -395,10 +394,7 @@ export function createProgrammeTimelineRepository(db: D1Database): ProgrammeTime
           category: 'communications',
           occurredAt: row.occurred_at,
           title: messageTitle(kind),
-          detail:
-            row.submission_title === null
-              ? row.subject
-              : `${row.submission_title} · ${row.subject}`,
+          detail: row.submission_title ?? 'Event-wide communication',
           submissionId: row.submission_id,
           submissionTitle: row.submission_title,
         })

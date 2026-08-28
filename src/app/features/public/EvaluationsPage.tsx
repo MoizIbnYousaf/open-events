@@ -41,6 +41,7 @@ import {
   type EvaluationRowCriterion,
 } from '../../queries/public-evaluations'
 import { ExpiredSessionState, RoleLinkRequiredState } from '../admin/AdminStates'
+import { invalidateCachedProgrammeTimelines } from '../../queries/event-read-model-cache'
 
 const RATINGS = [1, 2, 3, 4, 5] as const
 
@@ -130,7 +131,10 @@ function RecuseControl({ row }: { readonly row: EvaluationRow }) {
             {
               onSuccess: () => {
                 setAsking(false)
-                void queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all })
+                void Promise.all([
+                  queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all }),
+                  invalidateCachedProgrammeTimelines(queryClient),
+                ])
               },
             },
           )
@@ -402,7 +406,10 @@ function TypedEvaluationCard({
         onSuccess: () => {
           setSubmittedMessage('Review saved')
           submit.reset()
-          void queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all })
+          void Promise.all([
+            queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all }),
+            invalidateCachedProgrammeTimelines(queryClient),
+          ])
         },
         onError: (error) => {
           setSubmittedMessage(null)
@@ -565,7 +572,10 @@ function EvaluationCard({
           setSubmittedMessage('Evaluation submitted')
           submit.reset()
           clearEvaluationDraft(rowKey(row))
-          void queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all })
+          void Promise.all([
+            queryClient.invalidateQueries({ queryKey: publicEvaluationsQueryKeys.all }),
+            invalidateCachedProgrammeTimelines(queryClient),
+          ])
         },
         onError: (error) => {
           setSubmittedMessage(null)

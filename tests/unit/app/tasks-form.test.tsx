@@ -102,6 +102,7 @@ function renderPanel() {
       <TasksPanel />
     </QueryClientProvider>,
   )
+  return queryClient
 }
 
 async function openForm(): Promise<void> {
@@ -138,12 +139,15 @@ describe('portal form task', () => {
         response: { av_needs: 'Two mics' },
       })
     })
-    renderPanel()
+    const queryClient = renderPanel()
+    const timelineKey = ['admin', 'events', 'demo-conf-2026', 'programme-timeline'] as const
+    queryClient.setQueryData(timelineKey, [])
     await openForm()
     await userEvent.type(await screen.findByLabelText(/what a\/v setup/i), 'Two mics')
     await userEvent.click(screen.getByRole('button', { name: /submit form/i }))
     await waitFor(() => expect(completeBody).toEqual({ answers: { av_needs: 'Two mics' } }))
     expect(await screen.findByText(/complete/i)).toBeInTheDocument()
+    await waitFor(() => expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true))
   })
 
   it('keeps a required form task local until its required answer is present', async () => {

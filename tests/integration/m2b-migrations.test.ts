@@ -108,6 +108,7 @@ describe('migration apply from an empty local D1', () => {
       '0034_direct_sessions.sql',
       '0035_submission_saved_views.sql',
       '0036_programme_timeline_indexes.sql',
+      '0037_remove_saved_view_private_queries.sql',
     ])
 
     const tables = await env.DB.prepare(

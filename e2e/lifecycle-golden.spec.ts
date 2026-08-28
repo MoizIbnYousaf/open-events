@@ -7,6 +7,7 @@ import { isConsoleNoise } from './helpers/console-noise'
 import { isExpectedTurnstileLoaderRedirect } from './helpers/external-responses'
 import { capturedMessages, countLifecycleRows } from './helpers/golden-rows'
 import { liveTestEmail } from './helpers/live-identity'
+import { isReadOnlyRequest } from './helpers/read-only-requests'
 
 /**
  * O4 golden lifecycle: one deterministic browser journey across every frozen
@@ -335,7 +336,7 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     const url = rawUrl.replace(new URL(rawUrl).origin, '')
     const endpoint = normalizeEndpointPath(rawUrl)
     if (status >= 200 && status < 300) {
-      if (MUTATION_METHODS.has(method)) {
+      if (MUTATION_METHODS.has(method) && !isReadOnlyRequest(method, endpoint)) {
         const key = `${method} ${endpoint}`
         mutationCounts.set(key, (mutationCounts.get(key) ?? 0) + 1)
         if (!(key in EXPECTED_MUTATIONS)) {

@@ -129,7 +129,6 @@ describe('acceptance event reset', () => {
       .run()
     const savedState = JSON.stringify({
       schemaVersion: 1,
-      q: '',
       decision: 'all',
       routing: 'all',
       sort: 'submitted-desc',

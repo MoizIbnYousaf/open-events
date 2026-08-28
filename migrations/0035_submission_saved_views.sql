@@ -13,7 +13,10 @@ CREATE TABLE submission_saved_views (
                 CHECK (json_valid(state_json)
                   AND json_type(state_json) = 'object'
                   AND length(state_json) <= 8192
-                  AND json_extract(state_json, '$.schemaVersion') = schema_version),
+                  AND COALESCE(
+                    json_extract(state_json, '$.schemaVersion') = schema_version,
+                    0
+                  )),
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
   PRIMARY KEY (event_id, id),

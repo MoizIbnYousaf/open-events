@@ -141,7 +141,10 @@ export function useAddCommitteeMember(slug: EventSlug) {
   return useServerMutation({
     mutationFn: (email: string) => addCommitteeMember(slug, email),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.committee(slug) })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminEvaluationQueryKeys.committee(slug) }),
+        invalidateEventReadModels(queryClient, slug, 'review-invite'),
+      ])
     },
   })
 }
@@ -252,7 +255,7 @@ export function useAssignEvaluator(slug: EventSlug, submissionId: SubmissionId) 
         queryClient.invalidateQueries({
           queryKey: adminEvaluationQueryKeys.committee(slug),
         }),
-        invalidateEventReadModels(queryClient, slug, 'review-assignment'),
+        invalidateEventReadModels(queryClient, slug, 'review-invite'),
       ])
     },
   })

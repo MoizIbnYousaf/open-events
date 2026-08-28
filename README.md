@@ -146,6 +146,15 @@ The Worker never talks to the database from a route handler through ad-hoc SQL. 
 
 UTC instants are ISO-8601 text. Event-scoped parents use composite `(event_id, id)` keys so children can take composite foreign keys.
 
+### Submission desk
+
+The organizer desk filters, sorts, counts, and paginates the complete event in
+D1 before returning a 50-row page. Choice facets are tied to the immutable form
+version that received each proposal, so a later draft cannot silently become a
+live filter. Saved views are event-wide and store only canonical structural
+filters. Free-text search is sent in a private POST body and is neither placed
+in the URL nor persisted in a saved view.
+
 ### Programme timeline
 
 `/admin/events/:slug/timeline` is a bounded read model over the existing

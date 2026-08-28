@@ -35,6 +35,7 @@ import migration0033Sql from '../../migrations/0033_portal_resources.sql?raw'
 import migration0034Sql from '../../migrations/0034_direct_sessions.sql?raw'
 import migration0035Sql from '../../migrations/0035_submission_saved_views.sql?raw'
 import migration0036Sql from '../../migrations/0036_programme_timeline_indexes.sql?raw'
+import migration0037Sql from '../../migrations/0037_remove_saved_view_private_queries.sql?raw'
 import seedProgrammeSql from '../../src/db/seed-programme.sql?raw'
 import seedShowcaseSql from '../../src/db/seed-showcase.sql?raw'
 import migration0016Sql from '../../migrations/0016_create_submission_decisions.sql?raw'
@@ -165,6 +166,10 @@ export const MIGRATIONS: D1Migration[] = [
   {
     name: '0036_programme_timeline_indexes.sql',
     queries: splitSqlStatements(migration0036Sql),
+  },
+  {
+    name: '0037_remove_saved_view_private_queries.sql',
+    queries: splitSqlStatements(migration0037Sql),
   },
 ]
 

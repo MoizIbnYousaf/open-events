@@ -17,7 +17,7 @@ import { APP_SEARCH_PARAM_KEYS } from '../../lib/search-param-keys'
 
 const keys = APP_SEARCH_PARAM_KEYS.submissions
 
-export interface SubmissionSearch extends SubmissionDeskQuery {
+export interface SubmissionSearch extends Omit<SubmissionDeskQuery, 'q'> {
   readonly view?: string
   readonly spotlight?: string
   readonly tour?: '1'
@@ -93,7 +93,6 @@ export function parseSubmissionSearch(value: unknown): SubmissionSearch {
   const rawTour = record[APP_SEARCH_PARAM_KEYS.global.tour]
   const tour = rawTour === '1' || rawTour === 1 || rawTour === true ? '1' : undefined
   return {
-    q: text(record[keys.query], ''),
     decision: choice(SUBMISSION_DECISION_FILTERS, record[keys.decision], 'all'),
     routing: text(record[keys.routing], 'all') || 'all',
     sort: choice(SUBMISSION_SORTS, record[keys.sort], 'submitted-desc'),
@@ -116,9 +115,9 @@ export const submissionSearchSchema = {
 
 export const DEFAULT_SUBMISSION_SEARCH: SubmissionSearch = parseSubmissionSearch({})
 
-export function toSubmissionDeskQuery(search: SubmissionSearch): SubmissionDeskQuery {
+export function toSubmissionDeskQuery(search: SubmissionSearch, q = ''): SubmissionDeskQuery {
   return {
-    q: search.q,
+    q,
     decision: search.decision,
     routing: search.routing,
     sort: search.sort,
@@ -130,7 +129,6 @@ export function toSubmissionDeskQuery(search: SubmissionSearch): SubmissionDeskQ
 export function toSubmissionViewState(search: SubmissionSearch): SubmissionViewState {
   return {
     schemaVersion: SUBMISSION_VIEW_SCHEMA_VERSION,
-    q: search.q,
     decision: search.decision,
     routing: search.routing,
     sort: search.sort,
@@ -144,7 +142,6 @@ export function toSubmissionViewState(search: SubmissionSearch): SubmissionViewS
 /** Omits validated defaults so links stay readable while retaining meaningful state. */
 export function compactSubmissionSearch(search: SubmissionSearch): SubmissionSearchInput {
   return {
-    ...(search.q === '' ? {} : { q: search.q }),
     ...(search.decision === 'all' ? {} : { decision: search.decision }),
     ...(search.routing === 'all' ? {} : { routing: search.routing }),
     ...(search.sort === 'submitted-desc' ? {} : { sort: search.sort }),

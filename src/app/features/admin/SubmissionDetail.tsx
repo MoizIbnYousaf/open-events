@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 
 import type { AnswerValue, SessionContentStatus } from '../../../domain'
 import type { ContributorDto } from '../../../application'
@@ -34,6 +34,11 @@ import BackLink from '../nav/BackLink'
 import { DeniedState, ExpiredSessionState, ForbiddenState } from './AdminStates'
 import EvaluationPanel from './EvaluationPanel'
 import { formatInstant } from './format-instant'
+import {
+  compactSubmissionSearch,
+  submissionSearchSchema,
+  type SubmissionSearchInput,
+} from './submission-search'
 
 function answerText(value: AnswerValue | null | undefined): string {
   if (value === null || value === undefined) return ''
@@ -41,12 +46,18 @@ function answerText(value: AnswerValue | null | undefined): string {
   return String(value)
 }
 
-function BackToList({ slug }: { readonly slug: string }) {
+function BackToList({
+  slug,
+  search,
+}: {
+  readonly slug: string
+  readonly search: SubmissionSearchInput
+}) {
   return (
     <BackLink
       to="/admin/events/$slug/submissions"
       params={{ slug }}
-      search
+      search={search}
       /* Exact matching, or the list path prefix-matches this detail page and
          the back link is announced as the current page. */
       activeOptions={{ exact: true }}
@@ -61,6 +72,15 @@ export default function SubmissionDetail() {
   const slug = params.slug as string | undefined
   const submissionId = params.submissionId as string | undefined
   const navigate = useNavigate()
+  const routeSearch = useSearch({ strict: false })
+  const deskSearch = useMemo(
+    () => compactSubmissionSearch(submissionSearchSchema.parse(routeSearch)),
+    [routeSearch],
+  )
+  const hasLegacyQuery =
+    routeSearch !== null &&
+    typeof routeSearch === 'object' &&
+    Object.prototype.hasOwnProperty.call(routeSearch, 'q')
   const detailQuery = useSubmissionDetail(slug, submissionId)
   const detail = detailQuery.data
   const versionQuery = useFormVersionDetail(slug, detail?.formId, detail?.versionId)
@@ -78,6 +98,16 @@ export default function SubmissionDetail() {
   useEffect(() => {
     document.title = 'Submission — Open Events'
   }, [])
+
+  useEffect(() => {
+    if (!hasLegacyQuery || slug === undefined || submissionId === undefined) return
+    void navigate({
+      to: '/admin/events/$slug/submissions/$submissionId',
+      params: { slug, submissionId },
+      replace: true,
+      search: deskSearch,
+    })
+  }, [deskSearch, hasLegacyQuery, navigate, slug, submissionId])
 
   useEffect(() => {
     if (detail !== undefined && version !== undefined) {
@@ -126,7 +156,7 @@ export default function SubmissionDetail() {
     return (
       <AppShell slug={slug ?? ''}>
         <div className="grid justify-items-start gap-3">
-          <BackToList slug={slug ?? ''} />
+          <BackToList slug={slug ?? ''} search={deskSearch} />
           <PageHeader>
             <PageHeaderContent>
               <PageHeaderTitle>Submission</PageHeaderTitle>
@@ -187,7 +217,7 @@ export default function SubmissionDetail() {
   return (
     <AppShell slug={slug ?? ''}>
       <div className="grid gap-4" data-tour="submission-workspace">
-        <BackToList slug={slug ?? ''} />
+        <BackToList slug={slug ?? ''} search={deskSearch} />
         <PageHeader>
           <PageHeaderContent>
             <PageHeaderTitle ref={headingRef} tabIndex={-1} className="outline-none">

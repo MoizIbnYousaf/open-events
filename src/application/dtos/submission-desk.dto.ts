@@ -1,4 +1,4 @@
-import type { AnswerMap, QuestionType } from '../../domain'
+import type { QuestionType } from '../../domain'
 import type { SubmissionListItemDto } from './submission.dto'
 
 export const SUBMISSION_DECISION_FILTERS = ['all', 'pending', 'accepted', 'rejected'] as const
@@ -13,7 +13,6 @@ export const SUBMISSION_SORTS = [
 export type SubmissionSort = (typeof SUBMISSION_SORTS)[number]
 
 export const SUBMISSION_DESK_PAGE_SIZE = 50
-export const SUBMISSION_DESK_SCAN_LIMIT = 1_000
 export const MAX_SUBMISSION_QUERY_LENGTH = 200
 export const MAX_SUBMISSION_FACETS = 12
 export const MAX_SUBMISSION_FACET_VALUES = 20
@@ -57,17 +56,14 @@ export interface SubmissionDeskDto {
   readonly page: number
   readonly pageSize: number
   readonly pageCount: number
-  readonly truncated: boolean
   readonly invalidFacetSelections: readonly SubmissionFacetSelection[]
   readonly routingOptions: readonly SubmissionFacetOptionDto[]
   readonly facetCounts: readonly SubmissionFacetDto[]
 }
 
-/** Fully hydrated organizer row plus the immutable answers it was submitted with. */
+/** Fully hydrated organizer row from the exact filtered page. */
 export interface SubmissionDeskRecord {
   readonly item: SubmissionListItemDto
-  readonly formVersionId: string
-  readonly answers: AnswerMap
 }
 
 /** One bounded-choice question from one immutable form version. */
@@ -84,11 +80,20 @@ export interface SubmissionDeskChoiceField {
   readonly options: readonly string[]
 }
 
+/** One observed answer value count for one immutable choice element. */
+export interface SubmissionDeskFacetCount {
+  readonly elementId: string
+  readonly value: string
+  readonly count: number
+}
+
 export interface SubmissionDeskSource {
   readonly records: readonly SubmissionDeskRecord[]
   readonly choiceFields: readonly SubmissionDeskChoiceField[]
-  /** Exact number of CFP submissions in the event, including beyond the scan cap. */
+  readonly facetCounts: readonly SubmissionDeskFacetCount[]
+  readonly routingOptions: readonly SubmissionFacetOptionDto[]
   readonly total: number
-  /** True when `records` stopped at `SUBMISSION_DESK_SCAN_LIMIT`. */
-  readonly truncated: boolean
+  readonly matchingTotal: number
+  readonly page: number
+  readonly pageCount: number
 }

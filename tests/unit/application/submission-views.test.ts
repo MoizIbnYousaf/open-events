@@ -12,7 +12,6 @@ const EVENT_ID = 'event-1'
 const NOW = '2026-08-28T12:00:00.000Z'
 const STATE = {
   schemaVersion: 1 as const,
-  q: 'agent',
   decision: 'pending' as const,
   routing: 'ai',
   sort: 'title-asc' as const,

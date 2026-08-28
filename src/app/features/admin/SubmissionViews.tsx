@@ -155,6 +155,27 @@ export function SubmissionViews({
             </Button>
           )
         ) : null}
+        {remove.isError && active !== undefined ? (
+          <div className="grid basis-full justify-items-start gap-2">
+            <AlertLive>
+              {getApiErrorMessage(remove.error, 'The saved view could not be deleted.')}
+            </AlertLive>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                void views.refetch().then((result) => {
+                  if (result.data?.some((view) => view.id === active.id) !== false) return
+                  setConfirmDelete(false)
+                  onDeleted(active.id)
+                })
+              }
+            >
+              Reload saved views
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   )

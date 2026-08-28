@@ -29,7 +29,7 @@ import { NAV_ROW_CLASS } from './nav-row'
  *
  * `components/ui/icons.tsx` remains the icon system of record: its geometry
  * rules (24 viewBox, round caps, size-compensated stroke) and its aria-hidden
- * default are what these six glyphs conform to, and a change there is a change
+ * default are what these seven glyphs conform to, and a change there is a change
  * these must follow. What does NOT follow is the artwork — the rail cannot
  * import that module without pulling it into the entry chunk, so re-sourcing a
  * nav glyph means editing this switch by hand. That duplication is the price of
@@ -102,7 +102,8 @@ function DestinationIcon({ id }: { readonly id: string }): ReactElement {
           <path d="m12 3.6 2.55 5.4 5.7.85-4.13 4.15 1 5.9L12 17.1l-5.12 2.8 1-5.9L3.75 9.85l5.7-.85L12 3.6Z" />
         </svg>
       )
-    /* A calendar grid: sessions placed onto days, tracks and rooms. */
+    /* A calendar grid: timeline milestones and sessions placed onto days. */
+    case 'timeline':
     case 'agenda':
       return (
         <svg {...ICON_PROPS}>

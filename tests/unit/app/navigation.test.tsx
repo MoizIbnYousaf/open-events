@@ -76,6 +76,9 @@ function defaultHandler(url: string): Response {
     return jsonResponse({ eventId: EVENT_CONFIG_DTO.id, items: [] })
   }
   if (url === `/api/admin/events/${EVENT_SLUG}/submissions`) return jsonResponse([])
+  if (url === `/api/admin/events/${EVENT_SLUG}/timeline`) {
+    return jsonResponse({ category: 'all', items: [], limit: 100, truncated: false })
+  }
   if (url === `/api/admin/events/${EVENT_SLUG}/readiness`) {
     return jsonResponse({ eventId: EVENT_CONFIG_DTO.id, submissions: [] })
   }
@@ -130,6 +133,7 @@ describe('nav model', () => {
       'Event settings',
       'Taxonomies',
       'Submissions',
+      'Timeline',
       // The people, beside the proposals. Every speaker-facing surface existed
       // before this destination did, so the work speakers were doing arrived on
       // a screen no organizer had.

@@ -26,6 +26,16 @@ const EXPECTED_INDEXES = [
   'idx_cfp_condition_rules_event_version',
   'idx_cfp_routing_rules_event_version',
   'idx_submission_saved_views_event_name',
+  'idx_proposal_submissions_event_submitted',
+  'idx_evaluation_assignments_event_created',
+  'idx_evaluation_assignments_event_recused',
+  'idx_evaluation_scores_event_updated',
+  'idx_evaluation_round_scores_event_updated',
+  'idx_submission_decisions_event_decided',
+  'idx_speaker_tasks_event_created',
+  'idx_speaker_tasks_event_completed',
+  'idx_captured_messages_event_created',
+  'idx_agenda_sessions_event_updated',
 ] as const
 
 describe('lookup indexes (migration 0003)', () => {
@@ -100,6 +110,55 @@ describe('lookup indexes (migration 0003)', () => {
     expect(formsPlan).not.toContain('SCAN')
     expect(draftsPlan).toContain('USING INDEX idx_proposal_drafts_id')
     expect(draftsPlan).not.toContain('SCAN')
+  })
+
+  it('uses the bounded timeline indexes without temporary ordering trees', async () => {
+    const cases = [
+      {
+        index: 'idx_proposal_submissions_event_submitted',
+        sql: `SELECT id FROM proposal_submissions
+              WHERE event_id = ? ORDER BY submitted_at DESC, id LIMIT 101`,
+      },
+      {
+        index: 'idx_evaluation_assignments_event_created',
+        sql: `SELECT id FROM evaluation_assignments
+              WHERE event_id = ? ORDER BY created_at DESC, id LIMIT 101`,
+      },
+      {
+        index: 'idx_evaluation_assignments_event_recused',
+        sql: `SELECT id FROM evaluation_assignments
+              WHERE event_id = ? AND recused_at IS NOT NULL
+              ORDER BY recused_at DESC, id LIMIT 101`,
+      },
+      {
+        index: 'idx_submission_decisions_event_decided',
+        sql: `SELECT id FROM submission_decisions
+              WHERE event_id = ? ORDER BY decided_at DESC, id LIMIT 101`,
+      },
+      {
+        index: 'idx_speaker_tasks_event_completed',
+        sql: `SELECT id FROM speaker_tasks
+              WHERE event_id = ? AND completed_at IS NOT NULL
+              ORDER BY completed_at DESC, id LIMIT 101`,
+      },
+      {
+        index: 'idx_captured_messages_event_created',
+        sql: `SELECT id FROM captured_messages
+              WHERE event_id = ? ORDER BY created_at DESC, id LIMIT 101`,
+      },
+      {
+        index: 'idx_agenda_sessions_event_updated',
+        sql: `SELECT submission_id FROM agenda_sessions
+              WHERE event_id = ? AND assignment = 'scheduled'
+              ORDER BY updated_at DESC, submission_id LIMIT 101`,
+      },
+    ] as const
+
+    for (const entry of cases) {
+      const plan = await planFor(entry.sql, 'event-1')
+      expect(plan).toContain(entry.index)
+      expect(plan).not.toContain('TEMP B-TREE')
+    }
   })
 })
 

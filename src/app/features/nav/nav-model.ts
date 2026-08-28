@@ -54,6 +54,13 @@ export function organizerDestinations(slug: string): readonly NavDestination[] {
       group: 'Programme',
     },
     {
+      id: 'timeline',
+      label: 'Timeline',
+      to: '/admin/events/$slug/timeline',
+      params,
+      group: 'Programme',
+    },
+    {
       // The people, beside the proposals. An organizer who could see every
       // submission and no speaker had to assemble the programme's cast by eye.
       id: 'speakers',

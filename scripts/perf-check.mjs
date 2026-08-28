@@ -22,7 +22,12 @@ const BUDGETS = {
   // The intent-only TourHost adds 1.5 kB gzip to this entry while preventing
   // the 5.7 kB ProductTour request before a visitor asks for it. Raised by a
   // reviewed 2 kB after measuring that net first-load reduction.
-  main: 105 * 1024,
+  // The programme timeline adds one generated route registration and one rail
+  // destination while its 2.5 kB page body remains lazy. The measured entry
+  // moved from 104.9 kB to 105.1 kB; this explicit 1 kB raise covers that
+  // unavoidable routing metadata. The full eager closure remains separately
+  // pinned below.
+  main: 106 * 1024,
   '/start': 20 * 1024,
   '/cfp/:eventSlug/:formSlug': 80 * 1024,
   '/admin/events/$slug/submissions': 30 * 1024,
@@ -38,6 +43,7 @@ const BUDGETS = {
   // unbudgeted route is one nobody is watching.
   '/admin/events/$slug/speakers': 30 * 1024,
   '/admin/events/$slug/messages': 30 * 1024,
+  '/admin/events/$slug/timeline': 30 * 1024,
   '/sessions/:eventSlug': 80_000,
   '/speakers/:eventSlug': 40_000,
   '/admin/events/$slug/embeds': 30 * 1024,
@@ -67,7 +73,11 @@ const PURITY_MARKERS = ['dnd-kit', 'react-hook-form', 'zod', 'lucide']
  */
 // Raised by the same reviewed 2 kB as `main`: the intent host is eager, while
 // the larger tour feature is now absent from the initial request graph.
-export const EAGER_CLOSURE_BUDGET = 152 * 1024
+// The timeline's route registration and rail destination moved the measured
+// closure from 151.7 kB to 152.0 kB while its page body stayed lazy. One explicit
+// kilobyte keeps that first-load boundary fail-closed without charging the
+// 2.5 kB route chunk to every page.
+export const EAGER_CLOSURE_BUDGET = 153 * 1024
 export const TOUR_CHUNK_BUDGET = 30 * 1024
 
 // TanStack autoCodeSplitting emits manifest keys like
@@ -176,6 +186,10 @@ const ROUTE_CHUNK_PATTERNS = [
   {
     route: '/admin/events/$slug/messages',
     pattern: /^admin_\.events\._slug_\.messages(-[A-Za-z0-9_-]+)?(\.js)?$/,
+  },
+  {
+    route: '/admin/events/$slug/timeline',
+    pattern: /^admin_\.events\._slug_\.timeline(-[A-Za-z0-9_-]+)?(\.js)?$/,
   },
   { route: '/headshot', pattern: /^headshot(-[A-Za-z0-9_-]+)?(\.js)?$/ },
 ]

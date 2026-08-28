@@ -71,6 +71,12 @@ export async function expectTourSemantics(page: Page, step: TourStep): Promise<v
       await expect(target).toContainText('Accepted')
       await expect(target).toContainText('Version 1')
       return
+    case 'timeline':
+      await expect(target).toContainText('Latest review saved')
+      await expect(target).toContainText('Proposal accepted')
+      await expect(target).toContainText('Current schedule placement')
+      await expect(target).toContainText('do not preserve every edit')
+      return
     case 'speakers':
       await expect(target).toContainText('12 of 12 speaker(s) shown')
       await expect(target).toContainText('Jon Bell')

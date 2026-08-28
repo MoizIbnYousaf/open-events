@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { TOUR_CHAPTERS, TOUR_STEPS } from '../../../src/app/features/tour/tour-steps'
 
 describe('tour moment contract', () => {
-  it('defines 26 unique moments across six chapters', () => {
-    expect(TOUR_STEPS).toHaveLength(26)
-    expect(new Set(TOUR_STEPS.map((step) => step.id)).size).toBe(26)
+  it('defines 27 unique moments across six chapters', () => {
+    expect(TOUR_STEPS).toHaveLength(27)
+    expect(new Set(TOUR_STEPS.map((step) => step.id)).size).toBe(27)
     expect(TOUR_CHAPTERS.map((chapter) => chapter.id)).toEqual([
       'orientation',
       'organizer',

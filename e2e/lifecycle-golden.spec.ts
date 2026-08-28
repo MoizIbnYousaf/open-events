@@ -787,6 +787,29 @@ test('golden lifecycle: configure, submit, evaluate, accept, onboard, communicat
     await adminPage.getByRole('button', { name: 'Publish to the programme' }).click()
     await expect(adminPage.getByText('Published 2 sessions.')).toBeVisible()
 
+    // The organizer can now inspect the same lifecycle as a read-only
+    // projection. Recorded decisions/messages/tasks stay distinct from the
+    // explicitly disclosed latest-review and current-schedule snapshots.
+    enterStage('programme timeline')
+    await adminPage.goto(`/admin/events/${EVENT_SLUG}/timeline`)
+    await expect(
+      adminPage.getByRole('heading', { level: 1, name: 'Programme timeline' }),
+    ).toBeVisible()
+    const timeline = adminPage.getByRole('list', { name: 'Programme lifecycle milestones' })
+    await expect(timeline).toContainText('Proposal submitted')
+    await expect(timeline).toContainText('Latest review saved')
+    await expect(timeline).toContainText('Proposal accepted')
+    await expect(timeline).toContainText('Speaker task assigned')
+    await expect(timeline).toContainText('Reminder recorded')
+    await expect(timeline).toContainText('Current schedule placement')
+    await expect(timeline).not.toContainText(SPEAKER_EMAIL)
+    await adminPage.getByLabel('Show milestones').selectOption('decisions')
+    await expect(adminPage).toHaveURL(/\/timeline\?category=decisions$/)
+    const decisions = adminPage.getByRole('list', { name: 'Programme lifecycle milestones' })
+    await expect(decisions).toContainText('Proposal accepted')
+    await expect(decisions).not.toContainText('Latest review saved')
+    await expectNoSeriousAxeFindings(adminPage, 'programme timeline')
+
     enterStage('mobile public schedule')
     attendee = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const attendeePage = await attendee.newPage()

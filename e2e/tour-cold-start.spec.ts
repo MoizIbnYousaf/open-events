@@ -12,6 +12,7 @@ function concretePath(route: string, params?: Readonly<Record<string, string>>):
 const AXE_MOMENTS = new Set([
   'welcome',
   'submissions',
+  'timeline',
   'speaker-portal',
   'reviewer-queue',
   'itinerary',

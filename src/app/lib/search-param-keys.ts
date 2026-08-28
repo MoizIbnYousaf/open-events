@@ -20,6 +20,9 @@ export const APP_SEARCH_PARAM_KEYS = {
     view: 'view',
     spotlight: 'spotlight',
   },
+  timeline: {
+    category: 'category',
+  },
 } as const
 
 export const RESERVED_SEARCH_PARAM_KEYS: ReadonlySet<string> = new Set(

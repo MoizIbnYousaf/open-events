@@ -15,6 +15,10 @@ import type {
 } from '../../application'
 import { ApplicationError } from '../../application/errors'
 import { submissionDeskQuerySchema } from '../../application/dtos/submission-desk-query'
+import {
+  PROGRAMME_TIMELINE_FILTERS,
+  type ProgrammeTimelineFilter,
+} from '../../application/dtos/programme-timeline.dto'
 import { submissionViewStateSchema } from '../../application/dtos/submission-view.dto'
 import { EVENT_STATUSES, type EventDates, type EventStatus } from '../../domain/event'
 import type { FormElement, FormPage } from '../../domain/form-version'
@@ -1367,7 +1371,7 @@ export async function handleSubmissionDesk(context: ServerContext): Promise<Resp
   return context.json(await deps.submissionDesk.list(actor, eventId, query))
 }
 
-async function submissionViewContext(context: ServerContext) {
+async function organizerEventContext(context: ServerContext) {
   const deps = depsFromContext(context)
   if (deps === null) return databaseUnavailableResponse(context)
   const actor = requireOrganizer(context)
@@ -1380,14 +1384,14 @@ async function submissionViewContext(context: ServerContext) {
 
 /** GET /api/admin/events/:slug/submission-views — event-wide organizer views. */
 export async function handleListSubmissionViews(context: ServerContext): Promise<Response> {
-  const resolved = await submissionViewContext(context)
+  const resolved = await organizerEventContext(context)
   if (resolved instanceof Response) return resolved
   return context.json(await resolved.deps.submissionViews.list(resolved.actor, resolved.eventId))
 }
 
 /** POST /api/admin/events/:slug/submission-views — save the current filter snapshot. */
 export async function handleCreateSubmissionView(context: ServerContext): Promise<Response> {
-  const resolved = await submissionViewContext(context)
+  const resolved = await organizerEventContext(context)
   if (resolved instanceof Response) return resolved
   const body = await readJsonBody(context)
   if (body === null || typeof body.name !== 'string') return validationFailedResponse(context)
@@ -1402,12 +1406,27 @@ export async function handleCreateSubmissionView(context: ServerContext): Promis
 
 /** DELETE /api/admin/events/:slug/submission-views/:id — event-scoped safe delete. */
 export async function handleDeleteSubmissionView(context: ServerContext): Promise<Response> {
-  const resolved = await submissionViewContext(context)
+  const resolved = await organizerEventContext(context)
   if (resolved instanceof Response) return resolved
   const id = context.req.param('id')
   if (id === undefined) return notFoundResponse(context)
   await resolved.deps.submissionViews.delete(resolved.actor, resolved.eventId, id)
   return context.json({ deleted: true })
+}
+
+function isProgrammeTimelineFilter(value: string): value is ProgrammeTimelineFilter {
+  return PROGRAMME_TIMELINE_FILTERS.includes(value as ProgrammeTimelineFilter)
+}
+
+/** GET /api/admin/events/:slug/timeline — bounded read-only lifecycle projection. */
+export async function handleProgrammeTimeline(context: ServerContext): Promise<Response> {
+  const resolved = await organizerEventContext(context)
+  if (resolved instanceof Response) return resolved
+  const category = context.req.query('category') ?? 'all'
+  if (!isProgrammeTimelineFilter(category)) return validationFailedResponse(context)
+  return context.json(
+    await resolved.deps.programmeTimeline.list(resolved.actor, resolved.eventId, category),
+  )
 }
 
 /** GET /api/admin/events/:slug/submissions/:id. */
@@ -2351,6 +2370,12 @@ export function registerAdminRoutes(app: Hono<ServerEnv>): void {
     requireSession(),
     requireActor('organizer'),
     handleDeleteSubmissionView,
+  )
+  app.get(
+    '/api/admin/events/:slug/timeline',
+    requireSession(),
+    requireActor('organizer'),
+    handleProgrammeTimeline,
   )
   app.get(
     '/api/admin/events/:slug/submissions',

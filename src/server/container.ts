@@ -30,6 +30,7 @@ import { GetEvent } from '../application/services/get-event'
 import { HeadshotService } from '../application/services/headshots'
 import { OnboardingService } from '../application/services/onboarding'
 import { ProfileService } from '../application/services/profile'
+import { ProgrammeTimelineService } from '../application/services/programme-timeline'
 import { SessionService } from '../application/services/session'
 import { SubmitService } from '../application/services/submit'
 import { SubmissionDeskService } from '../application/services/submission-desk'
@@ -71,6 +72,7 @@ import { createDirectSessionUnitOfWork } from '../db/direct-session-unit-of-work
 import { createSupportRepository } from '../db/support-repository'
 import { createUploadedFileRepository } from '../db/uploaded-file-repository'
 import { createPortalResourceRepository } from '../db/portal-resource-repository'
+import { createProgrammeTimelineRepository } from '../db/programme-timeline-repository'
 import { createSubmissionDeskRepository } from '../db/submission-desk-repository'
 import { createSubmissionViewRepository } from '../db/submission-view-repository'
 
@@ -114,6 +116,7 @@ export interface ServerDeps {
   readonly submit: SubmitService
   readonly submissionDesk: SubmissionDeskService
   readonly submissionViews: SubmissionViewService
+  readonly programmeTimeline: ProgrammeTimelineService
   readonly onboarding: OnboardingService
   readonly profile: ProfileService
   readonly evaluations: EvaluationService
@@ -230,6 +233,7 @@ export function buildServerDeps(
     submissionViews: new SubmissionViewService(createSubmissionViewRepository(db), clock, () =>
       crypto.randomUUID(),
     ),
+    programmeTimeline: new ProgrammeTimelineService(createProgrammeTimelineRepository(db)),
     profile: new ProfileService(contacts, createProgrammeRepository(db), clock),
     onboarding: new OnboardingService(
       createSubmissionRepository(db),

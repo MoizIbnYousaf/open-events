@@ -446,6 +446,11 @@ export const proposalSubmissions = sqliteTable(
       table.formVersionId,
       table.ownerContactId,
     ),
+    index('idx_proposal_submissions_event_submitted').on(
+      table.eventId,
+      table.submittedAt,
+      table.id,
+    ),
     foreignKey({
       columns: [table.eventId, table.formVersionId],
       foreignColumns: [cfpFormVersions.eventId, cfpFormVersions.id],
@@ -526,6 +531,7 @@ export const capturedMessages = sqliteTable(
     index('idx_captured_messages_submission')
       .on(table.submissionId)
       .where(sql`submission_id IS NOT NULL`),
+    index('idx_captured_messages_event_created').on(table.eventId, table.createdAt, table.id),
     foreignKey({
       columns: [table.eventId],
       foreignColumns: [events.id],
@@ -764,6 +770,9 @@ export const agendaSessions = sqliteTable(
       table.position,
     ),
     index('idx_agenda_sessions_event_day').on(table.eventId, table.day),
+    index('idx_agenda_sessions_event_updated')
+      .on(table.eventId, table.updatedAt, table.submissionId)
+      .where(sql`assignment = 'scheduled'`),
     foreignKey({
       columns: [table.eventId, table.submissionId],
       foreignColumns: [proposalSubmissions.eventId, proposalSubmissions.id],
@@ -858,6 +867,7 @@ export const submissionDecisions = sqliteTable(
       table.submissionId,
       table.sequence,
     ),
+    index('idx_submission_decisions_event_decided').on(table.eventId, table.decidedAt, table.id),
     foreignKey({
       columns: [table.eventId, table.submissionId],
       foreignColumns: [proposalSubmissions.eventId, proposalSubmissions.id],
@@ -894,6 +904,10 @@ export const speakerTasks = sqliteTable(
       .where(sql`form_id IS NOT NULL`),
     index('idx_speaker_tasks_event_contact').on(table.eventId, table.contactId),
     index('idx_speaker_tasks_event_submission').on(table.eventId, table.submissionId),
+    index('idx_speaker_tasks_event_created').on(table.eventId, table.createdAt, table.id),
+    index('idx_speaker_tasks_event_completed')
+      .on(table.eventId, table.completedAt, table.id)
+      .where(sql`completed_at IS NOT NULL`),
     foreignKey({
       columns: [table.eventId, table.submissionId],
       foreignColumns: [submissionAcceptances.eventId, submissionAcceptances.submissionId],
@@ -1032,6 +1046,7 @@ export const evaluationAssignments = sqliteTable(
     submissionId: text('submission_id').notNull(),
     evaluatorContactId: text('evaluator_contact_id').notNull(),
     createdAt: text('created_at').notNull(),
+    recusedAt: text('recused_at'),
   },
   (table) => [
     primaryKey({ columns: [table.eventId, table.id] }),
@@ -1043,6 +1058,10 @@ export const evaluationAssignments = sqliteTable(
     ),
     index('idx_evaluation_assignments_event_evaluator').on(table.eventId, table.evaluatorContactId),
     index('idx_evaluation_assignments_event_submission').on(table.eventId, table.submissionId),
+    index('idx_evaluation_assignments_event_created').on(table.eventId, table.createdAt, table.id),
+    index('idx_evaluation_assignments_event_recused')
+      .on(table.eventId, table.recusedAt, table.id)
+      .where(sql`recused_at IS NOT NULL`),
     foreignKey({
       columns: [table.eventId, table.roundId],
       foreignColumns: [evaluationRounds.eventId, evaluationRounds.id],
@@ -1075,6 +1094,11 @@ export const evaluationScores = sqliteTable(
     uniqueIndex('idx_evaluation_scores_id').on(table.id),
     uniqueIndex('evaluation_scores_assignment_criterion').on(table.assignmentId, table.criterionId),
     index('idx_evaluation_scores_event_assignment').on(table.eventId, table.assignmentId),
+    index('idx_evaluation_scores_event_updated').on(
+      table.eventId,
+      table.updatedAt,
+      table.assignmentId,
+    ),
     foreignKey({
       columns: [table.eventId, table.assignmentId],
       foreignColumns: [evaluationAssignments.eventId, evaluationAssignments.id],

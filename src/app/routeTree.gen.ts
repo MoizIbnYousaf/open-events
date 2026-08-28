@@ -35,6 +35,7 @@ import { Route as AdminEventsSlugReadinessRouteImport } from './routes/admin_.ev
 import { Route as AdminEventsSlugSpeakersRouteImport } from './routes/admin_.events.$slug_.speakers'
 import { Route as AdminEventsSlugSubmissionsRouteImport } from './routes/admin_.events.$slug_.submissions'
 import { Route as AdminEventsSlugTaxonomiesRouteImport } from './routes/admin_.events.$slug_.taxonomies'
+import { Route as AdminEventsSlugTimelineRouteImport } from './routes/admin_.events.$slug_.timeline'
 import { Route as AdminEventsSlugFormsFormIdRouteImport } from './routes/admin_.events.$slug_.forms.$formId'
 import { Route as AdminEventsSlugSubmissionsSubmissionIdRouteImport } from './routes/admin_.events.$slug_.submissions_.$submissionId'
 import { Route as AdminEventsSlugFormsFormIdVersionsVersionIdRouteImport } from './routes/admin_.events.$slug_.forms.$formId_.versions.$versionId'
@@ -174,6 +175,11 @@ const AdminEventsSlugTaxonomiesRoute =
     path: '/$slug/taxonomies',
     getParentRoute: () => AdminEventsRoute,
   } as any)
+const AdminEventsSlugTimelineRoute = AdminEventsSlugTimelineRouteImport.update({
+  id: '/$slug_/timeline',
+  path: '/$slug/timeline',
+  getParentRoute: () => AdminEventsRoute,
+} as any)
 const AdminEventsSlugFormsFormIdRoute =
   AdminEventsSlugFormsFormIdRouteImport.update({
     id: '/$slug_/forms/$formId',
@@ -219,6 +225,7 @@ export interface FileRoutesByFullPath {
   '/admin/events/$slug/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin/events/$slug/submissions': typeof AdminEventsSlugSubmissionsRoute
   '/admin/events/$slug/taxonomies': typeof AdminEventsSlugTaxonomiesRoute
+  '/admin/events/$slug/timeline': typeof AdminEventsSlugTimelineRoute
   '/admin/events/$slug/forms/$formId': typeof AdminEventsSlugFormsFormIdRoute
   '/admin/events/$slug/submissions/$submissionId': typeof AdminEventsSlugSubmissionsSubmissionIdRoute
   '/admin/events/$slug/forms/$formId/versions/$versionId': typeof AdminEventsSlugFormsFormIdVersionsVersionIdRoute
@@ -248,6 +255,7 @@ export interface FileRoutesByTo {
   '/admin/events/$slug/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin/events/$slug/submissions': typeof AdminEventsSlugSubmissionsRoute
   '/admin/events/$slug/taxonomies': typeof AdminEventsSlugTaxonomiesRoute
+  '/admin/events/$slug/timeline': typeof AdminEventsSlugTimelineRoute
   '/admin/events/$slug/forms/$formId': typeof AdminEventsSlugFormsFormIdRoute
   '/admin/events/$slug/submissions/$submissionId': typeof AdminEventsSlugSubmissionsSubmissionIdRoute
   '/admin/events/$slug/forms/$formId/versions/$versionId': typeof AdminEventsSlugFormsFormIdVersionsVersionIdRoute
@@ -280,6 +288,7 @@ export interface FileRoutesById {
   '/admin_/events/$slug_/speakers': typeof AdminEventsSlugSpeakersRoute
   '/admin_/events/$slug_/submissions': typeof AdminEventsSlugSubmissionsRoute
   '/admin_/events/$slug_/taxonomies': typeof AdminEventsSlugTaxonomiesRoute
+  '/admin_/events/$slug_/timeline': typeof AdminEventsSlugTimelineRoute
   '/admin_/events/$slug_/forms/$formId': typeof AdminEventsSlugFormsFormIdRoute
   '/admin_/events/$slug_/submissions_/$submissionId': typeof AdminEventsSlugSubmissionsSubmissionIdRoute
   '/admin_/events/$slug_/forms/$formId_/versions/$versionId': typeof AdminEventsSlugFormsFormIdVersionsVersionIdRoute
@@ -312,6 +321,7 @@ export interface FileRouteTypes {
     | '/admin/events/$slug/speakers'
     | '/admin/events/$slug/submissions'
     | '/admin/events/$slug/taxonomies'
+    | '/admin/events/$slug/timeline'
     | '/admin/events/$slug/forms/$formId'
     | '/admin/events/$slug/submissions/$submissionId'
     | '/admin/events/$slug/forms/$formId/versions/$versionId'
@@ -341,6 +351,7 @@ export interface FileRouteTypes {
     | '/admin/events/$slug/speakers'
     | '/admin/events/$slug/submissions'
     | '/admin/events/$slug/taxonomies'
+    | '/admin/events/$slug/timeline'
     | '/admin/events/$slug/forms/$formId'
     | '/admin/events/$slug/submissions/$submissionId'
     | '/admin/events/$slug/forms/$formId/versions/$versionId'
@@ -372,6 +383,7 @@ export interface FileRouteTypes {
     | '/admin_/events/$slug_/speakers'
     | '/admin_/events/$slug_/submissions'
     | '/admin_/events/$slug_/taxonomies'
+    | '/admin_/events/$slug_/timeline'
     | '/admin_/events/$slug_/forms/$formId'
     | '/admin_/events/$slug_/submissions_/$submissionId'
     | '/admin_/events/$slug_/forms/$formId_/versions/$versionId'
@@ -568,6 +580,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventsSlugTaxonomiesRouteImport
       parentRoute: typeof AdminEventsRoute
     }
+    '/admin_/events/$slug_/timeline': {
+      id: '/admin_/events/$slug_/timeline'
+      path: '/$slug/timeline'
+      fullPath: '/admin/events/$slug/timeline'
+      preLoaderRoute: typeof AdminEventsSlugTimelineRouteImport
+      parentRoute: typeof AdminEventsRoute
+    }
     '/admin_/events/$slug_/forms/$formId': {
       id: '/admin_/events/$slug_/forms/$formId'
       path: '/$slug/forms/$formId'
@@ -647,6 +666,7 @@ interface AdminEventsRouteChildren {
   AdminEventsSlugSpeakersRoute: typeof AdminEventsSlugSpeakersRoute
   AdminEventsSlugSubmissionsRoute: typeof AdminEventsSlugSubmissionsRoute
   AdminEventsSlugTaxonomiesRoute: typeof AdminEventsSlugTaxonomiesRoute
+  AdminEventsSlugTimelineRoute: typeof AdminEventsSlugTimelineRoute
   AdminEventsSlugFormsFormIdRoute: typeof AdminEventsSlugFormsFormIdRoute
   AdminEventsSlugSubmissionsSubmissionIdRoute: typeof AdminEventsSlugSubmissionsSubmissionIdRoute
   AdminEventsSlugFormsFormIdVersionsVersionIdRoute: typeof AdminEventsSlugFormsFormIdVersionsVersionIdRoute
@@ -665,6 +685,7 @@ const AdminEventsRouteChildren: AdminEventsRouteChildren = {
   AdminEventsSlugSpeakersRoute: AdminEventsSlugSpeakersRoute,
   AdminEventsSlugSubmissionsRoute: AdminEventsSlugSubmissionsRoute,
   AdminEventsSlugTaxonomiesRoute: AdminEventsSlugTaxonomiesRoute,
+  AdminEventsSlugTimelineRoute: AdminEventsSlugTimelineRoute,
   AdminEventsSlugFormsFormIdRoute: AdminEventsSlugFormsFormIdRoute,
   AdminEventsSlugSubmissionsSubmissionIdRoute:
     AdminEventsSlugSubmissionsSubmissionIdRoute,

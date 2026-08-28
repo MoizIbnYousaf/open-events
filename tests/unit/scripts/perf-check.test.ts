@@ -35,6 +35,7 @@ const MANIFEST = {
       'assets/admin_.events._slug_.readiness-abc123.js',
       'assets/admin_.events._slug_.speakers-abc123.js',
       'assets/admin_.events._slug_.messages-abc123.js',
+      'assets/admin_.events._slug_.timeline-abc123.js',
       'assets/admin_.events._slug_.evaluations-abc123.js',
       'assets/sessions._eventSlug-abc123.js',
       'assets/speakers._eventSlug-abc123.js',
@@ -69,6 +70,9 @@ const MANIFEST = {
   },
   'assets/admin_.events._slug_.messages-abc123.js': {
     file: 'assets/admin_.events._slug_.messages-abc123.js',
+  },
+  'assets/admin_.events._slug_.timeline-abc123.js': {
+    file: 'assets/admin_.events._slug_.timeline-abc123.js',
   },
   'assets/admin_.events._slug_.readiness-abc123.js': {
     file: 'assets/admin_.events._slug_.readiness-abc123.js',
@@ -106,6 +110,7 @@ const EXPECTED_ROUTE_CHUNKS = {
   '/admin/events/$slug/readiness': 'assets/admin_.events._slug_.readiness-abc123.js',
   '/admin/events/$slug/speakers': 'assets/admin_.events._slug_.speakers-abc123.js',
   '/admin/events/$slug/messages': 'assets/admin_.events._slug_.messages-abc123.js',
+  '/admin/events/$slug/timeline': 'assets/admin_.events._slug_.timeline-abc123.js',
   '/admin/events/$slug/evaluations': 'assets/admin_.events._slug_.evaluations-abc123.js',
   '/headshot': 'assets/headshot-abc123.js',
   '/sessions/:eventSlug': 'assets/sessions._eventSlug-abc123.js',
@@ -307,7 +312,7 @@ describe('manifest-driven perf gate', () => {
     })
 
     it('pins the budget as an explicit number someone has to raise by hand', () => {
-      expect(EAGER_CLOSURE_BUDGET).toBe(155648)
+      expect(EAGER_CLOSURE_BUDGET).toBe(156672)
     })
   })
 })

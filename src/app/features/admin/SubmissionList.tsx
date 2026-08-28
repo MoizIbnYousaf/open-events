@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 
 import type { SubmissionListItemDto } from '../../../application'
+import { SUBMISSION_DESK_PAGE_SIZE } from '../../../application/dtos/submission-desk.dto'
 import { getApiErrorCode } from '../../api/admin-events'
 import { useSubmissionDesk } from '../../queries/admin-submissions'
 import { AlertLive } from '../../../components/ui/alert-live'
@@ -17,6 +18,7 @@ import {
 } from '../../../components/ui/card'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
+import { Checkbox } from '../../../components/ui/checkbox'
 import { EmptyState } from '../../../components/ui/empty-state'
 import { InboxIcon } from '../../../components/ui/icons'
 import { linkVariants } from '../../../components/ui/link-variants'
@@ -134,6 +136,33 @@ const TITLE_COLUMN = 'w-[38%] min-w-[15rem]'
  * cell padding so the link covers it; the row still holds exactly one link.
  */
 const ROW_LINK_HIT = '-my-2 -ml-2 w-[calc(100%+0.5rem)] py-2 pl-2'
+const MAX_PAGE_SELECTION = SUBMISSION_DESK_PAGE_SIZE
+
+function PageSelectionCheckbox({
+  checked,
+  mixed,
+  label,
+  onChange,
+}: {
+  readonly checked: boolean
+  readonly mixed?: boolean
+  readonly label: string
+  readonly onChange: (checked: boolean) => void
+}) {
+  const input = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (input.current !== null) input.current.indeterminate = mixed === true
+  }, [mixed])
+  return (
+    <Checkbox
+      ref={input}
+      aria-label={label}
+      checked={checked}
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => onChange(event.target.checked)}
+    />
+  )
+}
 
 /**
  * Loading rows shaped like the table that replaces them: same column rhythm,
@@ -171,11 +200,13 @@ export default function SubmissionList() {
   const deskQuery = toSubmissionDeskQuery(search)
   const listQuery = useSubmissionDesk(slug, deskQuery)
   const [queryDraft, setQueryDraft] = useState({ url: search.q, input: search.q })
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [copyNotice, setCopyNotice] = useState<number | 'failed' | null>(null)
   if (queryDraft.url !== search.q) setQueryDraft({ url: search.q, input: search.q })
   const queryText = queryDraft.input
   const desk = listQuery.data
 
-  const setSearch = useCallback(
+  const navigateSearch = useCallback(
     (update: Partial<SubmissionSearch>, options: { readonly transient?: boolean } = {}) => {
       if (slug === undefined) return
       void navigate({
@@ -200,6 +231,16 @@ export default function SubmissionList() {
     },
     [navigate, search.tour, slug],
   )
+  const setSearch = useCallback(
+    (update: Partial<SubmissionSearch>, options: { readonly transient?: boolean } = {}) => {
+      if (options.transient !== true) {
+        setSelectedIds(new Set())
+        setCopyNotice(null)
+      }
+      navigateSearch(update, options)
+    },
+    [navigateSearch],
+  )
 
   useEffect(() => {
     document.title = 'Submissions — Open Events'
@@ -213,14 +254,31 @@ export default function SubmissionList() {
 
   useEffect(() => {
     if (desk !== undefined && desk.page !== search.page) {
-      setSearch({ page: desk.page }, { transient: true })
+      navigateSearch({ page: desk.page }, { transient: true })
     }
-  }, [desk, search.page, setSearch])
+  }, [desk, navigateSearch, search.page])
 
   const rows = desk?.rows
   const matches = rows ?? []
   const routingOptions = desk?.routingOptions ?? []
   const matchIds = matches.map((row) => row.id)
+  const selectedRows = matches.filter((row) => selectedIds.has(row.id)).slice(0, MAX_PAGE_SELECTION)
+  const allPageRowsSelected = matches.length > 0 && selectedRows.length === matches.length
+  const somePageRowsSelected = selectedRows.length > 0 && !allPageRowsSelected
+  const setRowSelected = (id: string, checked: boolean) => {
+    setCopyNotice(null)
+    setSelectedIds((current) => {
+      const liveIds = new Set(matchIds)
+      const next = new Set([...current].filter((candidate) => liveIds.has(candidate)))
+      if (checked && next.size < MAX_PAGE_SELECTION) next.add(id)
+      else if (!checked) next.delete(id)
+      return next
+    })
+  }
+  const setAllPageRowsSelected = (checked: boolean) => {
+    setCopyNotice(null)
+    setSelectedIds(checked ? new Set(matchIds.slice(0, MAX_PAGE_SELECTION)) : new Set())
+  }
   const selectSpotlight = useCallback(
     (spotlight: string | null) =>
       setSearch({ spotlight: spotlight ?? undefined }, { transient: true }),
@@ -345,9 +403,11 @@ export default function SubmissionList() {
                   id="submission-search"
                   type="search"
                   value={queryText}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    setSelectedIds(new Set())
+                    setCopyNotice(null)
                     setQueryDraft((current) => ({ ...current, input: event.target.value }))
-                  }
+                  }}
                 />
               </Field>
               <SubmissionViews
@@ -442,7 +502,7 @@ export default function SubmissionList() {
                     disabled={matches.length === 0}
                     onClick={() => downloadSubmissionCsv(slug ?? 'event', matches)}
                   >
-                    Export CSV
+                    Export page CSV
                   </Button>
                 </div>
               </div>
@@ -485,6 +545,59 @@ export default function SubmissionList() {
                   ? `Showing ${matches.length} of ${desk.total} proposals`
                   : `Showing ${matches.length} matching of ${desk.total} proposals`}
               </p>
+              {selectedRows.length > 0 ? (
+                <div
+                  role="region"
+                  aria-label="Selected proposals"
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-2"
+                >
+                  <span className="mr-auto text-sm font-medium">
+                    {selectedRows.length} selected from this page
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadSubmissionCsv(slug ?? 'event', selectedRows, true)}
+                  >
+                    Export selected CSV
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCopyNotice(null)
+                      void copyPrimarySpeakerEmails(selectedRows).then(
+                        (count) => setCopyNotice(count),
+                        () => setCopyNotice('failed'),
+                      )
+                    }}
+                  >
+                    Copy primary speaker emails
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedIds(new Set())
+                      setCopyNotice(null)
+                    }}
+                  >
+                    Clear selection
+                  </Button>
+                  {typeof copyNotice === 'number' ? (
+                    <StatusLive className="basis-full" aria-live="polite">
+                      Copied {copyNotice} {copyNotice === 1 ? 'email address' : 'email addresses'}.
+                    </StatusLive>
+                  ) : copyNotice === 'failed' ? (
+                    <AlertLive className="basis-full">
+                      The email addresses could not be copied.
+                    </AlertLive>
+                  ) : null}
+                </div>
+              ) : null}
               {desk.pageCount > 1 ? (
                 <div className="flex flex-wrap items-center gap-2" aria-label="Submission pages">
                   <Button
@@ -523,6 +636,14 @@ export default function SubmissionList() {
                       <TableHead scope="col" pinned className={TITLE_COLUMN}>
                         Title
                       </TableHead>
+                      <TableHead scope="col" className="w-12 text-center">
+                        <PageSelectionCheckbox
+                          checked={allPageRowsSelected}
+                          mixed={somePageRowsSelected}
+                          label="Select all proposals on this page"
+                          onChange={setAllPageRowsSelected}
+                        />
+                      </TableHead>
                       <TableHead scope="col">Primary speaker</TableHead>
                       <TableHead scope="col">Co-speakers</TableHead>
                       <TableHead scope="col">Form/Version</TableHead>
@@ -537,6 +658,7 @@ export default function SubmissionList() {
                         key={row.id}
                         className={ROW_EMPHASIS}
                         data-selected={selected?.id === row.id ? '' : undefined}
+                        data-state={selectedIds.has(row.id) ? 'selected' : undefined}
                         onClick={() => select(row.id)}
                       >
                         <TableCell pinned>
@@ -550,6 +672,13 @@ export default function SubmissionList() {
                           >
                             {row.title}
                           </Link>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <PageSelectionCheckbox
+                            checked={selectedIds.has(row.id)}
+                            label={`Select ${row.title}`}
+                            onChange={(checked) => setRowSelected(row.id, checked)}
+                          />
                         </TableCell>
                         <TableCell>{row.primarySpeaker.name}</TableCell>
                         <TableCell className="tabular-nums text-muted-foreground">
@@ -581,15 +710,28 @@ export default function SubmissionList() {
   )
 }
 
-function downloadSubmissionCsv(slug: string, rows: readonly SubmissionListItemDto[]) {
+function downloadSubmissionCsv(
+  slug: string,
+  rows: readonly SubmissionListItemDto[],
+  selected = false,
+) {
   const url = URL.createObjectURL(
     new Blob([submissionsCsv(rows)], { type: 'text/csv;charset=utf-8' }),
   )
   const link = document.createElement('a')
   link.href = url
-  link.download = `${slug}-submissions.csv`
+  link.download = `${slug}-${selected ? 'selected-' : ''}submissions.csv`
   link.click()
   URL.revokeObjectURL(url)
+}
+
+async function copyPrimarySpeakerEmails(rows: readonly SubmissionListItemDto[]): Promise<number> {
+  if (typeof navigator === 'undefined' || navigator.clipboard === undefined) {
+    throw new Error('Clipboard unavailable')
+  }
+  const emails = [...new Set(rows.map((row) => row.primarySpeaker.email))]
+  await navigator.clipboard.writeText(emails.join('\n'))
+  return emails.length
 }
 
 function SubmissionPeek({

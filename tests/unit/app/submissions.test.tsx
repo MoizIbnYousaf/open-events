@@ -696,6 +696,89 @@ describe('organizer submissions', () => {
     })
   })
 
+  it('keeps bulk selection page-local and limits actions to the selected rows', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText')
+    const second = {
+      ...SUBMISSION_LIST_ITEM,
+      id: 'submission-2',
+      title: 'Workshop on incremental builds',
+      primarySpeaker: {
+        ...SUBMISSION_LIST_ITEM.primarySpeaker,
+        contactId: 'contact-2',
+        name: 'Speaker B',
+        email: 'speaker.b@example.test',
+      },
+    }
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url.startsWith(listUrl())) {
+        return jsonResponse(deskResponse([SUBMISSION_LIST_ITEM, second]))
+      }
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+
+    await mountList()
+    await screen.findByRole('table')
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Select Workshop on incremental builds' }),
+    )
+
+    expect(document.querySelector('[data-slot="submissions-canvas"]')).toHaveAttribute(
+      'data-spotlight',
+      SUBMISSION_ID,
+    )
+    const selected = screen.getByRole('region', { name: 'Selected proposals' })
+    expect(selected).toHaveTextContent('1 selected from this page')
+    expect(
+      within(selected).queryByRole('button', { name: /accept|reject/i }),
+    ).not.toBeInTheDocument()
+    await user.click(within(selected).getByRole('button', { name: 'Copy primary speaker emails' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('speaker.b@example.test'))
+
+    const selectAll = screen.getByRole('checkbox', { name: 'Select all proposals on this page' })
+    expect(selectAll).toHaveProperty('indeterminate', true)
+    await user.click(selectAll)
+    expect(selected).toHaveTextContent('2 selected from this page')
+
+    await user.selectOptions(screen.getByLabelText('Filter by decision'), 'accepted')
+    await waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'Selected proposals' })).not.toBeInTheDocument()
+    })
+    expect(
+      screen.getByRole('checkbox', { name: 'Select all proposals on this page' }),
+    ).not.toBeChecked()
+  })
+
+  it('defensively caps a malformed oversized page at fifty selected rows', async () => {
+    const user = userEvent.setup()
+    const rows = Array.from({ length: 51 }, (_, index) => ({
+      ...SUBMISSION_LIST_ITEM,
+      id: `submission-${index + 1}`,
+      title: `Proposal ${index + 1}`,
+      primarySpeaker: {
+        ...SUBMISSION_LIST_ITEM.primarySpeaker,
+        contactId: `contact-${index + 1}`,
+        name: `Speaker ${index + 1}`,
+        email: `speaker-${index + 1}@example.test`,
+      },
+    }))
+    fetchHandler = (url, init) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET' && url === listUrl()) return jsonResponse(deskResponse(rows))
+      return jsonResponse({ error: { code: 'internal', message: 'unexpected fetch' } }, 500)
+    }
+
+    await mountList()
+    await screen.findByRole('table')
+    await user.click(screen.getByRole('checkbox', { name: 'Select all proposals on this page' }))
+
+    expect(screen.getByRole('region', { name: 'Selected proposals' })).toHaveTextContent(
+      '50 selected from this page',
+    )
+    expect(screen.getByRole('checkbox', { name: 'Select Proposal 51' })).not.toBeChecked()
+  })
+
   it('loads typed URL filters, sends the canonical desk query, and preserves tour state', async () => {
     const user = userEvent.setup()
     fetchHandler = (url, init) => {
